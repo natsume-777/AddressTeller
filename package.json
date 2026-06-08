@@ -1,0 +1,31 @@
+{
+  "name": "com.natsume777.addressteller",
+  "version": "0.1.0",
+  "displayName": "AddressTeller",
+  "description": "Code-first auto-assignment of Unity Addressables addresses and labels. Define rules in C# instead of ScriptableObject UI.",
+  "unity": "6000.0",
+  "documentationUrl": "https://github.com/natsume-777/AddressTeller",
+  "changelogUrl": "https://github.com/natsume-777/AddressTeller/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/natsume-777/AddressTeller/blob/main/LICENSE",
+  "keywords": [
+    "addressables",
+    "addressing",
+    "editor",
+    "tooling",
+    "code-first"
+  ],
+  "author": {
+    "name": "natsume-777",
+    "url": "https://github.com/natsume-777"
+  },
+  "dependencies": {
+    "com.unity.addressables": "2.2.2"
+  },
+  "samples": [
+    {
+      "displayName": "Basic Rules",
+      "description": "Minimal example of defining address/label rules in C#.",
+      "path": "Samples~/BasicRules"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+    "name": "Natsume777.AddressTeller.Editor",
+    "rootNamespace": "Natsume777.AddressTeller.Editor",
+    "references": [
+        "Natsume777.AddressTeller",
+        "Unity.Addressables",
+        "Unity.Addressables.Editor",
+        "Unity.ResourceManager"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
