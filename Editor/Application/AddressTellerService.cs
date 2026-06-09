@@ -8,25 +8,37 @@ namespace Natsume777.AddressTeller.Editor
 {
     public static class AddressTellerService
     {
+        // 実行中に Addressables 設定変更 → Postprocessor 再トリガー → 再帰を防ぐ
+        private static bool s_isApplying;
+
         /// <summary>
         /// 収集した全ルールを全アセットに適用する。
         /// settings が null の場合はプロジェクトのデフォルト設定を使う。
         /// </summary>
         public static void ApplyAll(AddressableAssetSettings settings = null)
         {
-            settings ??= AddressableAssetSettingsDefaultObject.Settings;
-            var rules = RuleCollector.CollectRules();
-            var entries = GetOrderedEntries(rules);
-            var configFolder = settings.ConfigFolder;
-
-            foreach (var path in AssetDatabase.GetAllAssetPaths())
+            if (s_isApplying) return;
+            s_isApplying = true;
+            try
             {
-                var ctx = BuildContext(path);
-                if (ctx == null) continue;
-                if (AssetFilter.ShouldExclude(ctx, configFolder)) continue;
+                settings ??= AddressableAssetSettingsDefaultObject.Settings;
+                var rules = RuleCollector.CollectRules();
+                var entries = GetOrderedEntries(rules);
+                var configFolder = settings.ConfigFolder;
 
-                var resolution = RuleEvaluator.Evaluate(ctx, entries);
-                AddressTellerApplier.Apply(ctx, resolution, settings);
+                foreach (var path in AssetDatabase.GetAllAssetPaths())
+                {
+                    var ctx = BuildContext(path);
+                    if (ctx == null) continue;
+                    if (AssetFilter.ShouldExclude(ctx, configFolder)) continue;
+
+                    var resolution = RuleEvaluator.Evaluate(ctx, entries);
+                    AddressTellerApplier.Apply(ctx, resolution, settings);
+                }
+            }
+            finally
+            {
+                s_isApplying = false;
             }
         }
 
