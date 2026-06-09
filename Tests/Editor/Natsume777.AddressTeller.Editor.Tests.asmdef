@@ -4,6 +4,8 @@
     "references": [
         "Natsume777.AddressTeller",
         "Natsume777.AddressTeller.Editor",
+        "Unity.Addressables",
+        "Unity.Addressables.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
