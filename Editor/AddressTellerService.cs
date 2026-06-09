@@ -1,17 +1,82 @@
 using System.Collections.Generic;
+using UnityEditor;
+using UnityEditor.AddressableAssets;
+using UnityEditor.AddressableAssets.Settings;
+using System.Linq;
 
 namespace Natsume777.AddressTeller.Editor
 {
-    /// <summary>
-    /// ルールを収集して Addressables へ適用するエディタ側サービス。
-    /// 現状はワークスペース構成検証用のスタブ。今後の実装で本体ロジックを追加する。
-    /// </summary>
     public static class AddressTellerService
     {
-        /// <summary>登録された全ルールを適用する（未実装スタブ）。</summary>
-        public static void ApplyAll(IEnumerable<AddressRuleBase> rules)
+        /// <summary>
+        /// 収集した全ルールを全アセットに適用する。
+        /// settings が null の場合はプロジェクトのデフォルト設定を使う。
+        /// </summary>
+        public static void ApplyAll(AddressableAssetSettings settings = null)
         {
-            // TODO: Addressables への適用ロジックを実装する。
+            settings ??= AddressableAssetSettingsDefaultObject.Settings;
+            var rules = RuleCollector.CollectRules();
+            var entries = GetOrderedEntries(rules);
+            var configFolder = settings.ConfigFolder;
+
+            foreach (var path in AssetDatabase.GetAllAssetPaths())
+            {
+                var ctx = BuildContext(path);
+                if (ctx == null) continue;
+                if (AssetFilter.ShouldExclude(ctx, configFolder)) continue;
+
+                var resolution = RuleEvaluator.Evaluate(ctx, entries);
+                AddressTellerApplier.Apply(ctx, resolution, settings);
+            }
+        }
+
+        /// <summary>
+        /// 全ルールを全アセットに対して検証し、問題のある結果を返す。
+        /// </summary>
+        public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings = null)
+        {
+            settings ??= AddressableAssetSettingsDefaultObject.Settings;
+            var rules = RuleCollector.CollectRules();
+            var entries = GetOrderedEntries(rules);
+            var configFolder = settings.ConfigFolder;
+            var groupNames = settings.groups.Select(g => g.Name);
+
+            var issues = new List<ValidationResult>();
+
+            foreach (var path in AssetDatabase.GetAllAssetPaths())
+            {
+                var ctx = BuildContext(path);
+                if (ctx == null) continue;
+                if (AssetFilter.ShouldExclude(ctx, configFolder)) continue;
+
+                var resolution = RuleEvaluator.Evaluate(ctx, entries);
+                var result = AddressTellerApplier.Validate(ctx, resolution, groupNames);
+                if (!result.IsOk)
+                    issues.Add(result);
+            }
+
+            return issues;
+        }
+
+        private static IReadOnlyList<AddressRuleEntry> GetOrderedEntries(IEnumerable<AddressRuleBase> rules)
+        {
+            var all = new List<AddressRuleEntry>();
+            foreach (var rule in rules)
+            {
+                var builder = new AddressRuleBuilderImpl();
+                rule.Configure(builder);
+                all.AddRange(builder.Entries);
+            }
+            return all;
+        }
+
+        private static AssetContext BuildContext(string path)
+        {
+            var guid = AssetDatabase.AssetPathToGUID(path);
+            if (string.IsNullOrEmpty(guid)) return null;
+            var type = AssetDatabase.GetMainAssetTypeAtPath(path);
+            if (type == null) return null;
+            return new AssetContext(guid, path, type);
         }
     }
 }
