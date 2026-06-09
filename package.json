@@ -24,7 +24,7 @@
     "url": "https://github.com/natsume-777"
   },
   "dependencies": {
-    "com.unity.addressables": "2.2.2"
+    "com.unity.addressables": "2.8.1"
   },
   "samples": [
     {

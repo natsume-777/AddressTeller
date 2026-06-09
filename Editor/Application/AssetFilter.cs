@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using UnityEditor.AddressableAssets.Settings;
+using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 
 namespace Natsume777.AddressTeller.Editor
 {
-    /// <summary>
-    /// アドレス付与の対象外とすべきアセットを判定する。
-    /// </summary>
     public static class AssetFilter
     {
         private static readonly HashSet<string> ExcludedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -14,11 +13,15 @@ namespace Natsume777.AddressTeller.Editor
             ".cs", ".js", ".boo", ".exe", ".dll", ".meta",
         };
 
-        /// <summary>
-        /// 対象外と判定した場合 true を返す。
-        /// </summary>
-        /// <param name="context">対象アセット。</param>
-        /// <param name="addressablesConfigFolder">Addressables 設定フォルダのパス（例: "Assets/AddressableAssetsData"）。null なら省略。</param>
+        // Addressables 内部アセットは型で除外する。AddressableAssetGroupSchema は
+        // 抽象基底なので IsAssignableFrom で継承型ごと弾く。
+        private static readonly HashSet<Type> ExcludedAddressablesTypes = new HashSet<Type>
+        {
+            typeof(AddressableAssetSettings),
+            typeof(AddressableAssetGroup),
+            typeof(AddressableAssetGroupSortSettings),
+        };
+
         public static bool ShouldExclude(AssetContext context, string addressablesConfigFolder = null)
         {
             var ext = Path.GetExtension(context.Path);
@@ -31,6 +34,12 @@ namespace Natsume777.AddressTeller.Editor
             if (addressablesConfigFolder != null
                 && context.Path.StartsWith(addressablesConfigFolder, StringComparison.Ordinal))
                 return true;
+
+            if (context.Type != null)
+            {
+                if (ExcludedAddressablesTypes.Contains(context.Type)) return true;
+                if (typeof(AddressableAssetGroupSchema).IsAssignableFrom(context.Type)) return true;
+            }
 
             return false;
         }
