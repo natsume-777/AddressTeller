@@ -75,7 +75,7 @@ namespace Natsume777.AddressTeller.Editor
             var all = new List<AddressRuleEntry>();
             foreach (var rule in rules)
             {
-                var builder = new AddressRuleBuilderImpl();
+                var builder = new AddressRuleBuilderImpl(rule.GetType().Name);
                 rule.Configure(builder);
                 all.AddRange(builder.Entries);
             }

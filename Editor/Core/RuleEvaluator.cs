@@ -22,7 +22,7 @@ namespace Natsume777.AddressTeller
                 if (entry.AddressSelector != null)
                 {
                     var address = entry.AddressSelector(context);
-                    candidates.Add(new AddressCandidate(entry.GroupName, address));
+                    candidates.Add(new AddressCandidate(entry.GroupName, address, entry.SourceClass, entry.Description));
                 }
 
                 foreach (var labelSelector in entry.LabelSelectors)

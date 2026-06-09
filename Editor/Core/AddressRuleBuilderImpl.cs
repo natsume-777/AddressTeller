@@ -5,7 +5,13 @@ namespace Natsume777.AddressTeller
 {
     public sealed class AddressRuleBuilderImpl : IAddressRuleBuilder
     {
+        private readonly string _sourceClass;
         private readonly List<AddressRuleGroupBuilder> _groupBuilders = new List<AddressRuleGroupBuilder>();
+
+        public AddressRuleBuilderImpl(string sourceClass = null)
+        {
+            _sourceClass = sourceClass;
+        }
 
         public IReadOnlyList<AddressRuleEntry> Entries
         {
@@ -13,7 +19,7 @@ namespace Natsume777.AddressTeller
             {
                 var result = new AddressRuleEntry[_groupBuilders.Count];
                 for (int i = 0; i < _groupBuilders.Count; i++)
-                    result[i] = _groupBuilders[i].Build();
+                    result[i] = _groupBuilders[i].Build(i);
                 return result;
             }
         }
@@ -21,7 +27,7 @@ namespace Natsume777.AddressTeller
         public IAddressRuleGroupBuilder Group(string groupName)
         {
             if (string.IsNullOrEmpty(groupName)) throw new ArgumentException("groupName must not be empty.", nameof(groupName));
-            var builder = new AddressRuleGroupBuilder(groupName);
+            var builder = new AddressRuleGroupBuilder(groupName, _sourceClass);
             _groupBuilders.Add(builder);
             return builder;
         }
@@ -30,18 +36,28 @@ namespace Natsume777.AddressTeller
     internal sealed class AddressRuleGroupBuilder : IAddressRuleGroupBuilder
     {
         private readonly string _groupName;
+        private readonly string _sourceClass;
+        private string _description;
         private Func<AssetContext, bool> _predicate = _ => true;
         private Func<AssetContext, string> _addressSelector;
         private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
 
-        internal AddressRuleGroupBuilder(string groupName)
+        internal AddressRuleGroupBuilder(string groupName, string sourceClass)
         {
             _groupName = groupName;
+            _sourceClass = sourceClass;
         }
 
         public IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate)
         {
             _predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
+            return this;
+        }
+
+        public IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate, string description)
+        {
+            _predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
+            _description = description;
             return this;
         }
 
@@ -71,7 +87,10 @@ namespace Natsume777.AddressTeller
             return this;
         }
 
-        internal AddressRuleEntry Build() =>
-            new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly());
+        internal AddressRuleEntry Build(int index)
+        {
+            var desc = _description ?? (_sourceClass != null ? null : $"Rule[{index}]");
+            return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, desc);
+        }
     }
 }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 
@@ -24,10 +25,20 @@ namespace Natsume777.AddressTeller.Editor
 
             if (resolution.AddressCandidates.Count > 1)
             {
+                var sb = new StringBuilder();
+                sb.Append($"Address conflict for '{context.Path}':");
+                for (int i = 0; i < resolution.AddressCandidates.Count; i++)
+                {
+                    var c = resolution.AddressCandidates[i];
+                    var source = c.SourceClass != null
+                        ? (c.Description != null ? $"{c.SourceClass} > \"{c.Description}\"" : $"{c.SourceClass}[{i}]")
+                        : (c.Description ?? $"Rule[{i}]");
+                    sb.Append($"\n  {source} [{c.GroupName}] → \"{c.Address}\"");
+                }
                 return new ValidationResult(
                     context,
                     ValidationStatus.ConflictingAddress,
-                    $"Address conflict: {resolution.AddressCandidates.Count} rules matched for '{context.Path}'.",
+                    sb.ToString(),
                     resolution.AddressCandidates);
             }
 

@@ -16,16 +16,26 @@ namespace Natsume777.AddressTeller
 
         public IReadOnlyList<Func<AssetContext, string>> LabelSelectors { get; }
 
+        /// <summary>このエントリを定義した AddressRuleBase サブクラスの名前。</summary>
+        public string SourceClass { get; }
+
+        /// <summary>Where に渡した説明文。null の場合はインデックスでフォールバック表示される。</summary>
+        public string Description { get; }
+
         public AddressRuleEntry(
             string groupName,
             Func<AssetContext, bool> predicate,
             Func<AssetContext, string> addressSelector,
-            IReadOnlyList<Func<AssetContext, string>> labelSelectors)
+            IReadOnlyList<Func<AssetContext, string>> labelSelectors,
+            string sourceClass = null,
+            string description = null)
         {
             GroupName = groupName ?? throw new ArgumentNullException(nameof(groupName));
             Predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
             AddressSelector = addressSelector;
             LabelSelectors = labelSelectors ?? Array.Empty<Func<AssetContext, string>>();
+            SourceClass = sourceClass;
+            Description = description;
         }
     }
 }

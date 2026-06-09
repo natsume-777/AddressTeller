@@ -28,6 +28,10 @@ namespace Natsume777.AddressTeller
     public interface IAddressRuleGroupBuilder
     {
         IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate);
+
+        /// <summary>description はエラーメッセージで「どの Where 条件にマッチしたか」を示すために使われる。</summary>
+        IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate, string description);
+
         IAddressRuleGroupBuilder Address(Func<AssetContext, string> selector);
         IAddressRuleGroupBuilder Address(string address);
         IAddressRuleGroupBuilder Label(Func<AssetContext, string> selector);

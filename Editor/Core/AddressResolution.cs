@@ -9,11 +9,15 @@ namespace Natsume777.AddressTeller
     {
         public string GroupName { get; }
         public string Address { get; }
+        public string SourceClass { get; }
+        public string Description { get; }
 
-        public AddressCandidate(string groupName, string address)
+        public AddressCandidate(string groupName, string address, string sourceClass = null, string description = null)
         {
             GroupName = groupName;
             Address = address;
+            SourceClass = sourceClass;
+            Description = description;
         }
     }
 
