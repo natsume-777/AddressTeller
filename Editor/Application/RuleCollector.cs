@@ -9,9 +9,14 @@ namespace Natsume777.AddressTeller.Editor
     /// </summary>
     public static class RuleCollector
     {
-        /// <summary>全ロード済みアセンブリから収集する。</summary>
+        // ルール集合はドメインリロードまで不変なのでキャッシュする。
+        // static フィールドはドメインリロード時に自動でリセットされるため、
+        // 明示的な無効化処理は不要。
+        private static IReadOnlyList<AddressRuleBase> s_cachedRules;
+
+        /// <summary>全ロード済みアセンブリから収集する。結果はドメインリロードまでキャッシュされる。</summary>
         public static IReadOnlyList<AddressRuleBase> CollectRules()
-            => CollectRules(AppDomain.CurrentDomain.GetAssemblies());
+            => s_cachedRules ??= CollectRules(AppDomain.CurrentDomain.GetAssemblies());
 
         /// <summary>指定アセンブリのみから収集する（テスト・スコープ制限に使う）。</summary>
         public static IReadOnlyList<AddressRuleBase> CollectRules(IEnumerable<Assembly> assemblies)

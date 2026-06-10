@@ -16,8 +16,17 @@ namespace Natsume777.AddressTeller.Editor
                 return;
             }
 
-            AddressTellerService.ApplyAll(settings);
-            Debug.Log("[AddressTeller] ApplyAll が完了しました。");
+            var issues = AddressTellerService.ApplyAll(settings);
+            if (issues.Count == 0)
+            {
+                Debug.Log("[AddressTeller] ApplyAll が完了しました。");
+                return;
+            }
+
+            foreach (var issue in issues)
+                Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+
+            Debug.LogError($"[AddressTeller] ApplyAll 完了: {issues.Count} 件の問題が見つかりました。");
         }
 
         [MenuItem("Tools/AddressTeller/Validate")]
@@ -54,8 +63,11 @@ namespace Natsume777.AddressTeller.Editor
                 return;
             }
 
-            AddressTellerService.ApplyAll(settings);
-            EditorApplication.Exit(0);
+            var issues = AddressTellerService.ApplyAll(settings);
+            foreach (var issue in issues)
+                Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+
+            EditorApplication.Exit(issues.Count == 0 ? 0 : 1);
         }
     }
 }

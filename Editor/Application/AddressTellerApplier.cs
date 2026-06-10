@@ -27,14 +27,9 @@ namespace Natsume777.AddressTeller.Editor
             {
                 var sb = new StringBuilder();
                 sb.Append($"Address conflict for '{context.Path}':");
-                for (int i = 0; i < resolution.AddressCandidates.Count; i++)
-                {
-                    var c = resolution.AddressCandidates[i];
-                    var source = c.SourceClass != null
-                        ? (c.Description != null ? $"{c.SourceClass} > \"{c.Description}\"" : $"{c.SourceClass}[{i}]")
-                        : (c.Description ?? $"Rule[{i}]");
-                    sb.Append($"\n  {source} [{c.GroupName}] → \"{c.Address}\"");
-                }
+                foreach (var c in resolution.AddressCandidates)
+                    sb.Append($"\n  {c.DescribeSource()} [{c.GroupName}] → \"{c.Address}\"");
+
                 return new ValidationResult(
                     context,
                     ValidationStatus.ConflictingAddress,
@@ -43,6 +38,14 @@ namespace Natsume777.AddressTeller.Editor
             }
 
             var candidate = resolution.AddressCandidates[0];
+            if (string.IsNullOrEmpty(candidate.Address))
+            {
+                return new ValidationResult(
+                    context,
+                    ValidationStatus.InvalidAddress,
+                    $"{candidate.DescribeSource()} returned a null/empty address for '{context.Path}'.");
+            }
+
             if (!existingGroupNames.Contains(candidate.GroupName))
             {
                 return new ValidationResult(
@@ -57,15 +60,32 @@ namespace Natsume777.AddressTeller.Editor
         /// <summary>
         /// 検証を行い、問題なければ Addressables へ書き込む。
         /// </summary>
+        /// <param name="managedGroups">
+        /// AddressTeller のいずれかのルールが GroupName として参照しているグループ名の集合。
+        /// 指定された場合、どのルールにもマッチしなくなった（Skipped な）アセットが
+        /// この中のグループに属していれば、<see cref="AddressTellerSettings.CleanupStaleEntries"/>
+        /// が true のときエントリを削除する。
+        /// </param>
         public static ValidationResult Apply(
             AssetContext context,
             AddressResolution resolution,
-            AddressableAssetSettings settings)
+            AddressableAssetSettings settings,
+            IReadOnlyCollection<string> managedGroups = null)
         {
             var groupNames = settings.groups.Select(g => g.Name);
             var result = Validate(context, resolution, groupNames);
 
-            if (!result.IsOk || result.Status == ValidationStatus.Skipped)
+            if (result.Status == ValidationStatus.Skipped)
+            {
+                // ルール例外があった場合は「全ルールが正常評価された上でマッチ0件」とは言えないため、
+                // クリーンアップは行わない(ルールのバグで誤ってエントリを削除しないようにする)。
+                if (resolution.Errors.Count == 0
+                    && managedGroups != null && AddressTellerSettings.CleanupStaleEntries)
+                    RemoveStaleEntryIfManaged(context, settings, managedGroups);
+                return result;
+            }
+
+            if (!result.IsOk)
                 return result;
 
             var candidate = resolution.AddressCandidates[0];
@@ -80,6 +100,22 @@ namespace Natsume777.AddressTeller.Editor
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// 既存のエントリが AddressTeller 管理下のグループに属している場合のみ削除する。
+        /// 管理外グループ（ユーザーが手動で登録したエントリ等）には触れない。
+        /// </summary>
+        private static void RemoveStaleEntryIfManaged(
+            AssetContext context,
+            AddressableAssetSettings settings,
+            IReadOnlyCollection<string> managedGroups)
+        {
+            var entry = settings.FindAssetEntry(context.Guid);
+            if (entry?.parentGroup == null) return;
+            if (!managedGroups.Contains(entry.parentGroup.Name)) return;
+
+            settings.RemoveAssetEntry(context.Guid);
         }
     }
 }

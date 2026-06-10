@@ -116,5 +116,32 @@ namespace Natsume777.AddressTeller.Editor.Tests
             CollectionAssert.DoesNotContain(result.Labels, "skipped");
             CollectionAssert.Contains(result.Labels, "included");
         }
+
+        [Test]
+        public void PredicateThrows_RecordsErrorAndContinuesOtherEntries()
+        {
+            var entries = new[]
+            {
+                Entry("G1", where: _ => throw new System.FormatException("boom"), address: _ => "addr1"),
+                Entry("G2", address: _ => "addr2"),
+            };
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), entries);
+
+            Assert.AreEqual(1, result.Errors.Count);
+            StringAssert.Contains("boom", result.Errors[0].Message);
+            Assert.AreEqual(1, result.AddressCandidates.Count);
+            Assert.AreEqual("G2", result.AddressCandidates[0].GroupName);
+        }
+
+        [Test]
+        public void AddressSelectorThrows_RecordsErrorWithoutCandidate()
+        {
+            var entry = Entry("G1", address: _ => throw new System.InvalidOperationException("bad address"));
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), new[] { entry });
+
+            Assert.AreEqual(1, result.Errors.Count);
+            StringAssert.Contains("bad address", result.Errors[0].Message);
+            Assert.AreEqual(0, result.AddressCandidates.Count);
+        }
     }
 }

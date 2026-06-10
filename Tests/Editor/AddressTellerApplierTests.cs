@@ -68,5 +68,39 @@ namespace Natsume777.AddressTeller.Editor.Tests
 
             StringAssert.Contains("Assets/Game/Player.prefab", result.Message);
         }
+
+        [Test]
+        public void Conflict_MessageUsesOriginalRuleIndex()
+        {
+            // 5 ルール中、定義順 1 番目(index=1)と 4 番目(index=4)が衝突したケースを想定
+            var resolution = Resolution(
+                new AddressCandidate("G1", "addr1", sourceClass: "MyRule", ruleIndex: 1),
+                new AddressCandidate("G2", "addr2", sourceClass: "MyRule", ruleIndex: 4));
+
+            var result = AddressTellerApplier.Validate(Ctx(), resolution, new[] { "G1", "G2" });
+
+            StringAssert.Contains("MyRule[1]", result.Message);
+            StringAssert.Contains("MyRule[4]", result.Message);
+        }
+
+        [Test]
+        public void NullAddress_ReturnsInvalidAddress()
+        {
+            var resolution = Resolution(new AddressCandidate("G1", null));
+
+            var result = AddressTellerApplier.Validate(Ctx(), resolution, new[] { "G1" });
+
+            Assert.AreEqual(ValidationStatus.InvalidAddress, result.Status);
+        }
+
+        [Test]
+        public void EmptyAddress_ReturnsInvalidAddress()
+        {
+            var resolution = Resolution(new AddressCandidate("G1", ""));
+
+            var result = AddressTellerApplier.Validate(Ctx(), resolution, new[] { "G1" });
+
+            Assert.AreEqual(ValidationStatus.InvalidAddress, result.Status);
+        }
     }
 }

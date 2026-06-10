@@ -28,7 +28,7 @@ namespace Natsume777.AddressTeller.Editor
             if (ExcludedExtensions.Contains(ext))
                 return true;
 
-            if (context.Path.Contains("/Editor/"))
+            if (context.Path.IndexOf("/Editor/", StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
 
             if (addressablesConfigFolder != null

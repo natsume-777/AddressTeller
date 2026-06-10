@@ -39,6 +39,7 @@ namespace Natsume777.AddressTeller
         private readonly string _sourceClass;
         private string _description;
         private Func<AssetContext, bool> _predicate = _ => true;
+        private bool _whereSet;
         private Func<AssetContext, string> _addressSelector;
         private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
 
@@ -50,15 +51,29 @@ namespace Natsume777.AddressTeller
 
         public IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate)
         {
-            _predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
+            if (predicate == null) throw new ArgumentNullException(nameof(predicate));
+            ThrowIfWhereAlreadySet();
+            _predicate = predicate;
+            _whereSet = true;
             return this;
         }
 
         public IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate, string description)
         {
-            _predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
+            if (predicate == null) throw new ArgumentNullException(nameof(predicate));
+            ThrowIfWhereAlreadySet();
+            _predicate = predicate;
             _description = description;
+            _whereSet = true;
             return this;
+        }
+
+        private void ThrowIfWhereAlreadySet()
+        {
+            if (_whereSet)
+                throw new InvalidOperationException(
+                    $"Group(\"{_groupName}\") の Where() は1回しか呼び出せません。" +
+                    "複数の条件は1つのラムダ式に && でまとめてください。");
         }
 
         public IAddressRuleGroupBuilder Address(Func<AssetContext, string> selector)
@@ -89,8 +104,7 @@ namespace Natsume777.AddressTeller
 
         internal AddressRuleEntry Build(int index)
         {
-            var desc = _description ?? (_sourceClass != null ? null : $"Rule[{index}]");
-            return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, desc);
+            return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index);
         }
     }
 }

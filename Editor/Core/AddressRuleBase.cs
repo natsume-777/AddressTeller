@@ -27,9 +27,17 @@ namespace Natsume777.AddressTeller
     /// </summary>
     public interface IAddressRuleGroupBuilder
     {
+        /// <summary>
+        /// 1グループにつき1回のみ呼び出し可能。複数の条件は1つのラムダ式に && でまとめること。
+        /// 2回目の呼び出しは InvalidOperationException をスローする。
+        /// </summary>
         IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate);
 
-        /// <summary>description はエラーメッセージで「どの Where 条件にマッチしたか」を示すために使われる。</summary>
+        /// <summary>
+        /// 1グループにつき1回のみ呼び出し可能（もう一方の Where() オーバーロードと合わせて1回）。
+        /// description はエラーメッセージで「どの Where 条件にマッチしたか」を示すために使われる。
+        /// 2回目の呼び出しは InvalidOperationException をスローする。
+        /// </summary>
         IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate, string description);
 
         IAddressRuleGroupBuilder Address(Func<AssetContext, string> selector);

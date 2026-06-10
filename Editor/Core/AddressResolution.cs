@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Natsume777.AddressTeller
@@ -12,12 +13,37 @@ namespace Natsume777.AddressTeller
         public string SourceClass { get; }
         public string Description { get; }
 
-        public AddressCandidate(string groupName, string address, string sourceClass = null, string description = null)
+        /// <summary>Configure() 内で Group() が呼ばれた順序（0始まり）。</summary>
+        public int RuleIndex { get; }
+
+        public AddressCandidate(string groupName, string address, string sourceClass = null, string description = null, int ruleIndex = 0)
         {
             GroupName = groupName;
             Address = address;
             SourceClass = sourceClass;
             Description = description;
+            RuleIndex = ruleIndex;
+        }
+
+        /// <summary>エラーメッセージ表示用の識別文字列（"{SourceClass} > \"{Description}\"" など）。</summary>
+        public string DescribeSource() => AddressRuleEntry.DescribeSource(SourceClass, Description, RuleIndex);
+    }
+
+    /// <summary>
+    /// ルール評価中に Predicate / AddressSelector / LabelSelector が送出した例外1件。
+    /// </summary>
+    public readonly struct RuleEvaluationError
+    {
+        /// <summary>例外を送出したルールの識別文字列。</summary>
+        public string RuleSource { get; }
+
+        /// <summary>例外メッセージ。</summary>
+        public string Message { get; }
+
+        public RuleEvaluationError(string ruleSource, string message)
+        {
+            RuleSource = ruleSource;
+            Message = message;
         }
     }
 
@@ -34,12 +60,17 @@ namespace Natsume777.AddressTeller
         /// <summary>全マッチルールから蓄積されたラベルセット。</summary>
         public IReadOnlyCollection<string> Labels { get; }
 
+        /// <summary>評価中に発生したルール例外のリスト。</summary>
+        public IReadOnlyList<RuleEvaluationError> Errors { get; }
+
         public AddressResolution(
             IReadOnlyList<AddressCandidate> candidates,
-            IReadOnlyCollection<string> labels)
+            IReadOnlyCollection<string> labels,
+            IReadOnlyList<RuleEvaluationError> errors = null)
         {
             AddressCandidates = candidates;
             Labels = labels;
+            Errors = errors ?? Array.Empty<RuleEvaluationError>();
         }
     }
 }

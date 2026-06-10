@@ -107,5 +107,23 @@ namespace Natsume777.AddressTeller.Editor.Tests
             var builder = new AddressRuleBuilderImpl();
             Assert.Throws<ArgumentException>(() => builder.Group(""));
         }
+
+        [Test]
+        public void Where_CalledTwice_Throws()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            var group = builder.Group("G").Where(ctx => true);
+
+            Assert.Throws<InvalidOperationException>(() => group.Where(ctx => false));
+        }
+
+        [Test]
+        public void Where_CalledTwice_WithDescriptionOverload_Throws()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            var group = builder.Group("G").Where(ctx => true, "first");
+
+            Assert.Throws<InvalidOperationException>(() => group.Where(ctx => false, "second"));
+        }
     }
 }

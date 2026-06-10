@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Natsume777.AddressTeller
@@ -13,27 +14,36 @@ namespace Natsume777.AddressTeller
         {
             var candidates = new List<AddressCandidate>();
             var labels = new HashSet<string>();
+            var errors = new List<RuleEvaluationError>();
 
             foreach (var entry in entries)
             {
-                if (!entry.Predicate(context))
-                    continue;
-
-                if (entry.AddressSelector != null)
+                try
                 {
-                    var address = entry.AddressSelector(context);
-                    candidates.Add(new AddressCandidate(entry.GroupName, address, entry.SourceClass, entry.Description));
+                    if (!entry.Predicate(context))
+                        continue;
+
+                    if (entry.AddressSelector != null)
+                    {
+                        var address = entry.AddressSelector(context);
+                        candidates.Add(new AddressCandidate(entry.GroupName, address, entry.SourceClass, entry.Description, entry.RuleIndex));
+                    }
+
+                    foreach (var labelSelector in entry.LabelSelectors)
+                    {
+                        var label = labelSelector(context);
+                        if (!string.IsNullOrEmpty(label))
+                            labels.Add(label);
+                    }
                 }
-
-                foreach (var labelSelector in entry.LabelSelectors)
+                catch (Exception ex)
                 {
-                    var label = labelSelector(context);
-                    if (!string.IsNullOrEmpty(label))
-                        labels.Add(label);
+                    var source = AddressRuleEntry.DescribeSource(entry.SourceClass, entry.Description, entry.RuleIndex);
+                    errors.Add(new RuleEvaluationError(source, ex.Message));
                 }
             }
 
-            return new AddressResolution(candidates, labels);
+            return new AddressResolution(candidates, labels, errors);
         }
     }
 }

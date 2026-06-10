@@ -12,6 +12,10 @@ namespace Natsume777.AddressTeller.Editor
         ConflictingAddress,
         /// <summary>指定グループが Addressables に存在しない。</summary>
         GroupNotFound,
+        /// <summary>AddressSelector が null または空文字を返した。</summary>
+        InvalidAddress,
+        /// <summary>ルールの Predicate / AddressSelector / LabelSelector が例外を送出した。</summary>
+        RuleError,
     }
 
     public sealed class ValidationResult

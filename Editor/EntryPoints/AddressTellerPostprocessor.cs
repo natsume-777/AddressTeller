@@ -1,12 +1,16 @@
 using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
+using UnityEngine;
 
 namespace Natsume777.AddressTeller.Editor
 {
     public class AddressTellerPostprocessor : AssetPostprocessor
     {
-        // ApplyAll 実行中に自身の変更が再トリガーしてもループしないよう再入を防ぐ
+        // 自身が ApplyAll() で書き込んだ変更が OnPostprocessAllAssets を再トリガーしても
+        // 無限ループにならないようにするための再入ガード。
+        // Service.s_isApplying は Menu/CLI 経由の呼び出しでの再入を防ぐ別ガードで、
+        // Postprocessor から呼ばれた場合はそちらが false のままのため、両方が必要。
         private static bool s_isApplying;
 
         static void OnPostprocessAllAssets(
@@ -28,7 +32,9 @@ namespace Natsume777.AddressTeller.Editor
             s_isApplying = true;
             try
             {
-                AddressTellerService.ApplyAll(settings);
+                var issues = AddressTellerService.ApplyAll(settings);
+                foreach (var issue in issues)
+                    Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
             }
             finally
             {
