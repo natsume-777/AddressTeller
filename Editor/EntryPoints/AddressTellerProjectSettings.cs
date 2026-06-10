@@ -1,3 +1,4 @@
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -39,6 +40,22 @@ namespace Natsume777.AddressTeller.Editor
             }
 
             EditorGUILayout.Space();
+            EditorGUILayout.LabelField("スナップショット", EditorStyles.boldLabel);
+
+            EditorGUI.BeginChangeCheck();
+            var snapshotFolder = EditorGUILayout.TextField("保存先フォルダ", AddressTellerSettings.SnapshotFolder);
+            if (EditorGUI.EndChangeCheck())
+                AddressTellerSettings.SnapshotFolder = snapshotFolder;
+
+            DrawDescription("プロジェクトルート（Assets の親ディレクトリ）からの相対パス。既定値は \"AddressTellerSnapshots\"（Assets 外、Unity にインポートされない）。");
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("フォルダを選択...", GUILayout.Width(120)))
+                PickSnapshotFolder();
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space();
             EditorGUILayout.LabelField("登録されているルール", EditorStyles.boldLabel);
 
             var rules = RuleCollector.CollectRules();
@@ -67,6 +84,17 @@ namespace Natsume777.AddressTeller.Editor
 
                 EditorGUILayout.EndHorizontal();
             }
+        }
+
+        /// <summary>フォルダ選択ダイアログを開き、選択結果をプロジェクトルートからの相対パスで保存する。</summary>
+        private static void PickSnapshotFolder()
+        {
+            var current = AddressTellerSettings.GetSnapshotFolderAbsolutePath();
+            var selected = EditorUtility.OpenFolderPanel("スナップショット保存先フォルダ", current, "");
+            if (string.IsNullOrEmpty(selected)) return;
+
+            var projectRoot = Path.GetDirectoryName(Application.dataPath);
+            AddressTellerSettings.SnapshotFolder = Path.GetRelativePath(projectRoot, selected);
         }
 
         private static void DrawDescription(string text)

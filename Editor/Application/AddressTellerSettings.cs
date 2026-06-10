@@ -1,4 +1,6 @@
+using System.IO;
 using UnityEditor;
+using UnityEngine;
 
 namespace Natsume777.AddressTeller.Editor
 {
@@ -10,6 +12,8 @@ namespace Natsume777.AddressTeller.Editor
     {
         private const string CleanupStaleEntriesKey = "AddressTeller.CleanupStaleEntries";
         private const string PostprocessEnabledKey = "AddressTeller.PostprocessEnabled";
+        private const string SnapshotFolderKey = "AddressTeller.SnapshotFolder";
+        private const string DefaultSnapshotFolder = "AddressTellerSnapshots";
 
         /// <summary>
         /// true の場合、ApplyAll 実行時にどのルールにもマッチしなくなったアセットの
@@ -31,6 +35,24 @@ namespace Natsume777.AddressTeller.Editor
         {
             get => EditorPrefs.GetBool(PostprocessEnabledKey, true);
             set => EditorPrefs.SetBool(PostprocessEnabledKey, value);
+        }
+
+        /// <summary>
+        /// スナップショットの保存先フォルダ。プロジェクトルート（Assets の親ディレクトリ）からの相対パス。
+        /// 既定値は "AddressTellerSnapshots"（Assets 外、Unity にインポートされない）。
+        /// "Assets/..." を指定すると Project ウィンドウにも表示される。
+        /// </summary>
+        public static string SnapshotFolder
+        {
+            get => EditorPrefs.GetString(SnapshotFolderKey, DefaultSnapshotFolder);
+            set => EditorPrefs.SetString(SnapshotFolderKey, value);
+        }
+
+        /// <summary>SnapshotFolder をプロジェクトルートからの絶対パスに解決する。</summary>
+        public static string GetSnapshotFolderAbsolutePath()
+        {
+            var projectRoot = Path.GetDirectoryName(Application.dataPath);
+            return Path.GetFullPath(Path.Combine(projectRoot, SnapshotFolder));
         }
     }
 }
