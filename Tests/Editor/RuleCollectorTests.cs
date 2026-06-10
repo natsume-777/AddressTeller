@@ -24,6 +24,12 @@ namespace Natsume777.AddressTeller.Editor.Tests
             public override void Configure(IAddressRuleBuilder rules) { }
         }
 
+        // DefaultOrderRule と Order(0) が重複するテスト用スタブ
+        private sealed class AnotherDefaultOrderRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules) { }
+        }
+
         private static Assembly ThisAssembly => typeof(RuleCollectorTests).Assembly;
 
         [Test]
@@ -59,6 +65,40 @@ namespace Natsume777.AddressTeller.Editor.Tests
             var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
 
             Assert.IsFalse(rules.Any(r => r.GetType() == typeof(AddressRuleBase)));
+        }
+
+        [Test]
+        public void CollectRules_NoArg_ExcludesTestAssembly()
+        {
+            var rules = RuleCollector.CollectRules();
+
+            Assert.IsFalse(rules.Any(r => r is DefaultOrderRule));
+            Assert.IsFalse(rules.Any(r => r is AnotherDefaultOrderRule));
+            Assert.IsFalse(rules.Any(r => r is LowPriorityRule));
+            Assert.IsFalse(rules.Any(r => r is HighPriorityRule));
+        }
+
+        [Test]
+        public void FindDuplicateOrders_SameOrder_GroupedTogether()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+
+            var duplicates = RuleCollector.FindDuplicateOrders(rules).ToList();
+
+            var group = duplicates.SingleOrDefault(g => g.Key == 0);
+            Assert.IsNotNull(group);
+            Assert.IsTrue(group.Any(r => r is DefaultOrderRule));
+            Assert.IsTrue(group.Any(r => r is AnotherDefaultOrderRule));
+        }
+
+        [Test]
+        public void FindDuplicateOrders_UniqueOrder_NotIncluded()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+
+            var duplicates = RuleCollector.FindDuplicateOrders(rules);
+
+            Assert.IsFalse(duplicates.Any(g => g.Key == -5 || g.Key == 10));
         }
     }
 }

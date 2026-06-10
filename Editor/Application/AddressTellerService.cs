@@ -4,6 +4,7 @@ using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 using System.Linq;
+using UnityEngine;
 
 namespace Natsume777.AddressTeller.Editor
 {
@@ -30,6 +31,7 @@ namespace Natsume777.AddressTeller.Editor
                 if (settings == null) return Array.Empty<ValidationResult>();
 
                 var rules = RuleCollector.CollectRules();
+                WarnOnDuplicateOrders(rules);
                 var entries = GetOrderedEntries(rules);
                 var configFolder = settings.ConfigFolder;
                 var managedGroups = new HashSet<string>(entries.Select(e => e.GroupName));
@@ -68,6 +70,7 @@ namespace Natsume777.AddressTeller.Editor
             if (settings == null) return Array.Empty<ValidationResult>();
 
             var rules = RuleCollector.CollectRules();
+            WarnOnDuplicateOrders(rules);
             var entries = GetOrderedEntries(rules);
             var configFolder = settings.ConfigFolder;
             var groupNames = new HashSet<string>(settings.groups.Select(g => g.Name));
@@ -89,6 +92,15 @@ namespace Natsume777.AddressTeller.Editor
             }
 
             return issues;
+        }
+
+        private static void WarnOnDuplicateOrders(IReadOnlyList<AddressRuleBase> rules)
+        {
+            foreach (var group in RuleCollector.FindDuplicateOrders(rules))
+            {
+                var names = string.Join(", ", group.Select(r => r.GetType().Name));
+                Debug.LogWarning($"[AddressTeller] Order={group.Key} のルールクラスが複数あります: {names}。評価順序が意図通りか確認してください。");
+            }
         }
 
         private static void AddRuleErrors(AssetContext ctx, AddressResolution resolution, List<ValidationResult> issues)
