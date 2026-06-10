@@ -20,6 +20,7 @@ namespace Natsume777.AddressTeller.Editor
             string[] movedFromAssets)
         {
             if (s_isApplying) return;
+            if (!AddressTellerSettings.PostprocessEnabled) return;
 
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null) return;

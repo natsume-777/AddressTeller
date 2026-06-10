@@ -9,6 +9,7 @@ namespace Natsume777.AddressTeller.Editor
     public static class AddressTellerSettings
     {
         private const string CleanupStaleEntriesKey = "AddressTeller.CleanupStaleEntries";
+        private const string PostprocessEnabledKey = "AddressTeller.PostprocessEnabled";
 
         /// <summary>
         /// true の場合、ApplyAll 実行時にどのルールにもマッチしなくなったアセットの
@@ -20,6 +21,16 @@ namespace Natsume777.AddressTeller.Editor
         {
             get => EditorPrefs.GetBool(CleanupStaleEntriesKey, true);
             set => EditorPrefs.SetBool(CleanupStaleEntriesKey, value);
+        }
+
+        /// <summary>
+        /// false の場合、AssetPostprocessor によるインポート時の自動 ApplyAll を行わない。
+        /// Tools/AddressTeller/Apply All からの手動実行には影響しない。
+        /// </summary>
+        public static bool PostprocessEnabled
+        {
+            get => EditorPrefs.GetBool(PostprocessEnabledKey, true);
+            set => EditorPrefs.SetBool(PostprocessEnabledKey, value);
         }
     }
 }
