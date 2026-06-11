@@ -5,16 +5,11 @@ using UnityEngine;
 namespace Natsume777.AddressTeller.Editor
 {
     /// <summary>
-    /// EditorPrefs に永続化される AddressTeller の設定値。
-    /// Project Settings UI（予定）からこれらの値を切り替えられるようにする。
+    /// ProjectSettings/AddressTellerSettings.asset に永続化される AddressTeller の設定値。
+    /// プロジェクト共有・バージョン管理対象であり、Project Settings UI からこれらの値を切り替えられる。
     /// </summary>
     public static class AddressTellerSettings
     {
-        private const string CleanupStaleEntriesKey = "AddressTeller.CleanupStaleEntries";
-        private const string PostprocessEnabledKey = "AddressTeller.PostprocessEnabled";
-        private const string SnapshotFolderKey = "AddressTeller.SnapshotFolder";
-        private const string DefaultSnapshotFolder = "AddressTellerSnapshots";
-
         /// <summary>
         /// true の場合、ApplyAll 実行時にどのルールにもマッチしなくなったアセットの
         /// エントリを、AddressTeller が管理するグループ（いずれかのルールの GroupName）から削除する。
@@ -23,8 +18,14 @@ namespace Natsume777.AddressTeller.Editor
         /// </summary>
         public static bool CleanupStaleEntries
         {
-            get => EditorPrefs.GetBool(CleanupStaleEntriesKey, true);
-            set => EditorPrefs.SetBool(CleanupStaleEntriesKey, value);
+            get => AddressTellerSettingsAsset.instance._cleanupStaleEntries;
+            set
+            {
+                var asset = AddressTellerSettingsAsset.instance;
+                if (asset._cleanupStaleEntries == value) return;
+                asset._cleanupStaleEntries = value;
+                asset.SaveChanges();
+            }
         }
 
         /// <summary>
@@ -33,8 +34,14 @@ namespace Natsume777.AddressTeller.Editor
         /// </summary>
         public static bool PostprocessEnabled
         {
-            get => EditorPrefs.GetBool(PostprocessEnabledKey, true);
-            set => EditorPrefs.SetBool(PostprocessEnabledKey, value);
+            get => AddressTellerSettingsAsset.instance._postprocessEnabled;
+            set
+            {
+                var asset = AddressTellerSettingsAsset.instance;
+                if (asset._postprocessEnabled == value) return;
+                asset._postprocessEnabled = value;
+                asset.SaveChanges();
+            }
         }
 
         /// <summary>
@@ -44,8 +51,14 @@ namespace Natsume777.AddressTeller.Editor
         /// </summary>
         public static string SnapshotFolder
         {
-            get => EditorPrefs.GetString(SnapshotFolderKey, DefaultSnapshotFolder);
-            set => EditorPrefs.SetString(SnapshotFolderKey, value);
+            get => AddressTellerSettingsAsset.instance._snapshotFolder;
+            set
+            {
+                var asset = AddressTellerSettingsAsset.instance;
+                if (asset._snapshotFolder == value) return;
+                asset._snapshotFolder = value;
+                asset.SaveChanges();
+            }
         }
 
         /// <summary>SnapshotFolder をプロジェクトルートからの絶対パスに解決する。</summary>
@@ -54,5 +67,20 @@ namespace Natsume777.AddressTeller.Editor
             var projectRoot = Path.GetDirectoryName(Application.dataPath);
             return Path.GetFullPath(Path.Combine(projectRoot, SnapshotFolder));
         }
+    }
+
+    /// <summary>
+    /// AddressTellerSettings の実体。ProjectSettings/AddressTellerSettings.asset に
+    /// シリアライズされ、プロジェクトを共有する開発者間でバージョン管理される。
+    /// </summary>
+    [FilePath("ProjectSettings/AddressTellerSettings.asset", FilePathAttribute.Location.ProjectFolder)]
+    internal sealed class AddressTellerSettingsAsset : ScriptableSingleton<AddressTellerSettingsAsset>
+    {
+        [SerializeField] internal bool _cleanupStaleEntries = true;
+        [SerializeField] internal bool _postprocessEnabled = true;
+        [SerializeField] internal string _snapshotFolder = "AddressTellerSnapshots";
+
+        /// <summary>変更内容を ProjectSettings/AddressTellerSettings.asset へ書き出す。</summary>
+        internal void SaveChanges() => Save(true);
     }
 }

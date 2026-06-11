@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- AddressTeller の設定の保存先を `EditorPrefs` から `ProjectSettings/AddressTellerSettings.asset` へ変更（チーム共有のため）。旧設定は引き継がれないため再設定が必要。
+
 ## [0.1.0] - 2026-06-08
 
 ### Added
