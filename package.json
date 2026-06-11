@@ -31,6 +31,16 @@
       "displayName": "Basic Rules",
       "description": "Minimal example of defining address/label rules in C#.",
       "path": "Samples~/BasicRules"
+    },
+    {
+      "displayName": "Folder-based Rules",
+      "description": "Mirror folder hierarchy into addresses and top-level folder names into labels.",
+      "path": "Samples~/FolderBasedRules"
+    },
+    {
+      "displayName": "Type-based Rules",
+      "description": "Assign groups and labels based on asset type (prefab, texture, audio, ScriptableObject).",
+      "path": "Samples~/TypeBasedRules"
     }
   ]
 }
