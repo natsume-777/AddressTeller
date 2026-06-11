@@ -43,6 +43,9 @@ namespace Natsume777.AddressTeller.Editor.Tests
         private static AddressResolution EmptyResolution(params RuleEvaluationError[] errors) =>
             new AddressResolution(Array.Empty<AddressCandidate>(), new HashSet<string>(), errors);
 
+        private HashSet<string> ExistingGroupNames() =>
+            new HashSet<string> { _managedGroup.Name, _otherGroup.Name };
+
         [Test]
         public void Skipped_AssetInManagedGroup_RemovesEntry()
         {
@@ -50,7 +53,7 @@ namespace Natsume777.AddressTeller.Editor.Tests
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, managedGroups);
+            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups);
 
             Assert.AreEqual(ValidationStatus.Skipped, result.Status);
             Assert.IsNull(_settings.FindAssetEntry("guid-managed"));
@@ -63,7 +66,7 @@ namespace Natsume777.AddressTeller.Editor.Tests
             _settings.CreateOrMoveEntry("guid-other", _otherGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-other"), EmptyResolution(), _settings, managedGroups);
+            var result = AddressTellerApplier.Apply(Ctx("guid-other"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups);
 
             Assert.AreEqual(ValidationStatus.Skipped, result.Status);
             Assert.IsNotNull(_settings.FindAssetEntry("guid-other"));
@@ -76,7 +79,7 @@ namespace Natsume777.AddressTeller.Editor.Tests
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, managedGroups);
+            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups);
 
             Assert.AreEqual(ValidationStatus.Skipped, result.Status);
             Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
@@ -90,10 +93,56 @@ namespace Natsume777.AddressTeller.Editor.Tests
             var managedGroups = new HashSet<string> { _managedGroup.Name };
             var resolution = EmptyResolution(new RuleEvaluationError("MyRule", "boom"));
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), resolution, _settings, managedGroups);
+            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), resolution, _settings, ExistingGroupNames(), managedGroups);
 
             Assert.AreEqual(ValidationStatus.Skipped, result.Status);
             Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
+        }
+
+        [Test]
+        public void RemoveEntryForDeletedAsset_AssetInManagedGroup_RemovesEntry()
+        {
+            AddressTellerSettings.CleanupStaleEntries = true;
+            _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups);
+
+            Assert.IsNull(_settings.FindAssetEntry("guid-managed"));
+        }
+
+        [Test]
+        public void RemoveEntryForDeletedAsset_AssetInUnmanagedGroup_KeepsEntry()
+        {
+            AddressTellerSettings.CleanupStaleEntries = true;
+            _settings.CreateOrMoveEntry("guid-other", _otherGroup);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            AddressTellerApplier.RemoveEntryForDeletedAsset("guid-other", _settings, managedGroups);
+
+            Assert.IsNotNull(_settings.FindAssetEntry("guid-other"));
+        }
+
+        [Test]
+        public void RemoveEntryForDeletedAsset_CleanupDisabled_KeepsEntry()
+        {
+            AddressTellerSettings.CleanupStaleEntries = false;
+            _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups);
+
+            Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
+        }
+
+        [Test]
+        public void RemoveEntryForDeletedAsset_NoEntryForGuid_DoesNothing()
+        {
+            AddressTellerSettings.CleanupStaleEntries = true;
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            Assert.DoesNotThrow(() =>
+                AddressTellerApplier.RemoveEntryForDeletedAsset("guid-unknown", _settings, managedGroups));
         }
     }
 }

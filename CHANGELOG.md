@@ -8,6 +8,7 @@
 ### Changed
 
 - AddressTeller の設定の保存先を `EditorPrefs` から `ProjectSettings/AddressTellerSettings.asset` へ変更（チーム共有のため）。旧設定は引き継がれないため再設定が必要。
+- インポート時の自動適用を差分適用に変更し、変更・移動されたアセットのみを処理するようにした。プロジェクト全体の整合性チェックは引き続き `Apply All` / `Validate` / CLI のフル走査が担う。
 
 ## [0.1.0] - 2026-06-08
 

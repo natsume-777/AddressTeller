@@ -33,9 +33,22 @@ namespace Natsume777.AddressTeller.Editor
             s_isApplying = true;
             try
             {
-                var issues = AddressTellerService.ApplyAll(settings);
+                // movedFromAssets（移動・リネーム前のパス）は処理しない。
+                // エントリは GUID ベースで管理されているため、movedAssets 側（新パス）を
+                // Apply するだけで CreateOrMoveEntry によりエントリが更新され、
+                // 新パスがどのルールにもマッチしなければ Skipped としてクリーンアップ対象になる。
+                var targetPaths = importedAssets.Concat(movedAssets);
+                var issues = AddressTellerService.ApplyAll(targetPaths, settings);
                 foreach (var issue in issues)
                     Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+
+                if (deletedAssets.Length > 0)
+                {
+                    var deletedGuids = deletedAssets
+                        .Select(p => AssetDatabase.AssetPathToGUID(p, AssetPathToGUIDOptions.IncludeRecentlyDeletedAssets))
+                        .Where(guid => !string.IsNullOrEmpty(guid));
+                    AddressTellerService.RemoveEntriesForDeletedAssets(deletedGuids, settings);
+                }
             }
             finally
             {

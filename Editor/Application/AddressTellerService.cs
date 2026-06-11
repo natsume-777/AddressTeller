@@ -18,10 +18,26 @@ namespace Natsume777.AddressTeller.Editor
         private static bool s_isApplying;
 
         /// <summary>
-        /// 収集した全ルールを全アセットに適用し、問題のあった結果（衝突・グループ未検出・ルール例外など）を返す。
+        /// 収集した全ルールをプロジェクト全アセットに適用し、問題のあった結果（衝突・グループ未検出・ルール例外など）を返す。
         /// settings が null の場合はプロジェクトのデフォルト設定を使う。Addressables 未設定の場合は空リストを返す。
         /// </summary>
         public static IReadOnlyList<ValidationResult> ApplyAll(AddressableAssetSettings settings = null)
+        {
+            return ApplyAll(AssetDatabase.GetAllAssetPaths(), settings);
+        }
+
+        /// <summary>
+        /// 収集した全ルールを <paramref name="paths"/> で指定したアセットのみに適用し、
+        /// 問題のあった結果（衝突・グループ未検出・ルール例外など）を返す。
+        /// settings が null の場合はプロジェクトのデフォルト設定を使う。Addressables 未設定の場合は空リストを返す。
+        /// </summary>
+        /// <remarks>
+        /// 「どのルールにもマッチしなくなった」エントリのクリーンアップ判定は、
+        /// このメソッドに渡されたアセット自身が変更された場合のみ行われる。
+        /// プロジェクト全体の整合性チェックは引数なしの <see cref="ApplyAll(AddressableAssetSettings)"/>
+        /// （Menu/CLI のフル走査）が引き続き担う。
+        /// </remarks>
+        public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings = null)
         {
             if (s_isApplying) return Array.Empty<ValidationResult>();
             s_isApplying = true;
@@ -35,10 +51,11 @@ namespace Natsume777.AddressTeller.Editor
                 var entries = GetOrderedEntries(rules);
                 var configFolder = settings.ConfigFolder;
                 var managedGroups = new HashSet<string>(entries.Select(e => e.GroupName));
+                var groupNames = new HashSet<string>(settings.groups.Select(g => g.Name));
 
                 var issues = new List<ValidationResult>();
 
-                foreach (var path in AssetDatabase.GetAllAssetPaths())
+                foreach (var path in paths)
                 {
                     var ctx = BuildContext(path);
                     if (ctx == null) continue;
@@ -47,7 +64,7 @@ namespace Natsume777.AddressTeller.Editor
                     var resolution = RuleEvaluator.Evaluate(ctx, entries);
                     AddRuleErrors(ctx, resolution, issues);
 
-                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, managedGroups);
+                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, groupNames, managedGroups);
                     if (!result.IsOk)
                         issues.Add(result);
                 }
@@ -57,6 +74,32 @@ namespace Natsume777.AddressTeller.Editor
             finally
             {
                 s_isApplying = false;
+            }
+        }
+
+        /// <summary>
+        /// 削除されたアセットの GUID（<see cref="AssetPathToGUIDOptions.IncludeRecentlyDeletedAssets"/> で取得したもの）に対応する
+        /// エントリが AddressTeller 管理下のグループに属している場合のみ削除する。ルール評価は行わない。
+        /// settings が null の場合はプロジェクトのデフォルト設定を使う。Addressables 未設定の場合は何もしない。
+        /// </summary>
+        /// <remarks>
+        /// ConfigFolder 配下のパスはここでは除外していない（削除済みのため判定材料がパスでなく GUID のみ）。
+        /// ただし削除はエントリの所属グループが managedGroups に含まれる場合に限られる（資産単位の所有権判定）ため、
+        /// ConfigFolder 内資産が誤って削除される実害はない。
+        /// </remarks>
+        public static void RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings = null)
+        {
+            settings ??= AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null) return;
+
+            var rules = RuleCollector.CollectRules();
+            var entries = GetOrderedEntries(rules);
+            var managedGroups = new HashSet<string>(entries.Select(e => e.GroupName));
+
+            foreach (var guid in deletedGuids)
+            {
+                if (string.IsNullOrEmpty(guid)) continue;
+                AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, managedGroups);
             }
         }
 

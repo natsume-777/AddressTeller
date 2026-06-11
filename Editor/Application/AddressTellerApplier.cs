@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
+using UnityEngine;
 
 namespace Natsume777.AddressTeller.Editor
 {
@@ -60,6 +61,9 @@ namespace Natsume777.AddressTeller.Editor
         /// <summary>
         /// 検証を行い、問題なければ Addressables へ書き込む。
         /// </summary>
+        /// <param name="existingGroupNames">
+        /// settings.groups から事前に構築したグループ名の集合（呼び出し側でループ外に1回だけ構築する想定）。
+        /// </param>
         /// <param name="managedGroups">
         /// AddressTeller のいずれかのルールが GroupName として参照しているグループ名の集合。
         /// 指定された場合、どのルールにもマッチしなくなった（Skipped な）アセットが
@@ -70,10 +74,10 @@ namespace Natsume777.AddressTeller.Editor
             AssetContext context,
             AddressResolution resolution,
             AddressableAssetSettings settings,
+            IEnumerable<string> existingGroupNames,
             IReadOnlyCollection<string> managedGroups = null)
         {
-            var groupNames = settings.groups.Select(g => g.Name);
-            var result = Validate(context, resolution, groupNames);
+            var result = Validate(context, resolution, existingGroupNames);
 
             if (result.Status == ValidationStatus.Skipped)
             {
@@ -81,7 +85,7 @@ namespace Natsume777.AddressTeller.Editor
                 // クリーンアップは行わない(ルールのバグで誤ってエントリを削除しないようにする)。
                 if (resolution.Errors.Count == 0
                     && managedGroups != null && AddressTellerSettings.CleanupStaleEntries)
-                    RemoveStaleEntryIfManaged(context, settings, managedGroups);
+                    RemoveStaleEntryIfManaged(context.Guid, settings, managedGroups);
                 return result;
             }
 
@@ -103,19 +107,37 @@ namespace Natsume777.AddressTeller.Editor
         }
 
         /// <summary>
+        /// 削除されたアセットの GUID に対応するエントリが AddressTeller 管理下のグループに
+        /// 属している場合のみ削除する。管理外グループ（ユーザーが手動で登録したエントリ等）には触れない。
+        /// <see cref="AddressTellerSettings.CleanupStaleEntries"/> が true のときのみ削除する。
+        /// ルール評価を伴わない（資産が既に存在しない）削除専用のエントリポイント。
+        /// </summary>
+        public static void RemoveEntryForDeletedAsset(
+            string guid,
+            AddressableAssetSettings settings,
+            IReadOnlyCollection<string> managedGroups)
+        {
+            if (managedGroups == null) return;
+            if (!AddressTellerSettings.CleanupStaleEntries) return;
+
+            RemoveStaleEntryIfManaged(guid, settings, managedGroups);
+        }
+
+        /// <summary>
         /// 既存のエントリが AddressTeller 管理下のグループに属している場合のみ削除する。
         /// 管理外グループ（ユーザーが手動で登録したエントリ等）には触れない。
         /// </summary>
         private static void RemoveStaleEntryIfManaged(
-            AssetContext context,
+            string guid,
             AddressableAssetSettings settings,
             IReadOnlyCollection<string> managedGroups)
         {
-            var entry = settings.FindAssetEntry(context.Guid);
+            var entry = settings.FindAssetEntry(guid);
             if (entry?.parentGroup == null) return;
             if (!managedGroups.Contains(entry.parentGroup.Name)) return;
 
-            settings.RemoveAssetEntry(context.Guid);
+            Debug.LogWarning($"[AddressTeller] Removing stale entry: guid={guid}, group='{entry.parentGroup.Name}', address='{entry.address}' (no longer matched by any rule).");
+            settings.RemoveAssetEntry(guid);
         }
     }
 }
