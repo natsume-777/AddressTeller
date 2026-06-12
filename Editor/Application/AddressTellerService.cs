@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
@@ -21,7 +22,20 @@ namespace Natsume777.AddressTeller.Editor
         /// </summary>
         public static IReadOnlyList<ValidationResult> ApplyAll(AddressableAssetSettings settings = null)
         {
-            return ApplyAll(AssetDatabase.GetAllAssetPaths(), settings);
+            return ApplyAll(settings, NullProgressReporter.Instance);
+        }
+
+        /// <summary>
+        /// <see cref="ApplyAll(AddressableAssetSettings)"/> に進捗報告とキャンセルを追加したオーバーロード。
+        /// progress が false を返した時点までの結果を返して中断する。
+        /// </summary>
+        /// <remarks>
+        /// キャンセル時、その時点までに処理済みのアセットへの書き込みは既に完了している（部分適用）。
+        /// 中断後に Addressables の状態を巻き戻すことはしない。
+        /// </remarks>
+        public static IReadOnlyList<ValidationResult> ApplyAll(AddressableAssetSettings settings, IProgressReporter progress)
+        {
+            return ApplyAll(AssetDatabase.GetAllAssetPaths(), settings, progress);
         }
 
         /// <summary>
@@ -37,6 +51,19 @@ namespace Natsume777.AddressTeller.Editor
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings = null)
         {
+            return ApplyAll(paths, settings, NullProgressReporter.Instance);
+        }
+
+        /// <summary>
+        /// <see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings)"/> に進捗報告とキャンセルを追加したオーバーロード。
+        /// progress が false を返した時点までの結果を返して中断する。
+        /// </summary>
+        /// <remarks>
+        /// キャンセル時、その時点までに処理済みのアセットへの書き込みは既に完了している（部分適用）。
+        /// 中断後に Addressables の状態を巻き戻すことはしない。
+        /// </remarks>
+        public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress)
+        {
             if (s_isApplying) return Array.Empty<ValidationResult>();
             s_isApplying = true;
             try
@@ -44,14 +71,28 @@ namespace Natsume777.AddressTeller.Editor
                 settings ??= AddressableAssetSettingsDefaultObject.Settings;
                 if (settings == null) return Array.Empty<ValidationResult>();
 
+                progress ??= NullProgressReporter.Instance;
+
                 var rules = RuleCollector.CollectRules();
                 RuleEvaluationPipeline.WarnOnDuplicateOrders(rules);
                 var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
                 var issues = new List<ValidationResult>();
 
-                foreach (var path in paths)
+                var pathList = paths as IList<string> ?? paths.ToList();
+                var total = pathList.Count;
+
+                var cancelled = false;
+                for (var i = 0; i < total; i++)
                 {
+                    var path = pathList[i];
+
+                    if (!progress.Report(i, total, path))
+                    {
+                        cancelled = true;
+                        break;
+                    }
+
                     var ctx = RuleEvaluationPipeline.BuildContext(path);
                     if (ctx == null) continue;
                     if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;
@@ -63,6 +104,10 @@ namespace Natsume777.AddressTeller.Editor
                     if (!result.IsOk)
                         issues.Add(result);
                 }
+
+                // キャンセル時は完了通知を呼ばない（中断したのに「完了」を通知すると意味的に矛盾するため）。
+                if (!cancelled)
+                    progress.Report(total, total, string.Empty);
 
                 return issues;
             }
@@ -103,8 +148,20 @@ namespace Natsume777.AddressTeller.Editor
         /// </summary>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings = null)
         {
+            return ValidateAll(settings, NullProgressReporter.Instance);
+        }
+
+        /// <summary>
+        /// <see cref="ValidateAll(AddressableAssetSettings)"/> に進捗報告とキャンセルを追加したオーバーロード。
+        /// progress が false を返した時点までの結果を返して中断する（Validate は書き込みを行わないため、
+        /// 中断による副作用はない）。
+        /// </summary>
+        public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings, IProgressReporter progress)
+        {
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null) return Array.Empty<ValidationResult>();
+
+            progress ??= NullProgressReporter.Instance;
 
             var rules = RuleCollector.CollectRules();
             RuleEvaluationPipeline.WarnOnDuplicateOrders(rules);
@@ -112,8 +169,20 @@ namespace Natsume777.AddressTeller.Editor
 
             var issues = new List<ValidationResult>();
 
-            foreach (var path in AssetDatabase.GetAllAssetPaths())
+            var pathList = AssetDatabase.GetAllAssetPaths();
+            var total = pathList.Length;
+
+            var cancelled = false;
+            for (var i = 0; i < total; i++)
             {
+                var path = pathList[i];
+
+                if (!progress.Report(i, total, path))
+                {
+                    cancelled = true;
+                    break;
+                }
+
                 var ctx = RuleEvaluationPipeline.BuildContext(path);
                 if (ctx == null) continue;
                 if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;
@@ -125,6 +194,10 @@ namespace Natsume777.AddressTeller.Editor
                 if (!result.IsOk)
                     issues.Add(result);
             }
+
+            // キャンセル時は完了通知を呼ばない（中断したのに「完了」を通知すると意味的に矛盾するため）。
+            if (!cancelled)
+                progress.Report(total, total, string.Empty);
 
             return issues;
         }
