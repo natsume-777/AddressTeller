@@ -16,20 +16,7 @@ namespace Natsume777.AddressTeller.Editor
                 return;
             }
 
-            if (AddressTellerSettings.AutoSnapshotBeforeApplyAll)
-                AddressTellerAutoSnapshotService.CaptureAndSave(settings);
-
-            var issues = AddressTellerService.ApplyAll(settings);
-            if (issues.Count == 0)
-            {
-                Debug.Log("[AddressTeller] ApplyAll が完了しました。");
-                return;
-            }
-
-            foreach (var issue in issues)
-                Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
-
-            Debug.LogError($"[AddressTeller] ApplyAll 完了: {issues.Count} 件の問題が見つかりました。");
+            AddressTellerApplyFlow.Run(settings, validateFirst: false);
         }
 
         [MenuItem("Tools/AddressTeller/Validate")]
@@ -89,30 +76,7 @@ namespace Natsume777.AddressTeller.Editor
                 return;
             }
 
-            var validateIssues = AddressTellerService.ValidateAll(settings);
-            if (validateIssues.Count > 0)
-            {
-                foreach (var issue in validateIssues)
-                    Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
-
-                Debug.LogError($"[AddressTeller] Validate で {validateIssues.Count} 件の問題が見つかったため、Apply を中止しました。");
-                return;
-            }
-
-            if (AddressTellerSettings.AutoSnapshotBeforeApplyAll)
-                AddressTellerAutoSnapshotService.CaptureAndSave(settings);
-
-            var applyIssues = AddressTellerService.ApplyAll(settings);
-            if (applyIssues.Count == 0)
-            {
-                Debug.Log("[AddressTeller] ApplyWithValidate が完了しました。");
-                return;
-            }
-
-            foreach (var issue in applyIssues)
-                Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
-
-            Debug.LogError($"[AddressTeller] ApplyWithValidate 完了: {applyIssues.Count} 件の問題が見つかりました。");
+            AddressTellerApplyFlow.Run(settings, validateFirst: true);
         }
 
         /// <summary>

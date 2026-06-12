@@ -10,6 +10,7 @@
 - 自動セーフティスナップショット機能。`Apply All` / `Apply with Validate` メニュー実行直前に現在の状態を `SnapshotFolder/Auto` 以下へ自動保存し、設定した保持件数（既定10件）でローテーションする。`Tools/AddressTeller/Undo Last Apply` メニューで最新の自動スナップショットから Exact モードで復元できる（CleanupStaleEntries によるエントリ削除等の実質的な Undo）。Project Settings で有効/無効・保持件数を設定可能（既定ON）。CLI（`ApplyAllCLI`/`ApplyWithValidateCLI`）は対象外。
 - `AddressTellerSnapshotService.BuildPredictedSnapshot`: Apply を実行せずに、適用後の状態（追加・変更・削除）の差分と、衝突・グループ未検出・ルール例外などの問題点を計算する dry-run API。`DryRunResult`（`SnapshotDiff` + `IReadOnlyList<ValidationResult>`）を返す。
 - `AddressTellerService.ApplyAll` / `ValidateAll` に `IProgressReporter` を受け取るオーバーロードを追加。`EditorProgressReporter` は `EditorUtility.DisplayCancelableProgressBar` で進捗表示し、キャンセル時はその時点までの結果を返して中断する（Apply のキャンセルは部分適用のまま、巻き戻しは行わない）。
+- `Tools/AddressTeller/Apply All` / `Apply with Validate` メニュー実行時、`BuildPredictedSnapshot` による dry-run 計算を行い、「追加 n 件 / 変更 n 件 / ⚠ 削除 n 件 / 問題 n 件」を確認ダイアログ（3択: 実行 / キャンセル / 詳細表示）で表示する。差分・問題がともに 0 件の場合はログのみ。「詳細表示」で結果ウィンドウを開き、同じ母集合での Apply 実行が可能。`Apply with Validate` で Validate 時点で問題があれば、確認ダイアログを出さずに結果ウィンドウ（Issues タブ）で中止。CLI（`ApplyAllCLI` / `ApplyWithValidateCLI`）は対象外。
 
 ### Changed
 

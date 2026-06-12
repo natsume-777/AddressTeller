@@ -34,6 +34,10 @@ namespace Natsume777.AddressTeller.Editor
         private Tab _currentTab;
         private bool _showDiffTab;
 
+        // Apply実行用のコールバック。ドメインリロードを跨ぐとデリゲートは復元できないため非シリアライズとし、
+        // リロード後は null（＝ボタン非表示）になることを許容する割り切り。
+        private Action _onApply;
+
         // Show() 時に一度だけ構築し、OnGUI では再構築しない（GUIDToAssetPath 等の重い変換を避けるため）。
         private List<DiffRow> _diffRows = new();
         private List<IssueRow> _allIssueRows = new();
@@ -47,6 +51,23 @@ namespace Natsume777.AddressTeller.Editor
             var window = GetOrCreateWindow(title);
             window._showDiffTab = true;
             window._currentTab = Tab.Diff;
+            window._onApply = null; // ウィンドウ再利用時に前回の onApply が残らないようにクリア
+            window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
+            window.SetIssueRows(dryRun.Issues);
+            window.Show();
+            window.Focus();
+        }
+
+        /// <summary>
+        /// Diff/Issues の2タブでウィンドウを開き、Diff タブに「この内容で Apply」ボタンを表示する。
+        /// 確認ダイアログの「詳細を見る」から開かれることを想定する。
+        /// </summary>
+        public static void Show(DryRunResult dryRun, string title, Action onApply)
+        {
+            var window = GetOrCreateWindow(title);
+            window._showDiffTab = true;
+            window._currentTab = Tab.Diff;
+            window._onApply = onApply;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
             window.Show();
@@ -59,15 +80,20 @@ namespace Natsume777.AddressTeller.Editor
             var window = GetOrCreateWindow(title);
             window._showDiffTab = false;
             window._currentTab = Tab.Issues;
+            window._onApply = null; // ウィンドウ再利用時に前回の onApply が残らないようにクリア
             window.SetDiffRows(new List<DiffRow>());
             window.SetIssueRows(issues);
             window.Show();
             window.Focus();
         }
 
+        /// <summary>
+        /// 既存ウィンドウがあれば再利用してフォーカスし、なければ新規作成する。
+        /// Apply実行を複数回起動した際にウィンドウが積み上がらないようにするため。
+        /// </summary>
         private static AddressTellerResultWindow GetOrCreateWindow(string title)
         {
-            var window = CreateInstance<AddressTellerResultWindow>();
+            var window = GetWindow<AddressTellerResultWindow>();
             window.titleContent = new GUIContent(title);
             window.minSize = new Vector2(640, 360);
             return window;
@@ -156,6 +182,7 @@ namespace Natsume777.AddressTeller.Editor
             if (_diffRows.Count == 0)
             {
                 EditorGUILayout.HelpBox("差分はありません。", MessageType.Info);
+                DrawApplyButton();
                 return;
             }
 
@@ -166,6 +193,27 @@ namespace Natsume777.AddressTeller.Editor
 
             var rect = GUILayoutUtility.GetRect(0, 100000, 0, 100000);
             _diffTreeView.OnGUI(rect);
+
+            DrawApplyButton();
+        }
+
+        /// <summary>
+        /// 確認ダイアログ経由で開かれた場合のみ「この内容で Apply」ボタンを表示する。
+        /// 押下時に実行される Apply は、このウィンドウを開いた時点（dry-run計算時）の
+        /// 対象パス・ルールに基づく。ウィンドウを開いてからアセットやルールが変化した場合、
+        /// 表示中の差分と実際の Apply 結果がずれる可能性があるが、意図的な割り切りとする（M-1）。
+        /// </summary>
+        private void DrawApplyButton()
+        {
+            if (_onApply == null) return;
+
+            EditorGUILayout.Space(2);
+            if (GUILayout.Button("この内容で Apply"))
+            {
+                var apply = _onApply;
+                Close();
+                apply();
+            }
         }
 
         private void DrawIssuesTab()
