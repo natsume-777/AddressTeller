@@ -73,7 +73,8 @@ namespace Natsume777.AddressTeller.Editor
             var before = AddressTellerSnapshot.FromJson(File.ReadAllText(path));
             var after = AddressTellerSnapshotService.Capture(settings);
 
-            LogDiff(AddressTellerSnapshotService.Diff(before, after));
+            var diff = AddressTellerSnapshotService.Diff(before, after);
+            AddressTellerResultWindow.Show(new DryRunResult(diff, Array.Empty<ValidationResult>()), "AddressTeller - Compare with Current");
         }
 
         [MenuItem("Tools/AddressTeller/Snapshot/Compare Two Snapshots...")]
@@ -89,7 +90,8 @@ namespace Natsume777.AddressTeller.Editor
             var before = AddressTellerSnapshot.FromJson(File.ReadAllText(beforePath));
             var after = AddressTellerSnapshot.FromJson(File.ReadAllText(afterPath));
 
-            LogDiff(AddressTellerSnapshotService.Diff(before, after));
+            var diff = AddressTellerSnapshotService.Diff(before, after);
+            AddressTellerResultWindow.Show(new DryRunResult(diff, Array.Empty<ValidationResult>()), "AddressTeller - Compare Snapshots");
         }
 
         /// <summary>
@@ -139,26 +141,6 @@ namespace Natsume777.AddressTeller.Editor
                 Debug.LogWarning($"[AddressTeller] {issue}");
 
             Debug.Log($"[AddressTeller] 直前の Apply を取り消しました（{Path.GetFileName(path)}）: {snapshot.Entries.Count} 件、問題 {issues.Count} 件");
-        }
-
-        private static void LogDiff(SnapshotDiff diff)
-        {
-            if (diff.IsEmpty)
-            {
-                Debug.Log("[AddressTeller] 差分はありません。");
-                return;
-            }
-
-            foreach (var entry in diff.Added)
-                Debug.Log($"[AddressTeller] + [{entry.GroupName}] {entry.Address} ({entry.Guid})");
-
-            foreach (var entry in diff.Removed)
-                Debug.Log($"[AddressTeller] - [{entry.GroupName}] {entry.Address} ({entry.Guid})");
-
-            foreach (var (before, after) in diff.Changed)
-                Debug.Log($"[AddressTeller] ~ [{before.GroupName}] {before.Address} → [{after.GroupName}] {after.Address} ({after.Guid})");
-
-            Debug.Log($"[AddressTeller] 差分: 追加 {diff.Added.Count} 件 / 削除 {diff.Removed.Count} 件 / 変更 {diff.Changed.Count} 件");
         }
 
         /// <summary>AddressTellerSettings.SnapshotFolder を絶対パスに解決し、フォルダがなければ作成する。</summary>
