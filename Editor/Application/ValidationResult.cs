@@ -27,6 +27,7 @@ namespace Natsume777.AddressTeller.Editor
         /// <summary>競合時のみ設定される候補リスト。</summary>
         public IReadOnlyList<AddressCandidate> ConflictingCandidates { get; }
 
+        // Skipped はルール対象外という正常系であり、ApplyAll/ValidateAll の issues には積まれない（IsOk = true）。
         public bool IsOk => Status == ValidationStatus.Ok || Status == ValidationStatus.Skipped;
 
         public ValidationResult(AssetContext context, ValidationStatus status, string message,

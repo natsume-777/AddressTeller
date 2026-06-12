@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,6 +8,42 @@ using UnityEngine;
 
 namespace Natsume777.AddressTeller.Editor
 {
+    /// <summary>Predict が返す、適用後のアセットの予測される変化の種類。</summary>
+    public enum PredictedAction
+    {
+        /// <summary>エントリが新規追加または更新される（現状と内容が一致している場合も含む）。</summary>
+        AddOrUpdate,
+
+        /// <summary>エントリが削除される（CleanupStaleEntries による）。</summary>
+        Remove,
+
+        /// <summary>Apply を実行しても Addressables の状態に変化はない（Validate が Ok 以外、または削除対象外の Skipped）。</summary>
+        NoOp,
+    }
+
+    /// <summary>
+    /// 書き込みを行わずに Apply 実行後の状態を予測した結果。
+    /// </summary>
+    public readonly struct ApplyPrediction
+    {
+        public PredictedAction Action { get; }
+        public ValidationResult Validation { get; }
+
+        /// <summary>Action が AddOrUpdate のときのみ意味を持つ、適用後のエントリ状態。</summary>
+        public SnapshotEntry PredictedEntry { get; }
+
+        /// <summary>Action が Remove のときのみ意味を持つ、削除元のグループ名。</summary>
+        public string RemovedFromGroup { get; }
+
+        public ApplyPrediction(PredictedAction action, ValidationResult validation, SnapshotEntry predictedEntry, string removedFromGroup)
+        {
+            Action = action;
+            Validation = validation;
+            PredictedEntry = predictedEntry;
+            RemovedFromGroup = removedFromGroup;
+        }
+    }
+
     /// <summary>
     /// AddressResolution を受け取り、検証または Addressables への書き込みを行う。
     /// </summary>
@@ -104,6 +141,59 @@ namespace Natsume777.AddressTeller.Editor
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// 書き込みを行わず、<see cref="Apply"/> を実行した場合にこのアセットがどう変化するかを予測する。
+        /// 判定分岐は Apply / Validate と1対1で対応させている。
+        /// </summary>
+        /// <param name="existingGroupNames">settings.groups から事前に構築したグループ名の集合。</param>
+        /// <param name="managedGroups">AddressTeller のいずれかのルールが GroupName として参照しているグループ名の集合。</param>
+        public static ApplyPrediction Predict(
+            AssetContext context,
+            AddressResolution resolution,
+            AddressableAssetSettings settings,
+            HashSet<string> existingGroupNames,
+            HashSet<string> managedGroups)
+        {
+            var result = Validate(context, resolution, existingGroupNames);
+
+            if (result.Status == ValidationStatus.Skipped)
+            {
+                var entry = settings.FindAssetEntry(context.Guid);
+                if (entry?.parentGroup != null
+                    && managedGroups.Contains(entry.parentGroup.Name)
+                    && AddressTellerSettings.CleanupStaleEntries
+                    && resolution.Errors.Count == 0)
+                {
+                    return new ApplyPrediction(PredictedAction.Remove, result, null, entry.parentGroup.Name);
+                }
+
+                return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
+            }
+
+            if (!result.IsOk)
+                return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
+
+            var candidate = resolution.AddressCandidates[0];
+            var existingEntry = settings.FindAssetEntry(context.Guid);
+
+            // 実際の Apply は SetLabel(label, true) で加算するのみで既存ラベルを剥がさないため、
+            // 予測も既存ラベルと resolution.Labels の和集合とする。
+            var labels = new HashSet<string>(resolution.Labels);
+            if (existingEntry != null)
+                foreach (var existingLabel in existingEntry.labels)
+                    labels.Add(existingLabel);
+
+            var predictedEntry = new SnapshotEntry
+            {
+                Guid = context.Guid,
+                Address = candidate.Address,
+                GroupName = candidate.GroupName,
+                Labels = labels.OrderBy(l => l, StringComparer.Ordinal).ToList(),
+            };
+
+            return new ApplyPrediction(PredictedAction.AddOrUpdate, result, predictedEntry, null);
         }
 
         /// <summary>

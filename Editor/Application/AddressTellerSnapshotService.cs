@@ -85,6 +85,61 @@ namespace Natsume777.AddressTeller.Editor
             return issues;
         }
 
+        /// <summary>
+        /// Apply を実行せずに、適用後の状態を表すスナップショットを現在の状態との差分として計算する。
+        /// </summary>
+        public static DryRunResult BuildPredictedSnapshot(AddressableAssetSettings settings, IEnumerable<string> paths)
+            => BuildPredictedSnapshot(settings, paths, RuleCollector.CollectRules());
+
+        /// <summary>
+        /// ルール一覧を明示的に指定する版。テストや特定スコープでの dry-run 計算に使う。
+        /// </summary>
+        public static DryRunResult BuildPredictedSnapshot(AddressableAssetSettings settings, IEnumerable<string> paths, IReadOnlyList<AddressRuleBase> rules)
+        {
+            var before = Capture(settings);
+            var afterMap = before.Entries.ToDictionary(e => e.Guid);
+
+            // 重複 Order の警告は Apply 本体側で既に出るため、dry-run では出さない（二重ログ防止）。
+            // プレビュー単独実行（Apply を伴わない呼び出し）では警告が出ないため、
+            // 必要なら呼び出し側（UI）で RuleEvaluationPipeline.WarnOnDuplicateOrders を別途呼ぶこと。
+            var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
+
+            var issues = new List<ValidationResult>();
+
+            foreach (var path in paths)
+            {
+                var ctx = RuleEvaluationPipeline.BuildContext(path);
+                if (ctx == null) continue;
+                if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;
+
+                var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
+                RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
+
+                var prediction = AddressTellerApplier.Predict(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups);
+
+                switch (prediction.Action)
+                {
+                    case PredictedAction.AddOrUpdate:
+                        afterMap[ctx.Guid] = prediction.PredictedEntry;
+                        break;
+                    case PredictedAction.Remove:
+                        afterMap.Remove(ctx.Guid);
+                        break;
+                    case PredictedAction.NoOp:
+                        break;
+                }
+
+                if (!prediction.Validation.IsOk)
+                    issues.Add(prediction.Validation);
+            }
+
+            var after = new AddressTellerSnapshot();
+            after.Entries.AddRange(afterMap.Values.OrderBy(e => e.Guid, StringComparer.Ordinal));
+
+            var diff = Diff(before, after);
+            return new DryRunResult(diff, issues);
+        }
+
         /// <summary>2つのスナップショットを GUID 単位で比較し、追加・削除・変更の差分を返す。</summary>
         public static SnapshotDiff Diff(AddressTellerSnapshot before, AddressTellerSnapshot after)
         {
@@ -124,5 +179,21 @@ namespace Natsume777.AddressTeller.Editor
         public List<(SnapshotEntry Before, SnapshotEntry After)> Changed { get; } = new();
 
         public bool IsEmpty => Added.Count == 0 && Removed.Count == 0 && Changed.Count == 0;
+    }
+
+    /// <summary>
+    /// <see cref="AddressTellerSnapshotService.BuildPredictedSnapshot"/> の結果。
+    /// Apply を実行した場合の差分と、衝突・グループ未検出・ルール例外などの問題点をまとめて返す。
+    /// </summary>
+    public readonly struct DryRunResult
+    {
+        public SnapshotDiff Diff { get; }
+        public IReadOnlyList<ValidationResult> Issues { get; }
+
+        public DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues)
+        {
+            Diff = diff;
+            Issues = issues;
+        }
     }
 }

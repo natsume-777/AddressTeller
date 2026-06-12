@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
-using System.Linq;
-using UnityEngine;
 
 namespace Natsume777.AddressTeller.Editor
 {
@@ -47,24 +45,21 @@ namespace Natsume777.AddressTeller.Editor
                 if (settings == null) return Array.Empty<ValidationResult>();
 
                 var rules = RuleCollector.CollectRules();
-                WarnOnDuplicateOrders(rules);
-                var entries = GetOrderedEntries(rules);
-                var configFolder = settings.ConfigFolder;
-                var managedGroups = new HashSet<string>(entries.Select(e => e.GroupName));
-                var groupNames = new HashSet<string>(settings.groups.Select(g => g.Name));
+                RuleEvaluationPipeline.WarnOnDuplicateOrders(rules);
+                var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
                 var issues = new List<ValidationResult>();
 
                 foreach (var path in paths)
                 {
-                    var ctx = BuildContext(path);
+                    var ctx = RuleEvaluationPipeline.BuildContext(path);
                     if (ctx == null) continue;
-                    if (AssetFilter.ShouldExclude(ctx, configFolder)) continue;
+                    if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;
 
-                    var resolution = RuleEvaluator.Evaluate(ctx, entries);
-                    AddRuleErrors(ctx, resolution, issues);
+                    var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
+                    RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, groupNames, managedGroups);
+                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups);
                     if (!result.IsOk)
                         issues.Add(result);
                 }
@@ -93,13 +88,12 @@ namespace Natsume777.AddressTeller.Editor
             if (settings == null) return;
 
             var rules = RuleCollector.CollectRules();
-            var entries = GetOrderedEntries(rules);
-            var managedGroups = new HashSet<string>(entries.Select(e => e.GroupName));
+            var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
             foreach (var guid in deletedGuids)
             {
                 if (string.IsNullOrEmpty(guid)) continue;
-                AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, managedGroups);
+                AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, setup.ManagedGroups);
             }
         }
 
@@ -113,67 +107,26 @@ namespace Natsume777.AddressTeller.Editor
             if (settings == null) return Array.Empty<ValidationResult>();
 
             var rules = RuleCollector.CollectRules();
-            WarnOnDuplicateOrders(rules);
-            var entries = GetOrderedEntries(rules);
-            var configFolder = settings.ConfigFolder;
-            var groupNames = new HashSet<string>(settings.groups.Select(g => g.Name));
+            RuleEvaluationPipeline.WarnOnDuplicateOrders(rules);
+            var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
             var issues = new List<ValidationResult>();
 
             foreach (var path in AssetDatabase.GetAllAssetPaths())
             {
-                var ctx = BuildContext(path);
+                var ctx = RuleEvaluationPipeline.BuildContext(path);
                 if (ctx == null) continue;
-                if (AssetFilter.ShouldExclude(ctx, configFolder)) continue;
+                if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;
 
-                var resolution = RuleEvaluator.Evaluate(ctx, entries);
-                AddRuleErrors(ctx, resolution, issues);
+                var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
+                RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                var result = AddressTellerApplier.Validate(ctx, resolution, groupNames);
+                var result = AddressTellerApplier.Validate(ctx, resolution, setup.ExistingGroupNames);
                 if (!result.IsOk)
                     issues.Add(result);
             }
 
             return issues;
-        }
-
-        private static void WarnOnDuplicateOrders(IReadOnlyList<AddressRuleBase> rules)
-        {
-            foreach (var group in RuleCollector.FindDuplicateOrders(rules))
-            {
-                var names = string.Join(", ", group.Select(r => r.GetType().Name));
-                Debug.LogWarning($"[AddressTeller] Order={group.Key} のルールクラスが複数あります: {names}。評価順序が意図通りか確認してください。");
-            }
-        }
-
-        private static void AddRuleErrors(AssetContext ctx, AddressResolution resolution, List<ValidationResult> issues)
-        {
-            foreach (var error in resolution.Errors)
-                issues.Add(new ValidationResult(
-                    ctx,
-                    ValidationStatus.RuleError,
-                    $"{error.RuleSource} threw for '{ctx.Path}': {error.Message}"));
-        }
-
-        private static IReadOnlyList<AddressRuleEntry> GetOrderedEntries(IEnumerable<AddressRuleBase> rules)
-        {
-            var all = new List<AddressRuleEntry>();
-            foreach (var rule in rules)
-            {
-                var builder = new AddressRuleBuilderImpl(rule.GetType().Name);
-                rule.Configure(builder);
-                all.AddRange(builder.Entries);
-            }
-            return all;
-        }
-
-        private static AssetContext BuildContext(string path)
-        {
-            var guid = AssetDatabase.AssetPathToGUID(path);
-            if (string.IsNullOrEmpty(guid)) return null;
-            var type = AssetDatabase.GetMainAssetTypeAtPath(path);
-            if (type == null) return null;
-            return new AssetContext(guid, path, type);
         }
     }
 }
