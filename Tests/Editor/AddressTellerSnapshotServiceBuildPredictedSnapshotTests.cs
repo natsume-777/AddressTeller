@@ -19,6 +19,11 @@ namespace Natsume777.AddressTeller.Editor.Tests
         private const string StubAssetPath = StubFolder + "/StubAsset.prefab";
         private const string OtherAssetPath = TestRootFolder + "/OtherAsset.prefab";
 
+        // settings.ConfigFolder は AssetFilter.ShouldExclude でこの配下のパスを評価対象から除外するために使われる。
+        // TestRootFolder と同じ値にすると、ここで作成するテストアセット自身が除外されてしまうため、
+        // 衝突しない別パス（実在しなくてよい）を割り当てる。
+        private const string FakeConfigFolder = "Assets/_AddressTellerTestTempConfig";
+
         /// <summary>
         /// StubFolder 配下のアセットに、ファイル名をアドレスとして "alpha"+"beta" ラベルを
         /// "StubGroup" グループへ付与するテスト専用ルール。
@@ -47,10 +52,16 @@ namespace Natsume777.AddressTeller.Editor.Tests
 
             // BuildPredictedSnapshot は settings.ConfigFolder を参照するため、
             // 永続化されていない settings（AssetPath 未確定）では例外になる。
-            // ここでは isPersisted=true でディスク上に .asset を作成する。
-            _settings = AddressableAssetSettings.Create(TestRootFolder, "AddressTellerBuildPredictedSnapshotTestSettings", false, true);
+            // isPersisted=true でディスク上に .asset を作成すると本番の Addressables 設定に副作用が
+            // 残るため、非永続 settings に ConfigFolder のキャッシュのみを設定するヘルパーを使う。
+            // ConfigFolder には FakeConfigFolder（TestRootFolder とは別パス）を渡す。
+            _settings = AddressTellerTestSettingsFactory.CreateInMemory(FakeConfigFolder, "AddressTellerBuildPredictedSnapshotTestSettings");
             _stubGroup = _settings.CreateGroup("StubGroup", false, false, false, null);
 
+            // 上記ヘルパーは isPersisted=false のためディスク上にフォルダを作成しない。
+            // CreatePrefab 等で TestRootFolder 配下にアセットを置くため、ここで親フォルダから順に作成する。
+            if (!AssetDatabase.IsValidFolder("Assets/_AddressTellerTestTemp"))
+                AssetDatabase.CreateFolder("Assets", "_AddressTellerTestTemp");
             AssetDatabase.CreateFolder(TestRootFolder, "Stub");
         }
 
@@ -59,7 +70,7 @@ namespace Natsume777.AddressTeller.Editor.Tests
         {
             AddressTellerSettings.CleanupStaleEntries = _originalCleanupSetting;
 
-            // SetUp で isPersisted=true により作成された .asset 群・一時アセットはフォルダ削除でまとめて消す。
+            // SetUp で作成した一時アセット・フォルダはフォルダ削除でまとめて消す。
             AssetDatabase.DeleteAsset(TestRootFolder);
         }
 

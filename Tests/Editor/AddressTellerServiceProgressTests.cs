@@ -13,7 +13,7 @@ namespace Natsume777.AddressTeller.Editor.Tests
     public class AddressTellerServiceProgressTests
     {
         // ApplyAll/ValidateAll は内部で settings.ConfigFolder（AssetDatabase.GetAssetPath 依存）を参照するため、
-        // isPersisted=true でディスク上に .asset を作成する。他のテストクラスと衝突しないよう専用サブフォルダを使う。
+        // ConfigFolder のキャッシュのみを設定した非永続 settings を使う。他のテストクラスと衝突しないよう専用サブフォルダを使う。
         private const string TestRootFolder = "Assets/_AddressTellerTestTemp/ServiceProgress";
 
         private AddressableAssetSettings _settings;
@@ -21,14 +21,15 @@ namespace Natsume777.AddressTeller.Editor.Tests
         [SetUp]
         public void SetUp()
         {
-            // AddressableAssetSettings.Create(isPersisted: true) は対象フォルダが既に存在することを前提とする。
             // AssetDatabase.CreateFolder は1階層ずつ作成する必要があるため、親→子の順で確認・作成する。
             if (!AssetDatabase.IsValidFolder("Assets/_AddressTellerTestTemp"))
                 AssetDatabase.CreateFolder("Assets", "_AddressTellerTestTemp");
             if (!AssetDatabase.IsValidFolder(TestRootFolder))
                 AssetDatabase.CreateFolder("Assets/_AddressTellerTestTemp", "ServiceProgress");
 
-            _settings = AddressableAssetSettings.Create(TestRootFolder, "AddressTellerServiceProgressTestSettings", false, true);
+            // isPersisted=true でディスク上に .asset を作成すると本番の Addressables 設定に副作用が
+            // 残るため、非永続 settings に ConfigFolder のキャッシュのみを設定するヘルパーを使う。
+            _settings = AddressTellerTestSettingsFactory.CreateInMemory(TestRootFolder, "AddressTellerServiceProgressTestSettings");
         }
 
         [TearDown]
