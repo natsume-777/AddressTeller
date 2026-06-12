@@ -55,6 +55,21 @@ namespace Natsume777.AddressTeller.Editor
                 PickSnapshotFolder();
             EditorGUILayout.EndHorizontal();
 
+            EditorGUILayout.Space(4);
+
+            EditorGUI.BeginChangeCheck();
+            var autoSnapshotBeforeApplyAll = EditorGUILayout.ToggleLeft("Apply実行前に自動スナップショットを保存する", AddressTellerSettings.AutoSnapshotBeforeApplyAll);
+            DrawDescription("対象は Apply All / Apply with Validate メニューのみです。import時の自動適用やCLIでの実行は対象外です。");
+
+            var autoSnapshotRetention = EditorGUILayout.IntField("自動スナップショットの保持件数", AddressTellerSettings.AutoSnapshotRetention);
+            DrawDescription("これを超える古い自動スナップショットは自動的に削除されます。最小値は1件です。");
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                AddressTellerSettings.AutoSnapshotBeforeApplyAll = autoSnapshotBeforeApplyAll;
+                AddressTellerSettings.AutoSnapshotRetention = autoSnapshotRetention;
+            }
+
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("登録されているルール", EditorStyles.boldLabel);
 

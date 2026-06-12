@@ -16,6 +16,9 @@ namespace Natsume777.AddressTeller.Editor
                 return;
             }
 
+            if (AddressTellerSettings.AutoSnapshotBeforeApplyAll)
+                AddressTellerAutoSnapshotService.CaptureAndSave(settings);
+
             var issues = AddressTellerService.ApplyAll(settings);
             if (issues.Count == 0)
             {
@@ -52,7 +55,12 @@ namespace Natsume777.AddressTeller.Editor
             Debug.LogError($"[AddressTeller] Validate 完了: {issues.Count} 件の問題が見つかりました。");
         }
 
-        /// <summary>CI 向け。-executeMethod Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI で実行。</summary>
+        /// <summary>
+        /// CI 向け。-executeMethod Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI で実行。
+        /// 自動スナップショット（<see cref="AddressTellerSettings.AutoSnapshotBeforeApplyAll"/>）は
+        /// 対話メニュー（Apply All / Apply with Validate）のみが対象であり、
+        /// ビルド時間とディスク I/O を避けるため CLI/CI では実行しない。
+        /// </summary>
         public static void ApplyAllCLI()
         {
             var settings = AddressableAssetSettingsDefaultObject.Settings;
@@ -91,6 +99,9 @@ namespace Natsume777.AddressTeller.Editor
                 return;
             }
 
+            if (AddressTellerSettings.AutoSnapshotBeforeApplyAll)
+                AddressTellerAutoSnapshotService.CaptureAndSave(settings);
+
             var applyIssues = AddressTellerService.ApplyAll(settings);
             if (applyIssues.Count == 0)
             {
@@ -104,7 +115,12 @@ namespace Natsume777.AddressTeller.Editor
             Debug.LogError($"[AddressTeller] ApplyWithValidate 完了: {applyIssues.Count} 件の問題が見つかりました。");
         }
 
-        /// <summary>CI 向け。-executeMethod Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI で実行。</summary>
+        /// <summary>
+        /// CI 向け。-executeMethod Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI で実行。
+        /// 自動スナップショット（<see cref="AddressTellerSettings.AutoSnapshotBeforeApplyAll"/>）は
+        /// 対話メニュー（Apply All / Apply with Validate）のみが対象であり、
+        /// ビルド時間とディスク I/O を避けるため CLI/CI では実行しない。
+        /// </summary>
         public static void ApplyWithValidateCLI()
         {
             var settings = AddressableAssetSettingsDefaultObject.Settings;

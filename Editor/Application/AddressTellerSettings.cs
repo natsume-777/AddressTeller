@@ -67,6 +67,42 @@ namespace Natsume777.AddressTeller.Editor
             var projectRoot = Path.GetDirectoryName(Application.dataPath);
             return Path.GetFullPath(Path.Combine(projectRoot, SnapshotFolder));
         }
+
+        /// <summary>
+        /// true の場合、Tools/AddressTeller/Apply All と Apply with Validate の実行直前に、
+        /// 現在の Addressables の状態を自動スナップショットとして保存する（SnapshotFolder/Auto 以下）。
+        /// 直近 <see cref="AutoSnapshotRetention"/> 件を超える古いものは自動的に削除される。
+        /// 対象は上記2つのメニューのみ。import 時の自動適用（Postprocessor）と CLI
+        /// （ApplyAllCLI/ApplyWithValidateCLI）はビルド時間とディスク I/O を避けるため対象外。
+        /// </summary>
+        public static bool AutoSnapshotBeforeApplyAll
+        {
+            get => AddressTellerSettingsAsset.instance._autoSnapshotBeforeApplyAll;
+            set
+            {
+                var asset = AddressTellerSettingsAsset.instance;
+                if (asset._autoSnapshotBeforeApplyAll == value) return;
+                asset._autoSnapshotBeforeApplyAll = value;
+                asset.SaveChanges();
+            }
+        }
+
+        /// <summary>
+        /// 自動スナップショット（SnapshotFolder/Auto 以下）の保持件数。これを超える古いファイルは
+        /// 新規保存時に削除される。最小値は 1。
+        /// </summary>
+        public static int AutoSnapshotRetention
+        {
+            get => AddressTellerSettingsAsset.instance._autoSnapshotRetention;
+            set
+            {
+                var asset = AddressTellerSettingsAsset.instance;
+                var clamped = Mathf.Max(1, value);
+                if (asset._autoSnapshotRetention == clamped) return;
+                asset._autoSnapshotRetention = clamped;
+                asset.SaveChanges();
+            }
+        }
     }
 
     /// <summary>
@@ -79,6 +115,8 @@ namespace Natsume777.AddressTeller.Editor
         [SerializeField] internal bool _cleanupStaleEntries = true;
         [SerializeField] internal bool _postprocessEnabled = true;
         [SerializeField] internal string _snapshotFolder = "AddressTellerSnapshots";
+        [SerializeField] internal bool _autoSnapshotBeforeApplyAll = true;
+        [SerializeField] internal int _autoSnapshotRetention = 10;
 
         /// <summary>変更内容を ProjectSettings/AddressTellerSettings.asset へ書き出す。</summary>
         internal void SaveChanges() => Save(true);

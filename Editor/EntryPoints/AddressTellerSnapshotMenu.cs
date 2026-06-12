@@ -92,6 +92,55 @@ namespace Natsume777.AddressTeller.Editor
             LogDiff(AddressTellerSnapshotService.Diff(before, after));
         }
 
+        /// <summary>
+        /// 最新の自動スナップショット（Apply All / Apply with Validate メニューの実行直前に保存されたもの）から、
+        /// Addressables の状態を Exact モードで復元する。Apply によるエントリ削除・アドレス変更等の Undo として使う。
+        /// </summary>
+        [MenuItem("Tools/AddressTeller/Undo Last Apply")]
+        public static void UndoLastApply()
+        {
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+            {
+                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。Addressables を初期化してください。");
+                return;
+            }
+
+            var path = AddressTellerAutoSnapshotService.FindLatestAuto();
+            if (string.IsNullOrEmpty(path))
+            {
+                Debug.LogWarning("[AddressTeller] 自動スナップショットが見つかりません。Apply All / Apply with Validate を一度実行すると自動保存されます。");
+                return;
+            }
+
+            var snapshot = AddressTellerAutoSnapshotService.LoadAuto(path);
+            if (snapshot == null) return;
+
+            var current = AddressTellerSnapshotService.Capture(settings);
+            var diff = AddressTellerSnapshotService.Diff(current, snapshot);
+            if (diff.IsEmpty)
+            {
+                Debug.Log("[AddressTeller] 直前の Apply からの変更はありません。");
+                return;
+            }
+
+            var message =
+                $"直前の Apply 実行前の状態（{Path.GetFileName(path)}）に復元します。\n\n" +
+                $"追加されるエントリ: {diff.Added.Count} 件\n" +
+                $"削除されるエントリ: {diff.Removed.Count} 件\n" +
+                $"変更されるエントリ: {diff.Changed.Count} 件\n\n" +
+                "Exact モードで復元するため、スナップショット保存後に付与されたラベルは剥がされる可能性があります。";
+
+            if (!EditorUtility.DisplayDialog("Undo Last Apply", message, "復元する", "キャンセル"))
+                return;
+
+            var issues = AddressTellerSnapshotService.Restore(snapshot, settings, SnapshotRestoreMode.Exact);
+            foreach (var issue in issues)
+                Debug.LogWarning($"[AddressTeller] {issue}");
+
+            Debug.Log($"[AddressTeller] 直前の Apply を取り消しました（{Path.GetFileName(path)}）: {snapshot.Entries.Count} 件、問題 {issues.Count} 件");
+        }
+
         private static void LogDiff(SnapshotDiff diff)
         {
             if (diff.IsEmpty)
