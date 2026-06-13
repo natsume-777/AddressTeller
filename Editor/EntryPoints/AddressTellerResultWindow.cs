@@ -23,8 +23,8 @@ namespace Natsume777.AddressTeller.Editor
 
         private static readonly string[] TabLabels = { "Diff", "Issues" };
 
-        [SerializeField] private TreeViewState _diffTreeViewState;
-        [SerializeField] private TreeViewState _issueTreeViewState;
+        [SerializeField] private TreeViewState<int> _diffTreeViewState;
+        [SerializeField] private TreeViewState<int> _issueTreeViewState;
         [SerializeField] private MultiColumnHeaderState _diffHeaderState;
         [SerializeField] private MultiColumnHeaderState _issueHeaderState;
 
@@ -127,7 +127,7 @@ namespace Natsume777.AddressTeller.Editor
         {
             if (_diffTreeView != null) return;
 
-            _diffTreeViewState ??= new TreeViewState();
+            _diffTreeViewState ??= new TreeViewState<int>();
             _diffHeaderState ??= AddressTellerDiffTreeView.CreateHeaderState();
 
             var header = new MultiColumnHeader(_diffHeaderState);
@@ -139,7 +139,7 @@ namespace Natsume777.AddressTeller.Editor
         {
             if (_issueTreeView != null) return;
 
-            _issueTreeViewState ??= new TreeViewState();
+            _issueTreeViewState ??= new TreeViewState<int>();
             _issueHeaderState ??= AddressTellerIssueTreeView.CreateHeaderState();
 
             var header = new MultiColumnHeader(_issueHeaderState);

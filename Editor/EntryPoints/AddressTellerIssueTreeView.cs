@@ -10,7 +10,7 @@ namespace Natsume777.AddressTeller.Editor
     /// フラット行（depth=0）のみで親子関係は持たない。
     /// 表示対象は <see cref="SetRows"/> に渡す時点でステータスフィルタ済みの行データを想定する。
     /// </summary>
-    internal sealed class AddressTellerIssueTreeView : TreeView
+    internal sealed class AddressTellerIssueTreeView : TreeView<int>
     {
         private enum ColumnId
         {
@@ -21,7 +21,7 @@ namespace Natsume777.AddressTeller.Editor
 
         private IReadOnlyList<IssueRow> _rows = System.Array.Empty<IssueRow>();
 
-        public AddressTellerIssueTreeView(TreeViewState state, MultiColumnHeader header) : base(state, header)
+        public AddressTellerIssueTreeView(TreeViewState<int> state, MultiColumnHeader header) : base(state, header)
         {
             rowHeight = 20f;
             showAlternatingRowBackgrounds = true;
@@ -66,22 +66,22 @@ namespace Natsume777.AddressTeller.Editor
             return new MultiColumnHeaderState(columns);
         }
 
-        protected override TreeViewItem BuildRoot()
+        protected override TreeViewItem<int> BuildRoot()
         {
             // 行の id は 0 始まりで _rows のインデックスと対応させるため、
             // 隠しルートの id はそれと衝突しない -1 にする。
-            return new TreeViewItem { id = -1, depth = -1, displayName = "Root" };
+            return new TreeViewItem<int> { id = -1, depth = -1, displayName = "Root" };
         }
 
-        protected override IList<TreeViewItem> BuildRows(TreeViewItem root)
+        protected override IList<TreeViewItem<int>> BuildRows(TreeViewItem<int> root)
         {
-            var rows = new List<TreeViewItem>(_rows.Count);
+            var rows = new List<TreeViewItem<int>>(_rows.Count);
 
             for (var i = 0; i < _rows.Count; i++)
-                rows.Add(new TreeViewItem(i, 0, _rows[i].AssetPath));
+                rows.Add(new TreeViewItem<int>(i, 0, _rows[i].AssetPath));
 
             root.children = rows.Count == 0
-                ? new List<TreeViewItem> { new TreeViewItem(int.MaxValue, 0, "(問題なし)") }
+                ? new List<TreeViewItem<int>> { new TreeViewItem<int>(int.MaxValue, 0, "(問題なし)") }
                 : rows;
 
             SetupParentsAndChildrenFromDepths(root, root.children);
