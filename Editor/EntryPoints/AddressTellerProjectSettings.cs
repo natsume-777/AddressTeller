@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.AddressableAssets;
 using UnityEngine;
 
 namespace Natsume777.AddressTeller.Editor
@@ -108,6 +109,9 @@ namespace Natsume777.AddressTeller.Editor
         // （UI 組み込みは別Stepで対応）。ドメインリロードで自動的にリセットされる。
         private static RuleOverviewCache? s_ruleOverviewCache;
 
+        // ルール一覧の Foldout 開閉状態。クラスごとに保持する。ドメインリロードでリセットされて問題ない。
+        private static readonly Dictionary<Type, bool> s_ruleFoldouts = new Dictionary<Type, bool>();
+
         [SettingsProvider]
         public static SettingsProvider CreateSettingsProvider()
         {
@@ -170,10 +174,40 @@ namespace Natsume777.AddressTeller.Editor
             }
 
             EditorGUILayout.Space();
+            EditorGUILayout.LabelField("運用アクション", EditorStyles.boldLabel);
+
+            var addressablesSettings = AddressableAssetSettingsDefaultObject.Settings;
+
+            if (addressablesSettings == null)
+                EditorGUILayout.HelpBox("AddressableAssetSettings が見つかりません。Addressables を初期化してください。", MessageType.Warning);
+
+            using (new EditorGUI.DisabledScope(addressablesSettings == null))
+            {
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("Validate 実行"))
+                    AddressTellerMenu.Validate();
+                if (GUILayout.Button("プレビュー（Validate付き）"))
+                    AddressTellerMenu.ApplyWithValidate();
+                if (GUILayout.Button("Apply 実行"))
+                    AddressTellerMenu.ApplyAll();
+                EditorGUILayout.EndHorizontal();
+            }
+
+            EditorGUILayout.Space();
             EditorGUILayout.LabelField("登録されているルール", EditorStyles.boldLabel);
 
-            var rules = RuleCollector.CollectRules();
-            if (rules.Count == 0)
+            var overviewCache = GetRuleOverviewCache();
+
+            foreach (var duplicate in overviewCache.DuplicateOrders)
+            {
+                var ruleNames = string.Join(", ", duplicate.RuleClassNames);
+                EditorGUILayout.HelpBox(
+                    $"Order={duplicate.Order} が重複: {ruleNames}。評価順序を確認してください",
+                    MessageType.Warning);
+            }
+
+            var overviewRules = overviewCache.Rules;
+            if (overviewRules.Count == 0)
             {
                 EditorGUILayout.HelpBox(
                     "AddressRuleBase を継承したクラスが見つかりません。\n" +
@@ -182,9 +216,9 @@ namespace Natsume777.AddressTeller.Editor
                 return;
             }
 
-            foreach (var rule in rules)
+            foreach (var overview in overviewRules)
             {
-                var type = rule.GetType();
+                var type = overview.RuleType;
                 var enabled = AddressTellerSettings.IsRuleEnabled(type.FullName);
 
                 EditorGUILayout.BeginHorizontal();
@@ -194,9 +228,14 @@ namespace Natsume777.AddressTeller.Editor
                 if (EditorGUI.EndChangeCheck())
                     AddressTellerSettings.SetRuleEnabled(type.FullName, toggled);
 
+                s_ruleFoldouts.TryGetValue(type, out var foldout);
+                var newFoldout = EditorGUILayout.Foldout(foldout, GUIContent.none, true);
+                if (newFoldout != foldout)
+                    s_ruleFoldouts[type] = newFoldout;
+
                 using (new EditorGUI.DisabledScope(!enabled))
                 {
-                    EditorGUILayout.LabelField($"{type.Name}  (Order: {rule.Order})", EditorStyles.wordWrappedLabel);
+                    EditorGUILayout.LabelField($"{type.Name}  (Order: {overview.Order})", EditorStyles.wordWrappedLabel);
                 }
 
                 GUILayout.FlexibleSpace();
@@ -209,7 +248,41 @@ namespace Natsume777.AddressTeller.Editor
                 }
 
                 EditorGUILayout.EndHorizontal();
+
+                if (newFoldout)
+                    DrawRuleOverview(overview);
             }
+        }
+
+        /// <summary>
+        /// ルール一覧の Foldout 展開時に、Configure() の結果（Group/Where/Address/Label）を1行ずつ表示する。
+        /// Configure() が例外を投げている場合はエントリの代わりにエラーを HelpBox で表示する。
+        /// </summary>
+        private static void DrawRuleOverview(in RuleClassOverview overview)
+        {
+            EditorGUI.indentLevel++;
+
+            if (overview.ConfigureError != null)
+            {
+                EditorGUILayout.HelpBox($"Configure() の実行中に例外が発生しました: {overview.ConfigureError}", MessageType.Error);
+            }
+            else if (overview.Entries.Count == 0)
+            {
+                EditorGUILayout.LabelField("(Group() が呼ばれていません)", EditorStyles.wordWrappedMiniLabel);
+            }
+            else
+            {
+                foreach (var entry in overview.Entries)
+                {
+                    var where = entry.Description ?? $"(条件 #{entry.RuleIndex})";
+                    var address = entry.HasAddress ? "動的" : "なし";
+                    EditorGUILayout.LabelField(
+                        $"Group: \"{entry.GroupName}\"  Where: \"{where}\"  Address: {address}  Labels: {entry.LabelCount}個",
+                        EditorStyles.wordWrappedMiniLabel);
+                }
+            }
+
+            EditorGUI.indentLevel--;
         }
 
         /// <summary>フォルダ選択ダイアログを開き、選択結果をプロジェクトルートからの相対パスで保存する。</summary>
