@@ -100,6 +100,21 @@ namespace Natsume777.AddressTeller.Editor
             return 0;
         }
 
+        /// <summary>
+        /// Apply/Validate を実際に実行した CLI 向けの exit code 判定。
+        /// <paramref name="dryRun"/> による判定（<see cref="DetermineExitCode(DryRunResult)"/>）を基本としつつ、
+        /// 実行後に得られた issues（<paramref name="executionIssues"/>）にエラー（IsOk=false）が
+        /// 含まれる場合は 2 に昇格させる（dry-run 時点では検出できなかった問題を取り逃さないため）。
+        /// </summary>
+        public static int DetermineExitCode(DryRunResult dryRun, IReadOnlyList<ValidationResult> executionIssues)
+        {
+            var exitCode = DetermineExitCode(dryRun);
+            if (exitCode < 2 && executionIssues.Any(issue => !issue.IsOk))
+                exitCode = 2;
+
+            return exitCode;
+        }
+
         private static AddressTellerReportEntry ToReportEntry(SnapshotEntry entry) => new()
         {
             Address = entry.Address,

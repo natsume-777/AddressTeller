@@ -31,7 +31,7 @@ namespace Natsume777.AddressTeller.Editor
         public int ExitCode;
     }
 
-    /// <summary>1アセット分のドリフト（Apply 適用後との差分）。</summary>
+    /// <summary>1アセット分のドリフト（Apply 適用前に計算した予測差分）。</summary>
     [Serializable]
     public sealed class AddressTellerReportDrift
     {

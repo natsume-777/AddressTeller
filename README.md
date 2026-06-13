@@ -162,10 +162,21 @@ rules.Group("Characters")
 
 ### CI 連携
 
-`-executeMethod` で以下を実行できます。問題があれば exit code 1 で終了します。
+`-executeMethod` で以下を実行できます。
 
 - `Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI`
-- `Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI`
+- `Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI`（`ApplyWithValidateCLI` は先に Validate を行い、問題があれば Apply を中止します）
+
+`-addressTellerReport <path>` / `-addressTellerReportFormat json|junit` を指定すると、Apply 実行前の差分（dry-run）から構造化レポートをファイル出力します。`-addressTellerReportFormat` を省略した場合、拡張子が `.xml` なら `junit`、それ以外は `json` として扱われます。
+
+exit code:
+
+| exit code | 意味 |
+|---|---|
+| 0 | 差分なし・問題なし |
+| 1 | ドリフトあり（差分あり、Validation エラーなし） |
+| 2 | Validation エラーあり |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・レポート書き込み失敗） |
 
 ## Project Settings
 

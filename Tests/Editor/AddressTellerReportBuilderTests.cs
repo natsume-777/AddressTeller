@@ -203,6 +203,48 @@ namespace Natsume777.AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void DetermineExitCode_WithExecutionIssues_NoDiffNoIssues_ExecutionErrorEscalatesToTwo()
+        {
+            // dry-run 時点では差分・問題なし（0判定）でも、Apply 実行後の issues にエラーがあれば 2 に昇格する。
+            var diff = new SnapshotDiff();
+            var dryRun = new DryRunResult(diff, new List<ValidationResult>());
+
+            var executionIssues = new List<ValidationResult>
+            {
+                new(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.ConflictingAddress, "conflict"),
+            };
+
+            Assert.AreEqual(2, AddressTellerReportBuilder.DetermineExitCode(dryRun, executionIssues));
+        }
+
+        [Test]
+        public void DetermineExitCode_WithExecutionIssues_AllOk_DoesNotEscalate()
+        {
+            var diff = new SnapshotDiff();
+            var dryRun = new DryRunResult(diff, new List<ValidationResult>());
+
+            var executionIssues = new List<ValidationResult>
+            {
+                new(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.Ok, "ok"),
+            };
+
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineExitCode(dryRun, executionIssues));
+        }
+
+        [Test]
+        public void DetermineExitCode_WithExecutionIssues_DryRunAlreadyTwo_StaysTwo()
+        {
+            var diff = new SnapshotDiff();
+            var dryRunIssues = new List<ValidationResult>
+            {
+                new(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.ConflictingAddress, "conflict"),
+            };
+            var dryRun = new DryRunResult(diff, dryRunIssues);
+
+            Assert.AreEqual(2, AddressTellerReportBuilder.DetermineExitCode(dryRun, new List<ValidationResult>()));
+        }
+
+        [Test]
         public void ToJson_Succeeds()
         {
             var addedGuid = CreatePrefab(TestRootFolder + "/JsonTarget.prefab");
