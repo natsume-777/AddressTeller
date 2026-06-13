@@ -113,6 +113,7 @@ rules.Group("グループ名")
 | `Tools/AddressTeller/Apply All` | プロジェクト全体に手動でルールを適用します。 |
 | `Tools/AddressTeller/Validate` | 書き込みは行わず、競合・グループ未検出などの問題だけを Console に出力します。 |
 | `Tools/AddressTeller/Apply with Validate` | 先に Validate を実行し、問題があれば Apply を中止します。 |
+| `Assets/AddressTeller/Explain`（Project ウィンドウの右クリックメニュー） | 選択したアセットに対して全ルールを評価し、その結果を確認ウィンドウで表示します。マッチしたルール・マッチしなかったルール（その `Where` 説明付き）・ルール例外を一覧で見ることができるため、ルールの動作確認やデバッグが効率的です。 |
 
 ### CI 連携
 
