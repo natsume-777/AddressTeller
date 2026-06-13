@@ -16,12 +16,20 @@ namespace Natsume777.AddressTeller.Editor
         public HashSet<string> ManagedGroups { get; }
         public HashSet<string> ExistingGroupNames { get; }
 
-        public EvaluationSetup(IReadOnlyList<AddressRuleEntry> entries, string configFolder, HashSet<string> managedGroups, HashSet<string> existingGroupNames)
+        /// <summary>
+        /// true の場合、Apply は未存在グループを DefaultGroup のスキーマ構成を複製して自動作成し、
+        /// Validate/Predict は作成せず <see cref="ValidationStatus.GroupWillBeCreated"/> として提示する。
+        /// <see cref="AddressTellerSettings.AutoCreateMissingGroups"/> を全エントリポイントに一貫供給するためのフィールド。
+        /// </summary>
+        public bool AutoCreateMissingGroups { get; }
+
+        public EvaluationSetup(IReadOnlyList<AddressRuleEntry> entries, string configFolder, HashSet<string> managedGroups, HashSet<string> existingGroupNames, bool autoCreateMissingGroups)
         {
             Entries = entries;
             ConfigFolder = configFolder;
             ManagedGroups = managedGroups;
             ExistingGroupNames = existingGroupNames;
+            AutoCreateMissingGroups = autoCreateMissingGroups;
         }
     }
 
@@ -41,7 +49,7 @@ namespace Natsume777.AddressTeller.Editor
             var managedGroups = new HashSet<string>(entries.Select(e => e.GroupName));
             // settings.groups の null 要素を除外する（Capture の if (group == null) continue; と対称にする）。
             var existingGroupNames = new HashSet<string>(settings.groups.Where(g => g != null).Select(g => g.Name));
-            return new EvaluationSetup(entries, configFolder, managedGroups, existingGroupNames);
+            return new EvaluationSetup(entries, configFolder, managedGroups, existingGroupNames, AddressTellerSettings.AutoCreateMissingGroups);
         }
 
         /// <summary>同一 Order のルールクラスが複数あれば警告を出す。</summary>

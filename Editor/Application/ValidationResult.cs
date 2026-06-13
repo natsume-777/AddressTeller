@@ -16,6 +16,13 @@ namespace Natsume777.AddressTeller.Editor
         InvalidAddress,
         /// <summary>ルールの Predicate / AddressSelector / LabelSelector が例外を送出した。</summary>
         RuleError,
+        /// <summary>
+        /// 指定グループが存在しないが、AutoCreateMissingGroups が有効なため Apply 時に自動作成される予定。
+        /// Validate/Predict（dry-run）では実際の作成は行わない。
+        /// </summary>
+        GroupWillBeCreated,
+        /// <summary>AutoCreateMissingGroups が有効な状態で、グループの自動作成に失敗した。</summary>
+        GroupCreationFailed,
     }
 
     public sealed class ValidationResult
@@ -28,7 +35,9 @@ namespace Natsume777.AddressTeller.Editor
         public IReadOnlyList<AddressCandidate> ConflictingCandidates { get; }
 
         // Skipped はルール対象外という正常系であり、ApplyAll/ValidateAll の issues には積まれない（IsOk = true）。
-        public bool IsOk => Status == ValidationStatus.Ok || Status == ValidationStatus.Skipped;
+        // GroupWillBeCreated は AutoCreateMissingGroups ON 時の作成予定通知であり、Apply をブロックしない（IsOk = true）。
+        public bool IsOk => Status == ValidationStatus.Ok || Status == ValidationStatus.Skipped
+            || Status == ValidationStatus.GroupWillBeCreated;
 
         public ValidationResult(AssetContext context, ValidationStatus status, string message,
             IReadOnlyList<AddressCandidate> conflictingCandidates = null)

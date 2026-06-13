@@ -40,15 +40,29 @@ namespace Natsume777.AddressTeller.Editor.Tests
             }
         }
 
+        /// <summary>StubFolder 配下のアセットを、存在しない "MissingGroup" へ向けるテスト専用ルール。</summary>
+        private sealed class MissingGroupRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("MissingGroup")
+                    .Where(ctx => ctx.Path.StartsWith(StubFolder + "/", System.StringComparison.Ordinal))
+                    .Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
         private AddressableAssetSettings _settings;
         private AddressableAssetGroup _stubGroup;
         private bool _originalCleanupSetting;
+        private bool _originalAutoCreateSetting;
 
         [SetUp]
         public void SetUp()
         {
             _originalCleanupSetting = AddressTellerSettings.CleanupStaleEntries;
             AddressTellerSettings.CleanupStaleEntries = true;
+
+            _originalAutoCreateSetting = AddressTellerSettings.AutoCreateMissingGroups;
 
             // BuildPredictedSnapshot は settings.ConfigFolder を参照するため、
             // 永続化されていない settings（AssetPath 未確定）では例外になる。
@@ -69,6 +83,7 @@ namespace Natsume777.AddressTeller.Editor.Tests
         public void TearDown()
         {
             AddressTellerSettings.CleanupStaleEntries = _originalCleanupSetting;
+            AddressTellerSettings.AutoCreateMissingGroups = _originalAutoCreateSetting;
 
             // SetUp で作成した一時アセット・フォルダはフォルダ削除でまとめて消す。
             AssetDatabase.DeleteAsset(TestRootFolder);
@@ -167,6 +182,56 @@ namespace Natsume777.AddressTeller.Editor.Tests
             var issue = result.Issues.SingleOrDefault(i => i.Context.Guid == Guid(StubAssetPath));
             Assert.IsNotNull(issue, "StubGroup が存在しない場合、GroupNotFound が Issues に含まれるべき。");
             Assert.AreEqual(ValidationStatus.GroupNotFound, issue.Status);
+        }
+
+        [Test]
+        public void AutoCreateOn_MissingGroup_GroupsToCreate_ContainsGroupName_WithoutSideEffect()
+        {
+            AddressTellerSettings.AutoCreateMissingGroups = true;
+
+            CreatePrefab(StubAssetPath);
+
+            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(_settings, new[] { StubAssetPath }, new AddressRuleBase[] { new MissingGroupRule() });
+
+            CollectionAssert.AreEqual(new[] { "MissingGroup" }, result.GroupsToCreate);
+
+            // dry-run は副作用ゼロ。MissingGroup は実際には作成されない。
+            Assert.IsNull(_settings.FindGroup("MissingGroup"));
+
+            // IsOk=true（情報提供）のため、issues には積まれない。
+            Assert.IsFalse(result.Issues.Any(i => i.Context.Guid == Guid(StubAssetPath)));
+        }
+
+        [Test]
+        public void AutoCreateOff_MissingGroup_GroupsToCreate_IsEmpty()
+        {
+            AddressTellerSettings.AutoCreateMissingGroups = false;
+
+            CreatePrefab(StubAssetPath);
+
+            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(_settings, new[] { StubAssetPath }, new AddressRuleBase[] { new MissingGroupRule() });
+
+            CollectionAssert.IsEmpty(result.GroupsToCreate);
+
+            var issue = result.Issues.SingleOrDefault(i => i.Context.Guid == Guid(StubAssetPath));
+            Assert.IsNotNull(issue, "AutoCreate OFF の場合、GroupNotFound が Issues に含まれるべき。");
+            Assert.AreEqual(ValidationStatus.GroupNotFound, issue.Status);
+        }
+
+        [Test]
+        public void AutoCreateOn_MultipleAssetsTargetingSameMissingGroup_GroupsToCreate_IsDeduplicated()
+        {
+            AddressTellerSettings.AutoCreateMissingGroups = true;
+
+            CreatePrefab(StubAssetPath);
+            const string secondAssetPath = StubFolder + "/StubAsset2.prefab";
+            CreatePrefab(secondAssetPath);
+
+            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(
+                _settings, new[] { StubAssetPath, secondAssetPath }, new AddressRuleBase[] { new MissingGroupRule() });
+
+            CollectionAssert.AreEqual(new[] { "MissingGroup" }, result.GroupsToCreate);
+            Assert.IsNull(_settings.FindGroup("MissingGroup"));
         }
     }
 }

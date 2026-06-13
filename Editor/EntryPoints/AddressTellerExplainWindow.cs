@@ -139,6 +139,11 @@ namespace Natsume777.AddressTeller.Editor
                     return ($"アドレス無効: {validation.Message}", Color.red);
                 case ValidationStatus.RuleError:
                     return ($"ルールエラー: {validation.Message}", Color.red);
+                case ValidationStatus.GroupWillBeCreated:
+                    var createdAddress = resolution.AddressCandidates.Count > 0 ? resolution.AddressCandidates[0].Address : "(unknown)";
+                    return ($"アドレス \"{createdAddress}\" を採用（グループは新規作成されます: {validation.Message}）", Color.yellow);
+                case ValidationStatus.GroupCreationFailed:
+                    return ($"グループ作成失敗: {validation.Message}", Color.red);
                 default:
                     return (validation.Message ?? string.Empty, GUI.color);
             }

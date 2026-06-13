@@ -41,6 +41,7 @@ namespace Natsume777.AddressTeller.Editor
         // Show() 時に一度だけ構築し、OnGUI では再構築しない（GUIDToAssetPath 等の重い変換を避けるため）。
         private List<DiffRow> _diffRows = new();
         private List<IssueRow> _allIssueRows = new();
+        private IReadOnlyList<string> _groupsToCreate = Array.Empty<string>();
 
         // Issues タブのステータス別フィルタ。キーは Enum.GetValues(typeof(ValidationStatus)) の全件、初期値は true（全件表示）。
         private readonly Dictionary<ValidationStatus, bool> _statusFilter = new();
@@ -52,6 +53,7 @@ namespace Natsume777.AddressTeller.Editor
             window._showDiffTab = true;
             window._currentTab = Tab.Diff;
             window._onApply = null; // ウィンドウ再利用時に前回の onApply が残らないようにクリア
+            window._groupsToCreate = dryRun.GroupsToCreate;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
             window.Show();
@@ -68,6 +70,7 @@ namespace Natsume777.AddressTeller.Editor
             window._showDiffTab = true;
             window._currentTab = Tab.Diff;
             window._onApply = onApply;
+            window._groupsToCreate = dryRun.GroupsToCreate;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
             window.Show();
@@ -81,6 +84,7 @@ namespace Natsume777.AddressTeller.Editor
             window._showDiffTab = false;
             window._currentTab = Tab.Issues;
             window._onApply = null; // ウィンドウ再利用時に前回の onApply が残らないようにクリア
+            window._groupsToCreate = Array.Empty<string>();
             window.SetDiffRows(new List<DiffRow>());
             window.SetIssueRows(issues);
             window.Show();
@@ -182,6 +186,7 @@ namespace Natsume777.AddressTeller.Editor
             if (_diffRows.Count == 0)
             {
                 EditorGUILayout.HelpBox("差分はありません。", MessageType.Info);
+                DrawGroupsToCreateSummary();
                 DrawApplyButton();
                 return;
             }
@@ -190,11 +195,22 @@ namespace Natsume777.AddressTeller.Editor
                            $"削除 {_diffRows.Count(r => r.Kind == DiffRowKind.Removed)} 件 / " +
                            $"変更 {_diffRows.Count(r => r.Kind == DiffRowKind.Changed)} 件";
             EditorGUILayout.LabelField(summary, EditorStyles.miniLabel);
+            DrawGroupsToCreateSummary();
 
             var rect = GUILayoutUtility.GetRect(0, 100000, 0, 100000);
             _diffTreeView.OnGUI(rect);
 
             DrawApplyButton();
+        }
+
+        /// <summary>AutoCreateMissingGroups が有効で新規作成予定のグループがある場合、その件数と名前を表示する。</summary>
+        private void DrawGroupsToCreateSummary()
+        {
+            if (_groupsToCreate.Count == 0) return;
+
+            EditorGUILayout.LabelField(
+                $"新規作成されるグループ: {_groupsToCreate.Count} 件 ({string.Join(", ", _groupsToCreate)})",
+                EditorStyles.miniLabel);
         }
 
         /// <summary>

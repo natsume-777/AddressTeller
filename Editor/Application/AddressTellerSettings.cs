@@ -106,6 +106,26 @@ namespace Natsume777.AddressTeller.Editor
         }
 
         /// <summary>
+        /// true の場合、Apply 実行時にルールが参照するグループが Addressables に存在しなければ、
+        /// <see cref="AddressTellerGroupFactory.EnsureGroup"/> により DefaultGroup のスキーマ構成を
+        /// 複製して自動的に作成する。false（既定）の場合は従来通り <see cref="ValidationStatus.GroupNotFound"/>
+        /// として扱われ、書き込みは行われない。
+        /// Validate/Predict（dry-run）では ON でも実際にグループを作成せず、
+        /// <see cref="ValidationStatus.GroupWillBeCreated"/> として作成予定を提示するのみ。
+        /// </summary>
+        public static bool AutoCreateMissingGroups
+        {
+            get => AddressTellerSettingsAsset.instance._autoCreateMissingGroups;
+            set
+            {
+                var asset = AddressTellerSettingsAsset.instance;
+                if (asset._autoCreateMissingGroups == value) return;
+                asset._autoCreateMissingGroups = value;
+                asset.SaveChanges();
+            }
+        }
+
+        /// <summary>
         /// 無効化されているルールクラスの完全名（<see cref="System.Type.FullName"/>）一覧。
         /// ここに含まれるルールは Apply/Validate/スナップショット予測/Explain で評価対象から除外される。
         /// </summary>
@@ -151,6 +171,7 @@ namespace Natsume777.AddressTeller.Editor
         [SerializeField] internal string _snapshotFolder = "AddressTellerSnapshots";
         [SerializeField] internal bool _autoSnapshotBeforeApplyAll = true;
         [SerializeField] internal int _autoSnapshotRetention = 10;
+        [SerializeField] internal bool _autoCreateMissingGroups = false;
         [SerializeField] internal List<string> _disabledRuleClassNames = new();
 
         /// <summary>変更内容を ProjectSettings/AddressTellerSettings.asset へ書き出す。</summary>

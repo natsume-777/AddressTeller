@@ -136,10 +136,16 @@ namespace Natsume777.AddressTeller.Editor
             var cleanupStaleEntries = EditorGUILayout.ToggleLeft("マッチしなくなったエントリを削除する", AddressTellerSettings.CleanupStaleEntries);
             DrawDescription("どのルールにもマッチしなくなったアセットを、AddressTeller が管理するグループから自動的に削除します。ラベルは削除されません。");
 
+            EditorGUILayout.Space(4);
+
+            var autoCreateMissingGroups = EditorGUILayout.ToggleLeft("存在しないグループを自動作成する", AddressTellerSettings.AutoCreateMissingGroups);
+            DrawDescription("ルールが参照するグループが存在しない場合、Apply 実行時に DefaultGroup のスキーマ構成を複製して自動作成します。Validate/Predict では作成予定として表示するのみで、実際の作成は行いません。");
+
             if (EditorGUI.EndChangeCheck())
             {
                 AddressTellerSettings.PostprocessEnabled = postprocessEnabled;
                 AddressTellerSettings.CleanupStaleEntries = cleanupStaleEntries;
+                AddressTellerSettings.AutoCreateMissingGroups = autoCreateMissingGroups;
             }
 
             EditorGUILayout.Space();

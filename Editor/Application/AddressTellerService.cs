@@ -20,6 +20,11 @@ namespace Natsume777.AddressTeller.Editor
         /// 収集した全ルールをプロジェクト全アセットに適用し、問題のあった結果（衝突・グループ未検出・ルール例外など）を返す。
         /// settings が null の場合はプロジェクトのデフォルト設定を使う。Addressables 未設定の場合は空リストを返す。
         /// </summary>
+        /// <remarks>
+        /// 戻り値には <see cref="ValidationStatus.GroupWillBeCreated"/>（IsOk=true、AutoCreateMissingGroups による
+        /// グループ作成予定・実施の提示）が情報提供として含まれる場合がある。Apply の中止判定など「問題」として扱う場合は
+        /// <c>!result.IsOk</c> でフィルタすること。
+        /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(AddressableAssetSettings settings = null)
         {
             return ApplyAll(settings, NullProgressReporter.Instance);
@@ -103,8 +108,10 @@ namespace Natsume777.AddressTeller.Editor
                     var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
                     RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups);
-                    if (!result.IsOk)
+                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups, setup.AutoCreateMissingGroups);
+                    // GroupWillBeCreated は IsOk=true（グループ自動作成が成功した）だが、
+                    // 「作成された」ことを提示するため issues に情報として積む。
+                    if (!result.IsOk || result.Status == ValidationStatus.GroupWillBeCreated)
                         issues.Add(result);
                 }
 
@@ -151,6 +158,11 @@ namespace Natsume777.AddressTeller.Editor
         /// 全ルールを全アセットに対して検証し、問題のある結果を返す。
         /// settings が null の場合はプロジェクトのデフォルト設定を使う。Addressables 未設定の場合は空リストを返す。
         /// </summary>
+        /// <remarks>
+        /// 戻り値には <see cref="ValidationStatus.GroupWillBeCreated"/>（IsOk=true、AutoCreateMissingGroups による
+        /// グループ作成予定の提示）が情報提供として含まれる場合がある。Apply の中止判定など「問題」として扱う場合は
+        /// <c>!result.IsOk</c> でフィルタすること。
+        /// </remarks>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings = null)
         {
             return ValidateAll(settings, NullProgressReporter.Instance);
@@ -195,8 +207,10 @@ namespace Natsume777.AddressTeller.Editor
                 var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
                 RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                var result = AddressTellerApplier.Validate(ctx, resolution, setup.ExistingGroupNames);
-                if (!result.IsOk)
+                var result = AddressTellerApplier.Validate(ctx, resolution, setup.ExistingGroupNames, setup.AutoCreateMissingGroups);
+                // GroupWillBeCreated は IsOk=true（Apply をブロックしない）だが、
+                // 「作成予定N件」を提示するため issues に情報として積む。
+                if (!result.IsOk || result.Status == ValidationStatus.GroupWillBeCreated)
                     issues.Add(result);
             }
 

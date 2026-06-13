@@ -105,6 +105,7 @@ namespace Natsume777.AddressTeller.Editor
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
             var issues = new List<ValidationResult>();
+            var groupsToCreate = new HashSet<string>();
 
             foreach (var path in paths)
             {
@@ -115,7 +116,7 @@ namespace Natsume777.AddressTeller.Editor
                 var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
                 RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                var prediction = AddressTellerApplier.Predict(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups);
+                var prediction = AddressTellerApplier.Predict(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups, setup.AutoCreateMissingGroups);
 
                 switch (prediction.Action)
                 {
@@ -129,6 +130,9 @@ namespace Natsume777.AddressTeller.Editor
                         break;
                 }
 
+                if (prediction.Validation.Status == ValidationStatus.GroupWillBeCreated)
+                    groupsToCreate.Add(prediction.PredictedEntry.GroupName);
+
                 if (!prediction.Validation.IsOk)
                     issues.Add(prediction.Validation);
             }
@@ -137,7 +141,8 @@ namespace Natsume777.AddressTeller.Editor
             after.Entries.AddRange(afterMap.Values.OrderBy(e => e.Guid, StringComparer.Ordinal));
 
             var diff = Diff(before, after);
-            return new DryRunResult(diff, issues);
+            var sortedGroupsToCreate = groupsToCreate.OrderBy(g => g, StringComparer.Ordinal).ToList();
+            return new DryRunResult(diff, issues, sortedGroupsToCreate);
         }
 
         /// <summary>2つのスナップショットを GUID 単位で比較し、追加・削除・変更の差分を返す。</summary>
@@ -190,10 +195,17 @@ namespace Natsume777.AddressTeller.Editor
         public SnapshotDiff Diff { get; }
         public IReadOnlyList<ValidationResult> Issues { get; }
 
-        public DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues)
+        /// <summary>
+        /// AutoCreateMissingGroups が有効な状態で、この dry-run の対象に新規作成予定のグループ名集合。
+        /// Ordinal 順でソート済み。dry-run では実際の作成は行わない（副作用ゼロ）。
+        /// </summary>
+        public IReadOnlyList<string> GroupsToCreate { get; }
+
+        public DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues, IReadOnlyList<string> groupsToCreate = null)
         {
             Diff = diff;
             Issues = issues;
+            GroupsToCreate = groupsToCreate ?? Array.Empty<string>();
         }
     }
 }

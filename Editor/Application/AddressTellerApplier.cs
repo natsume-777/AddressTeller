@@ -53,10 +53,16 @@ namespace Natsume777.AddressTeller.Editor
         /// 書き込みは行わず、検証結果だけを返す。
         /// グループ存在チェックはテスト可能な existingGroupNames で行う。
         /// </summary>
+        /// <param name="autoCreateMissingGroups">
+        /// <see cref="AddressTellerSettings.AutoCreateMissingGroups"/> の値。true の場合、未存在グループは
+        /// <see cref="ValidationStatus.GroupNotFound"/> ではなく <see cref="ValidationStatus.GroupWillBeCreated"/>
+        /// として返す（Validate/Predict では実際の作成は行わない）。
+        /// </param>
         public static ValidationResult Validate(
             AssetContext context,
             AddressResolution resolution,
-            IEnumerable<string> existingGroupNames)
+            IEnumerable<string> existingGroupNames,
+            bool autoCreateMissingGroups = false)
         {
             if (resolution.AddressCandidates.Count == 0)
                 return new ValidationResult(context, ValidationStatus.Skipped, "No matching rule.");
@@ -86,6 +92,14 @@ namespace Natsume777.AddressTeller.Editor
 
             if (!existingGroupNames.Contains(candidate.GroupName))
             {
+                if (autoCreateMissingGroups)
+                {
+                    return new ValidationResult(
+                        context,
+                        ValidationStatus.GroupWillBeCreated,
+                        $"Group '{candidate.GroupName}' does not exist and will be created from DefaultGroup on Apply.");
+                }
+
                 return new ValidationResult(
                     context,
                     ValidationStatus.GroupNotFound,
@@ -107,14 +121,21 @@ namespace Natsume777.AddressTeller.Editor
         /// この中のグループに属していれば、<see cref="AddressTellerSettings.CleanupStaleEntries"/>
         /// が true のときエントリを削除する。
         /// </param>
+        /// <param name="autoCreateMissingGroups">
+        /// <see cref="AddressTellerSettings.AutoCreateMissingGroups"/> の値。true の場合、未存在グループを
+        /// <see cref="AddressTellerGroupFactory.EnsureGroup"/> で DefaultGroup から複製して作成し、
+        /// 成功すればそのまま書き込みを続行する。失敗した場合は <see cref="ValidationStatus.GroupCreationFailed"/>
+        /// を返し書き込みは行わない。
+        /// </param>
         public static ValidationResult Apply(
             AssetContext context,
             AddressResolution resolution,
             AddressableAssetSettings settings,
             IEnumerable<string> existingGroupNames,
-            IReadOnlyCollection<string> managedGroups = null)
+            IReadOnlyCollection<string> managedGroups = null,
+            bool autoCreateMissingGroups = false)
         {
-            var result = Validate(context, resolution, existingGroupNames);
+            var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups);
 
             if (result.Status == ValidationStatus.Skipped)
             {
@@ -126,13 +147,31 @@ namespace Natsume777.AddressTeller.Editor
                 return result;
             }
 
-            if (!result.IsOk)
+            AddressableAssetGroup group;
+            if (result.Status == ValidationStatus.GroupWillBeCreated)
+            {
+                // Validate では作成しないが、Apply ではここで実際に DefaultGroup を複製して作成する。
+                var candidateForCreate = resolution.AddressCandidates[0];
+                if (!AddressTellerGroupFactory.EnsureGroup(settings, candidateForCreate.GroupName, out group, out var failureReason))
+                {
+                    return new ValidationResult(
+                        context,
+                        ValidationStatus.GroupCreationFailed,
+                        $"Failed to auto-create group '{candidateForCreate.GroupName}' for '{context.Path}': {failureReason}");
+                }
+            }
+            else if (!result.IsOk)
+            {
                 return result;
+            }
+            else
+            {
+                var candidate = resolution.AddressCandidates[0];
+                group = settings.FindGroup(candidate.GroupName);
+            }
 
-            var candidate = resolution.AddressCandidates[0];
-            var group = settings.FindGroup(candidate.GroupName);
             var entry = settings.CreateOrMoveEntry(context.Guid, group);
-            entry.SetAddress(candidate.Address);
+            entry.SetAddress(resolution.AddressCandidates[0].Address);
 
             foreach (var label in resolution.Labels)
             {
@@ -149,14 +188,20 @@ namespace Natsume777.AddressTeller.Editor
         /// </summary>
         /// <param name="existingGroupNames">settings.groups から事前に構築したグループ名の集合。</param>
         /// <param name="managedGroups">AddressTeller のいずれかのルールが GroupName として参照しているグループ名の集合。</param>
+        /// <param name="autoCreateMissingGroups">
+        /// <see cref="AddressTellerSettings.AutoCreateMissingGroups"/> の値。true の場合、未存在グループは
+        /// <see cref="ValidationStatus.GroupNotFound"/> ではなく <see cref="ValidationStatus.GroupWillBeCreated"/>
+        /// となり（IsOk=true）、AddOrUpdate として予測される（実際の作成は行わない）。
+        /// </param>
         public static ApplyPrediction Predict(
             AssetContext context,
             AddressResolution resolution,
             AddressableAssetSettings settings,
             HashSet<string> existingGroupNames,
-            HashSet<string> managedGroups)
+            HashSet<string> managedGroups,
+            bool autoCreateMissingGroups = false)
         {
-            var result = Validate(context, resolution, existingGroupNames);
+            var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups);
 
             if (result.Status == ValidationStatus.Skipped)
             {

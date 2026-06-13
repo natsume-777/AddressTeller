@@ -62,7 +62,7 @@ namespace Natsume777.AddressTeller.Editor
                 }
 
                 var explanation = RuleEvaluator.Explain(ctx, setup.Entries);
-                var validation = AddressTellerApplier.Validate(ctx, explanation.Resolution, setup.ExistingGroupNames);
+                var validation = AddressTellerApplier.Validate(ctx, explanation.Resolution, setup.ExistingGroupNames, setup.AutoCreateMissingGroups);
 
                 results.Add(new AssetExplanation(path, isExcluded: false, explanation, validation));
             }

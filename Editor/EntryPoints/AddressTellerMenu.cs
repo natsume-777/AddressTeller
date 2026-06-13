@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEngine;
@@ -122,12 +123,15 @@ namespace Natsume777.AddressTeller.Editor
             }
 
             var validateIssues = AddressTellerService.ValidateAll(settings);
-            if (validateIssues.Count > 0)
+
+            // validateIssues には GroupWillBeCreated（IsOk=true、AutoCreateMissingGroups による作成予定の提示）が
+            // 含まれる場合がある。中止が必要なのは IsOk=false の要素のみ。
+            if (validateIssues.Any(i => !i.IsOk))
             {
                 foreach (var issue in validateIssues)
                     Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
 
-                Debug.LogError($"[AddressTeller] Validate で {validateIssues.Count} 件の問題が見つかったため、Apply を中止しました。");
+                Debug.LogError($"[AddressTeller] Validate で {validateIssues.Count(i => !i.IsOk)} 件の問題が見つかったため、Apply を中止しました。");
 
                 // Apply を行わないため、現在の状態のままの dry-run をレポート化する。
                 var paths = AssetDatabase.GetAllAssetPaths();
