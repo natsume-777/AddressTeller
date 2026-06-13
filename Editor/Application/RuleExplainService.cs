@@ -16,12 +16,12 @@ namespace Natsume777.AddressTeller.Editor
         public bool IsExcluded { get; }
 
         /// <summary>ルールごとの評価詳細。除外時は null。</summary>
-        public RuleExplanation Explanation { get; }
+        internal RuleExplanation Explanation { get; }
 
         /// <summary>Apply/Validate と同一ロジックによる結論。除外時は null。</summary>
         public ValidationResult Validation { get; }
 
-        public AssetExplanation(string assetPath, bool isExcluded, RuleExplanation explanation, ValidationResult validation)
+        internal AssetExplanation(string assetPath, bool isExcluded, RuleExplanation explanation, ValidationResult validation)
         {
             AssetPath = assetPath;
             IsExcluded = isExcluded;

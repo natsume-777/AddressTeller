@@ -8,7 +8,7 @@ namespace Natsume777.AddressTeller
     /// Addressables API に依存しないモデル層。
     /// ソート・競合チェック・書き込みは呼び出し側の責務。
     /// </summary>
-    public static class RuleEvaluator
+    internal static class RuleEvaluator
     {
         public static AddressResolution Evaluate(AssetContext context, IEnumerable<AddressRuleEntry> entries)
         {

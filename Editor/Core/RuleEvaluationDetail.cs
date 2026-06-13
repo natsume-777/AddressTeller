@@ -6,7 +6,7 @@ namespace Natsume777.AddressTeller
     /// <summary>
     /// ルール1件×アセット1件の評価結果。Explain 機能で各ルールの判定理由を表示するために使う。
     /// </summary>
-    public readonly struct RuleEvaluationDetail
+    internal readonly struct RuleEvaluationDetail
     {
         /// <summary>このルールの識別文字列（<see cref="AddressRuleEntry.DescribeSource"/> の結果）。</summary>
         public string RuleSource { get; }

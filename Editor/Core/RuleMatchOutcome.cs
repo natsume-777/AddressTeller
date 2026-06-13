@@ -3,7 +3,7 @@ namespace Natsume777.AddressTeller
     /// <summary>
     /// 1ルール×1アセットの評価結果。
     /// </summary>
-    public enum RuleMatchOutcome
+    internal enum RuleMatchOutcome
     {
         /// <summary>Predicate が true で、エラーなく評価できた。</summary>
         Matched,

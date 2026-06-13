@@ -5,7 +5,7 @@ namespace Natsume777.AddressTeller
     /// <summary>
     /// 1アセットに対する全ルールの評価結果。Explain 機能の表示単位。
     /// </summary>
-    public sealed class RuleExplanation
+    internal sealed class RuleExplanation
     {
         public AssetContext Context { get; }
 

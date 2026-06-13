@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Natsume777.AddressTeller
 {
-    public sealed class AddressRuleBuilderImpl : IAddressRuleBuilder
+    internal sealed class AddressRuleBuilderImpl : IAddressRuleBuilder
     {
         private readonly string _sourceClass;
         private readonly List<AddressRuleGroupBuilder> _groupBuilders = new List<AddressRuleGroupBuilder>();
