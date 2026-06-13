@@ -1,14 +1,113 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
 namespace Natsume777.AddressTeller.Editor
 {
     /// <summary>
+    /// 1つの <see cref="AddressRuleEntry"/>（Configure() 内の Group() 1回分）から抽出した表示用メタ情報。
+    /// </summary>
+    internal readonly struct RuleEntryOverview
+    {
+        /// <summary>Group() に渡したグループ名。</summary>
+        public string GroupName { get; }
+
+        /// <summary>Where に渡した説明文。未指定の場合は null。</summary>
+        public string Description { get; }
+
+        /// <summary>Address() が呼ばれていれば true（アドレスを付与する）。</summary>
+        public bool HasAddress { get; }
+
+        /// <summary>Label() が呼ばれた回数。</summary>
+        public int LabelCount { get; }
+
+        /// <summary>Configure() 内で Group() が呼ばれた順序（0始まり）。Description が null の場合のフォールバック表示に使う。</summary>
+        public int RuleIndex { get; }
+
+        public RuleEntryOverview(string groupName, string description, bool hasAddress, int labelCount, int ruleIndex)
+        {
+            GroupName = groupName;
+            Description = description;
+            HasAddress = hasAddress;
+            LabelCount = labelCount;
+            RuleIndex = ruleIndex;
+        }
+    }
+
+    /// <summary>
+    /// AddressRuleBase 1クラス分の概要。Configure() が例外を投げた場合は <see cref="ConfigureError"/> に
+    /// メッセージが入り、<see cref="Entries"/> は空になる。
+    /// </summary>
+    internal readonly struct RuleClassOverview
+    {
+        /// <summary>ルールクラスの型。</summary>
+        public Type RuleType { get; }
+
+        /// <summary>評価順序。</summary>
+        public int Order { get; }
+
+        /// <summary>Configure() が成功した場合のグループ一覧。例外時は空。</summary>
+        public IReadOnlyList<RuleEntryOverview> Entries { get; }
+
+        /// <summary>Configure() 実行時に発生した例外のメッセージ。発生していない場合は null。</summary>
+        public string ConfigureError { get; }
+
+        public RuleClassOverview(Type ruleType, int order, IReadOnlyList<RuleEntryOverview> entries, string configureError)
+        {
+            RuleType = ruleType;
+            Order = order;
+            Entries = entries;
+            ConfigureError = configureError;
+        }
+    }
+
+    /// <summary>
+    /// 同一 Order 値を持つルールクラス名のグループ。Order 重複警告の表示に使う。
+    /// </summary>
+    internal readonly struct DuplicateOrderGroup
+    {
+        public int Order { get; }
+        public IReadOnlyList<string> RuleClassNames { get; }
+
+        public DuplicateOrderGroup(int order, IReadOnlyList<string> ruleClassNames)
+        {
+            Order = order;
+            RuleClassNames = ruleClassNames;
+        }
+    }
+
+    /// <summary>
+    /// Project Settings 画面で表示するルール概要一式。<see cref="AddressTellerProjectSettings.BuildRuleOverviewCache"/>
+    /// で構築し、構築結果は OnGUI から static キャッシュとして参照する想定（OnGUI 内で毎フレーム
+    /// Configure() を実行しないため）。
+    /// </summary>
+    internal readonly struct RuleOverviewCache
+    {
+        /// <summary>Order 昇順・同順位はクラス名昇順のルール概要一覧。</summary>
+        public IReadOnlyList<RuleClassOverview> Rules { get; }
+
+        /// <summary>Order が重複しているルールクラスのグループ一覧。</summary>
+        public IReadOnlyList<DuplicateOrderGroup> DuplicateOrders { get; }
+
+        public RuleOverviewCache(IReadOnlyList<RuleClassOverview> rules, IReadOnlyList<DuplicateOrderGroup> duplicateOrders)
+        {
+            Rules = rules;
+            DuplicateOrders = duplicateOrders;
+        }
+    }
+
+    /// <summary>
     /// Project Settings ウィンドウに AddressTeller の設定項目・ルール一覧を表示する。
     /// </summary>
     internal static class AddressTellerProjectSettings
     {
+        // ルール概要キャッシュ。初回構築・手動更新トリガで AddressTellerProjectSettings 自身が再構築する
+        // （UI 組み込みは別Stepで対応）。ドメインリロードで自動的にリセットされる。
+        private static RuleOverviewCache? s_ruleOverviewCache;
+
         [SettingsProvider]
         public static SettingsProvider CreateSettingsProvider()
         {
@@ -129,6 +228,68 @@ namespace Natsume777.AddressTeller.Editor
             EditorGUI.indentLevel++;
             EditorGUILayout.LabelField(text, EditorStyles.wordWrappedMiniLabel);
             EditorGUI.indentLevel--;
+        }
+
+        /// <summary>
+        /// 現在キャッシュされているルール概要を返す。未構築の場合は <see cref="RefreshRuleOverviewCache"/> で構築する。
+        /// </summary>
+        internal static RuleOverviewCache GetRuleOverviewCache()
+            => s_ruleOverviewCache ??= RefreshRuleOverviewCache();
+
+        /// <summary>
+        /// <see cref="RuleCollector.CollectRules()"/> からルール概要キャッシュを再構築し、static キャッシュへ格納する。
+        /// </summary>
+        internal static RuleOverviewCache RefreshRuleOverviewCache()
+        {
+            var cache = BuildRuleOverviewCache(RuleCollector.CollectRules());
+            s_ruleOverviewCache = cache;
+            return cache;
+        }
+
+        /// <summary>
+        /// 与えられたルール一覧から概要キャッシュを構築する純粋関数。Configure() はルールごとに try/catch し、
+        /// 例外が発生したルールも他のルールの処理をブロックせずスキップする（例外時は <see cref="RuleClassOverview.ConfigureError"/>
+        /// にメッセージを記録し <see cref="RuleClassOverview.Entries"/> は空）。
+        /// </summary>
+        internal static RuleOverviewCache BuildRuleOverviewCache(IReadOnlyList<AddressRuleBase> rules)
+        {
+            var ruleOverviews = new List<RuleClassOverview>(rules.Count);
+
+            foreach (var rule in rules)
+            {
+                var type = rule.GetType();
+                IReadOnlyList<RuleEntryOverview> entryOverviews = Array.Empty<RuleEntryOverview>();
+                string configureError = null;
+
+                try
+                {
+                    var builder = new AddressRuleBuilderImpl(type.Name);
+                    rule.Configure(builder);
+                    entryOverviews = builder.Entries
+                        .Select(e => new RuleEntryOverview(e.GroupName, e.Description, e.AddressSelector != null, e.LabelSelectors.Count, e.RuleIndex))
+                        .ToArray();
+                }
+                catch (Exception ex)
+                {
+                    configureError = $"{ex.GetType().Name}: {ex.Message}";
+                }
+
+                ruleOverviews.Add(new RuleClassOverview(type, rule.Order, entryOverviews, configureError));
+            }
+
+            ruleOverviews = ruleOverviews
+                .OrderBy(r => r.Order)
+                .ThenBy(r => r.RuleType.Name, StringComparer.Ordinal)
+                .ToList();
+
+            var duplicateOrders = RuleCollector.FindDuplicateOrders(rules)
+                .OrderBy(g => g.Key)
+                .Select(g => new DuplicateOrderGroup(
+                    g.Key,
+                    g.Select(r => r.GetType().Name).OrderBy(n => n, StringComparer.Ordinal).ToArray()))
+                .ToArray();
+
+            return new RuleOverviewCache(ruleOverviews, duplicateOrders);
         }
 
         private static MonoScript FindScriptForType(System.Type type)
