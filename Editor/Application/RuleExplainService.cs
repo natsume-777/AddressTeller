@@ -42,10 +42,21 @@ namespace Natsume777.AddressTeller.Editor
         /// </summary>
         public static IReadOnlyList<AssetExplanation> Explain(IReadOnlyList<string> assetPaths, AddressableAssetSettings settings = null)
         {
+            return Explain(assetPaths, settings, RuleCollector.CollectEnabledRules());
+        }
+
+        /// <summary>
+        /// <see cref="Explain(IReadOnlyList{string}, AddressableAssetSettings)"/> に
+        /// 評価対象ルールの注入を追加したオーバーロード。リフレクションによるルール収集
+        /// （<see cref="RuleCollector.CollectEnabledRules()"/>）を経由せず、呼び出し側が用意した
+        /// ルール一覧をそのまま評価に使う（テスト等での利用を想定）。
+        /// </summary>
+        public static IReadOnlyList<AssetExplanation> Explain(IReadOnlyList<string> assetPaths, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
+        {
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null) return Array.Empty<AssetExplanation>();
+            rules ??= Array.Empty<AddressRuleBase>();
 
-            var rules = RuleCollector.CollectEnabledRules();
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
             var results = new List<AssetExplanation>(assetPaths.Count);

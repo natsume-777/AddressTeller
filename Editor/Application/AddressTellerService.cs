@@ -69,6 +69,17 @@ namespace Natsume777.AddressTeller.Editor
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress)
         {
+            return ApplyAll(paths, settings, progress, RuleCollector.CollectEnabledRules());
+        }
+
+        /// <summary>
+        /// <see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings, IProgressReporter)"/> に
+        /// 評価対象ルールの注入を追加したオーバーロード。リフレクションによるルール収集
+        /// （<see cref="RuleCollector.CollectEnabledRules()"/>）を経由せず、呼び出し側が用意した
+        /// ルール一覧をそのまま評価に使う（テスト等での利用を想定）。
+        /// </summary>
+        public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules)
+        {
             if (s_isApplying) return Array.Empty<ValidationResult>();
             s_isApplying = true;
             try
@@ -77,8 +88,8 @@ namespace Natsume777.AddressTeller.Editor
                 if (settings == null) return Array.Empty<ValidationResult>();
 
                 progress ??= NullProgressReporter.Instance;
+                rules ??= Array.Empty<AddressRuleBase>();
 
-                var rules = RuleCollector.CollectEnabledRules();
                 var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
                 // ManagedGroups（CleanupStaleEntriesの対象判定）は有効化されているルールのグループのみが対象。
                 // 無効化中のルールが管理するグループのエントリはApplyAllでは掃除対象外（managed外扱い）になるが、
@@ -140,12 +151,22 @@ namespace Natsume777.AddressTeller.Editor
         /// </remarks>
         public static void RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings = null)
         {
-            settings ??= AddressableAssetSettingsDefaultObject.Settings;
-            if (settings == null) return;
-
             // ルールの On/Off 設定に関わらず、削除追従の所有権判定（managedGroups）は全ルールを対象にする。
             // 無効化されたルールが過去に作ったエントリも、設定の有無に関係なく一貫して掃除対象として認識する必要があるため。
-            var rules = RuleCollector.CollectRules();
+            RemoveEntriesForDeletedAssets(deletedGuids, settings, RuleCollector.CollectRules());
+        }
+
+        /// <summary>
+        /// <see cref="RemoveEntriesForDeletedAssets(IEnumerable{string}, AddressableAssetSettings)"/> に
+        /// 評価対象ルールの注入を追加したオーバーロード。所有権判定（managedGroups）に使うルール一覧を
+        /// 呼び出し側がそのまま指定する（テスト等での利用を想定）。収集方法（有効/無効の絞り込み）の判断は行わない。
+        /// </summary>
+        public static void RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
+        {
+            settings ??= AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null) return;
+            rules ??= Array.Empty<AddressRuleBase>();
+
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
             foreach (var guid in deletedGuids)
@@ -176,12 +197,23 @@ namespace Natsume777.AddressTeller.Editor
         /// </summary>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings, IProgressReporter progress)
         {
+            return ValidateAll(settings, progress, RuleCollector.CollectEnabledRules());
+        }
+
+        /// <summary>
+        /// <see cref="ValidateAll(AddressableAssetSettings, IProgressReporter)"/> に
+        /// 評価対象ルールの注入を追加したオーバーロード。リフレクションによるルール収集
+        /// （<see cref="RuleCollector.CollectEnabledRules()"/>）を経由せず、呼び出し側が用意した
+        /// ルール一覧をそのまま評価に使う（テスト等での利用を想定）。
+        /// </summary>
+        public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules)
+        {
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null) return Array.Empty<ValidationResult>();
 
             progress ??= NullProgressReporter.Instance;
+            rules ??= Array.Empty<AddressRuleBase>();
 
-            var rules = RuleCollector.CollectEnabledRules();
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
             var issues = new List<ValidationResult>();
