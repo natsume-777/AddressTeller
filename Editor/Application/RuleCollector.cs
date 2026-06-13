@@ -57,5 +57,24 @@ namespace Natsume777.AddressTeller.Editor
         /// <summary>同一 Order 値を持つルールクラスのグループを返す（Order が重複していないものは含まない）。</summary>
         public static IEnumerable<IGrouping<int, AddressRuleBase>> FindDuplicateOrders(IReadOnlyList<AddressRuleBase> rules)
             => rules.GroupBy(r => r.Order).Where(g => g.Count() > 1);
+
+        /// <summary>
+        /// <see cref="CollectRules()"/>（キャッシュ済み）から、Project Settings で無効化されたルールクラスを
+        /// 除外した一覧を毎回新しく生成して返す。リフレクションは再実行しない。
+        /// </summary>
+        public static IReadOnlyList<AddressRuleBase> CollectEnabledRules()
+            => CollectEnabledRules(CollectRules(), AddressTellerSettings.DisabledRuleClassNames);
+
+        /// <summary>
+        /// <paramref name="rules"/> から <paramref name="disabledClassNames"/> に含まれる型のルールを除外する。
+        /// Order 順は維持される。テストや特定スコープでのフィルタ計算に使う。
+        /// </summary>
+        public static IReadOnlyList<AddressRuleBase> CollectEnabledRules(IReadOnlyList<AddressRuleBase> rules, IReadOnlyList<string> disabledClassNames)
+        {
+            if (disabledClassNames == null || disabledClassNames.Count == 0) return rules.ToList();
+
+            var disabled = new HashSet<string>(disabledClassNames);
+            return rules.Where(r => !disabled.Contains(r.GetType().FullName)).ToList();
+        }
     }
 }

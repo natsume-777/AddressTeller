@@ -100,5 +100,52 @@ namespace Natsume777.AddressTeller.Editor.Tests
 
             Assert.IsFalse(duplicates.Any(g => g.Key == -5 || g.Key == 10));
         }
+
+        [Test]
+        public void CollectEnabledRules_ExcludesDisabledClassByFullName()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var disabled = new[] { typeof(LowPriorityRule).FullName };
+
+            var enabled = RuleCollector.CollectEnabledRules(rules, disabled);
+
+            Assert.IsFalse(enabled.Any(r => r is LowPriorityRule));
+            Assert.IsTrue(enabled.Any(r => r is HighPriorityRule));
+            Assert.IsTrue(enabled.Any(r => r is DefaultOrderRule));
+        }
+
+        [Test]
+        public void CollectEnabledRules_KeepsOrderAscending()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var disabled = new[] { typeof(DefaultOrderRule).FullName };
+
+            var enabled = RuleCollector.CollectEnabledRules(rules, disabled);
+
+            for (int i = 1; i < enabled.Count; i++)
+                Assert.LessOrEqual(enabled[i - 1].Order, enabled[i].Order,
+                    $"enabled[{i - 1}].Order={enabled[i - 1].Order} > enabled[{i}].Order={enabled[i].Order}");
+        }
+
+        [Test]
+        public void CollectEnabledRules_UnknownTypeNameInDisabledList_HasNoEffect()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var disabled = new[] { "Some.Nonexistent.Namespace.NoSuchRule" };
+
+            var enabled = RuleCollector.CollectEnabledRules(rules, disabled);
+
+            Assert.AreEqual(rules.Count, enabled.Count);
+        }
+
+        [Test]
+        public void CollectEnabledRules_EmptyDisabledList_ReturnsAllRules()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+
+            var enabled = RuleCollector.CollectEnabledRules(rules, new string[0]);
+
+            Assert.AreEqual(rules.Count, enabled.Count);
+        }
     }
 }

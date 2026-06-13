@@ -89,7 +89,7 @@ namespace Natsume777.AddressTeller.Editor
         /// Apply を実行せずに、適用後の状態を表すスナップショットを現在の状態との差分として計算する。
         /// </summary>
         public static DryRunResult BuildPredictedSnapshot(AddressableAssetSettings settings, IEnumerable<string> paths)
-            => BuildPredictedSnapshot(settings, paths, RuleCollector.CollectRules());
+            => BuildPredictedSnapshot(settings, paths, RuleCollector.CollectEnabledRules());
 
         /// <summary>
         /// ルール一覧を明示的に指定する版。テストや特定スコープでの dry-run 計算に使う。

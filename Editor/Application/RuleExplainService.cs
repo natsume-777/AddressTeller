@@ -45,7 +45,7 @@ namespace Natsume777.AddressTeller.Editor
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null) return Array.Empty<AssetExplanation>();
 
-            var rules = RuleCollector.CollectRules();
+            var rules = RuleCollector.CollectEnabledRules();
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
             var results = new List<AssetExplanation>(assetPaths.Count);

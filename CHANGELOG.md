@@ -7,6 +7,7 @@
 
 ### Added
 
+- Project Settings 画面のルール一覧に各ルールクラスの有効/無効トグルを追加。有効/無効の状態は `ProjectSettings/AddressTellerSettings.asset` に保存される。無効化したルールは `Apply All` / `Validate` / `Apply with Validate` / `Explain` / スナップショットの dry-run 予測の評価対象から除外される。ただし資産削除時のエントリ削除追従（所有権判定）は、ルールの有効/無効に関わらず全ルールを対象に行われるため、無効化中も過去にルールが管理したエントリを正しく追跡する。
 - `Match` 静的クラス: 条件述語を構築する頻出ヘルパー。`InFolder(string)`（フォルダ路下）/ `OfType<T>()`（型フィルタ）/ `Glob(string)`（ワイルドカード照合）を提供し、`And(AssetCondition)` で合成可能。各ヘルパーは人間可読な説明（`"InFolder(Assets/Characters)"`など）を自動生成し、Explain ウィンドウやエラーメッセージに反映される。`All()` で常に真の条件を返すため、条件なしルールも明示的に記述できる。
 - `Naming` 静的クラス: アドレス生成時の頻出パターン。`FileName()`（拡張子付きファイル名）/ `FileNameWithoutExtension()`（拡張子除き）/ `ParentFolderName()`（親フォルダ名）/ `RelativePath(string root)`（相対パス生成）を提供し、`Address()` メソッドに渡せる。パス正規化（大文字小文字・区切り文字）の手間を削減できる。
 - `AssetContext` に新規プロパティを追加: `Extension`（ファイル拡張子）/ `IsInFolder(string)`（フォルダ路下判定）/ `PathSegments`（パスをスラッシュで分割した文字列配列）/ `RelativePathFrom(string root)`（指定フォルダ起点の相対パス）。`Where()` で生ラムダを書く場合、これらを活用することでパス解析の定型コードを簡潔に記述できる。

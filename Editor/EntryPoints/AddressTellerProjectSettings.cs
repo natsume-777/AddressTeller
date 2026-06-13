@@ -86,8 +86,20 @@ namespace Natsume777.AddressTeller.Editor
             foreach (var rule in rules)
             {
                 var type = rule.GetType();
+                var enabled = AddressTellerSettings.IsRuleEnabled(type.FullName);
+
                 EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField($"{type.Name}  (Order: {rule.Order})", EditorStyles.wordWrappedLabel);
+
+                EditorGUI.BeginChangeCheck();
+                var toggled = EditorGUILayout.ToggleLeft(GUIContent.none, enabled, GUILayout.Width(20));
+                if (EditorGUI.EndChangeCheck())
+                    AddressTellerSettings.SetRuleEnabled(type.FullName, toggled);
+
+                using (new EditorGUI.DisabledScope(!enabled))
+                {
+                    EditorGUILayout.LabelField($"{type.Name}  (Order: {rule.Order})", EditorStyles.wordWrappedLabel);
+                }
+
                 GUILayout.FlexibleSpace();
 
                 var script = FindScriptForType(type);

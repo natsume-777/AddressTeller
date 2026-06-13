@@ -73,9 +73,12 @@ namespace Natsume777.AddressTeller.Editor
 
                 progress ??= NullProgressReporter.Instance;
 
-                var rules = RuleCollector.CollectRules();
+                var rules = RuleCollector.CollectEnabledRules();
                 RuleEvaluationPipeline.WarnOnDuplicateOrders(rules);
                 var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
+                // ManagedGroups（CleanupStaleEntriesの対象判定）は有効化されているルールのグループのみが対象。
+                // 無効化中のルールが管理するグループのエントリはApplyAllでは掃除対象外（managed外扱い）になるが、
+                // 資産削除時のRemoveEntriesForDeletedAssetsは全ルール対象で掃除するため、両者の間に非対称が存在する。
 
                 var issues = new List<ValidationResult>();
 
@@ -132,6 +135,8 @@ namespace Natsume777.AddressTeller.Editor
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null) return;
 
+            // ルールの On/Off 設定に関わらず、削除追従の所有権判定（managedGroups）は全ルールを対象にする。
+            // 無効化されたルールが過去に作ったエントリも、設定の有無に関係なく一貫して掃除対象として認識する必要があるため。
             var rules = RuleCollector.CollectRules();
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
@@ -163,7 +168,7 @@ namespace Natsume777.AddressTeller.Editor
 
             progress ??= NullProgressReporter.Instance;
 
-            var rules = RuleCollector.CollectRules();
+            var rules = RuleCollector.CollectEnabledRules();
             RuleEvaluationPipeline.WarnOnDuplicateOrders(rules);
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 

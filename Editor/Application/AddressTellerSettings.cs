@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
@@ -103,6 +104,39 @@ namespace Natsume777.AddressTeller.Editor
                 asset.SaveChanges();
             }
         }
+
+        /// <summary>
+        /// 無効化されているルールクラスの完全名（<see cref="System.Type.FullName"/>）一覧。
+        /// ここに含まれるルールは Apply/Validate/スナップショット予測/Explain で評価対象から除外される。
+        /// </summary>
+        public static IReadOnlyList<string> DisabledRuleClassNames
+            => AddressTellerSettingsAsset.instance._disabledRuleClassNames;
+
+        /// <summary>
+        /// 指定したルールクラスが有効かどうかを返す。<see cref="DisabledRuleClassNames"/> に
+        /// 含まれていない場合は既定で true（有効）。
+        /// </summary>
+        public static bool IsRuleEnabled(string ruleClassFullName)
+            => !AddressTellerSettingsAsset.instance._disabledRuleClassNames.Contains(ruleClassFullName);
+
+        /// <summary>指定したルールクラスの有効・無効を切り替える。</summary>
+        public static void SetRuleEnabled(string ruleClassFullName, bool enabled)
+        {
+            var asset = AddressTellerSettingsAsset.instance;
+            var list = asset._disabledRuleClassNames;
+
+            if (enabled)
+            {
+                if (!list.Remove(ruleClassFullName)) return;
+            }
+            else
+            {
+                if (list.Contains(ruleClassFullName)) return;
+                list.Add(ruleClassFullName);
+            }
+
+            asset.SaveChanges();
+        }
     }
 
     /// <summary>
@@ -117,6 +151,7 @@ namespace Natsume777.AddressTeller.Editor
         [SerializeField] internal string _snapshotFolder = "AddressTellerSnapshots";
         [SerializeField] internal bool _autoSnapshotBeforeApplyAll = true;
         [SerializeField] internal int _autoSnapshotRetention = 10;
+        [SerializeField] internal List<string> _disabledRuleClassNames = new();
 
         /// <summary>変更内容を ProjectSettings/AddressTellerSettings.asset へ書き出す。</summary>
         internal void SaveChanges() => Save(true);
