@@ -36,5 +36,26 @@ namespace Natsume777.AddressTeller.Editor.Tests
 
             Assert.AreEqual(0, restored.Entries.Count);
         }
+
+        [Test]
+        public void FromJson_LegacyFormatWithoutMetadata_FallsBackToDefaults()
+        {
+            // メタデータフィールドが存在しない旧形式の JSON。
+            const string legacyJson = @"{""Entries"":[{""Guid"":""guid1"",""Address"":""Characters/Player"",""GroupName"":""Characters"",""Labels"":[""preload""]}]}";
+
+            var restored = AddressTellerSnapshot.FromJson(legacyJson);
+
+            Assert.AreEqual(1, restored.Entries.Count);
+            Assert.AreEqual("guid1", restored.Entries[0].Guid);
+            Assert.AreEqual("Characters/Player", restored.Entries[0].Address);
+            Assert.AreEqual("Characters", restored.Entries[0].GroupName);
+            CollectionAssert.AreEqual(new[] { "preload" }, restored.Entries[0].Labels);
+
+            Assert.AreEqual(0, restored.SchemaVersion);
+            Assert.AreEqual("", restored.Comment);
+            Assert.AreEqual("", restored.CapturedAtIso);
+            Assert.AreEqual("", restored.UnityVersion);
+            Assert.AreEqual("", restored.PackageVersion);
+        }
     }
 }

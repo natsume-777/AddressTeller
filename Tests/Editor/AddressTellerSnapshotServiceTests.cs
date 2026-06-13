@@ -1,5 +1,7 @@
 using NUnit.Framework;
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEditor.AddressableAssets.Settings;
 
@@ -47,6 +49,156 @@ namespace Natsume777.AddressTeller.Editor.Tests
             Assert.AreEqual("Foo", captured.Address);
             Assert.AreEqual("GroupA", captured.GroupName);
             CollectionAssert.Contains(captured.Labels, "preload");
+        }
+
+        [Test]
+        public void Capture_WithComment_SetsMetadata()
+        {
+            var entry = _settings.CreateOrMoveEntry("guid1", _groupA);
+            entry.SetAddress("Foo");
+
+            var before = DateTime.UtcNow;
+            var snapshot = AddressTellerSnapshotService.Capture(_settings, "test");
+            var after = DateTime.UtcNow;
+
+            Assert.AreEqual("test", snapshot.Comment);
+            Assert.AreEqual(1, snapshot.SchemaVersion);
+            Assert.AreEqual(UnityEngine.Application.unityVersion, snapshot.UnityVersion);
+
+            Assert.IsFalse(string.IsNullOrEmpty(snapshot.CapturedAtIso));
+            var capturedAt = DateTime.Parse(snapshot.CapturedAtIso, null, System.Globalization.DateTimeStyles.RoundtripKind);
+            Assert.GreaterOrEqual(capturedAt, before.AddSeconds(-1));
+            Assert.LessOrEqual(capturedAt, after.AddSeconds(1));
+        }
+
+        [Test]
+        public void Capture_WithoutComment_DefaultsToEmptyComment()
+        {
+            var snapshot = AddressTellerSnapshotService.Capture(_settings);
+
+            Assert.AreEqual("", snapshot.Comment);
+            Assert.AreEqual(1, snapshot.SchemaVersion);
+        }
+
+        [Test]
+        public void LoadFromFile_MissingFile_ReturnsError()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"AddressTellerSnapshotTests_Missing_{Guid.NewGuid():N}.json");
+
+            var result = AddressTellerSnapshotService.LoadFromFile(path, out var snapshot, out var error);
+
+            Assert.IsFalse(result);
+            Assert.IsNull(snapshot);
+            Assert.IsFalse(string.IsNullOrEmpty(error));
+        }
+
+        [Test]
+        public void LoadFromFile_BrokenJson_ReturnsError()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"AddressTellerSnapshotTests_Broken_{Guid.NewGuid():N}.json");
+            File.WriteAllText(path, "{ this is not valid json");
+
+            try
+            {
+                var result = AddressTellerSnapshotService.LoadFromFile(path, out var snapshot, out var error);
+
+                Assert.IsFalse(result);
+                Assert.IsNull(snapshot);
+                Assert.IsFalse(string.IsNullOrEmpty(error));
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void LoadFromFile_FutureSchemaVersion_ReturnsError()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"AddressTellerSnapshotTests_Future_{Guid.NewGuid():N}.json");
+            var snapshot = AddressTellerSnapshotService.Capture(_settings, "future");
+            snapshot.SchemaVersion = AddressTellerSnapshotService.CurrentSchemaVersion + 1;
+            File.WriteAllText(path, snapshot.ToJson());
+
+            try
+            {
+                var result = AddressTellerSnapshotService.LoadFromFile(path, out var loaded, out var error);
+
+                Assert.IsFalse(result);
+                Assert.IsNull(loaded);
+                Assert.IsFalse(string.IsNullOrEmpty(error));
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void LoadFromFile_EntryWithEmptyGuid_ReturnsError()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"AddressTellerSnapshotTests_EmptyGuid_{Guid.NewGuid():N}.json");
+            var snapshot = AddressTellerSnapshotService.Capture(_settings, "empty-guid");
+            snapshot.Entries.Add(new SnapshotEntry { Guid = "", Address = "Foo", GroupName = "Default Local Group" });
+            File.WriteAllText(path, snapshot.ToJson());
+
+            try
+            {
+                var result = AddressTellerSnapshotService.LoadFromFile(path, out var loaded, out var error);
+
+                Assert.IsFalse(result);
+                Assert.IsNull(loaded);
+                Assert.IsFalse(string.IsNullOrEmpty(error));
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void LoadFromFile_DuplicateGuid_ReturnsError()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"AddressTellerSnapshotTests_DupGuid_{Guid.NewGuid():N}.json");
+            var snapshot = AddressTellerSnapshotService.Capture(_settings, "dup-guid");
+            var duplicate = new SnapshotEntry { Guid = "duplicate-guid", Address = "Foo", GroupName = "Default Local Group" };
+            snapshot.Entries.Add(duplicate);
+            snapshot.Entries.Add(duplicate);
+            File.WriteAllText(path, snapshot.ToJson());
+
+            try
+            {
+                var result = AddressTellerSnapshotService.LoadFromFile(path, out var loaded, out var error);
+
+                Assert.IsFalse(result);
+                Assert.IsNull(loaded);
+                Assert.IsFalse(string.IsNullOrEmpty(error));
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void LoadFromFile_ValidJson_ReturnsSnapshot()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"AddressTellerSnapshotTests_Valid_{Guid.NewGuid():N}.json");
+            var snapshot = AddressTellerSnapshotService.Capture(_settings, "valid");
+            File.WriteAllText(path, snapshot.ToJson());
+
+            try
+            {
+                var result = AddressTellerSnapshotService.LoadFromFile(path, out var loaded, out var error);
+
+                Assert.IsTrue(result);
+                Assert.IsNull(error);
+                Assert.AreEqual("valid", loaded.Comment);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
         }
 
         [Test]

@@ -16,7 +16,9 @@ namespace Natsume777.AddressTeller.Editor
     {
         private const string FilePrefix = "AddressTellerSnapshot_";
         private const string FileExtension = ".json";
-        private const string AutoFolderName = "Auto";
+
+        /// <summary>SnapshotFolder 配下の自動スナップショット用サブフォルダ名。SnapshotFileCatalog から自動判定にも使う。</summary>
+        internal const string AutoFolderName = "Auto";
 
         /// <summary>SnapshotFolder/Auto の絶対パスを返す。フォルダがなければ作成する。</summary>
         public static string GetAutoSnapshotFolder()
@@ -115,31 +117,9 @@ namespace Natsume777.AddressTeller.Editor
         /// </summary>
         public static AddressTellerSnapshot LoadAuto(string path)
         {
-            string json;
-            try
+            if (!AddressTellerSnapshotService.LoadFromFile(path, out var snapshot, out var error))
             {
-                json = File.ReadAllText(path);
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[AddressTeller] AutoSnapshot: スナップショットの読み込みに失敗しました: {path} ({e.Message})");
-                return null;
-            }
-
-            AddressTellerSnapshot snapshot;
-            try
-            {
-                snapshot = AddressTellerSnapshot.FromJson(json);
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[AddressTeller] AutoSnapshot: スナップショットの解析に失敗しました: {path} ({e.Message})");
-                return null;
-            }
-
-            if (snapshot == null || snapshot.Entries == null)
-            {
-                Debug.LogWarning($"[AddressTeller] AutoSnapshot: スナップショットの内容が不正です: {path}");
+                Debug.LogWarning($"[AddressTeller] AutoSnapshot: {error}");
                 return null;
             }
 

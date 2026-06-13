@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEditor.AddressableAssets.Settings;
+using UnityEngine;
 
 namespace Natsume777.AddressTeller.Editor
 {
@@ -20,8 +22,17 @@ namespace Natsume777.AddressTeller.Editor
     /// </summary>
     public static class AddressTellerSnapshotService
     {
+        /// <summary>現在サポートしているスナップショットのスキーマバージョン。</summary>
+        public const int CurrentSchemaVersion = 1;
+
         /// <summary>現在の Addressables の状態をスナップショットとして収集する。</summary>
-        public static AddressTellerSnapshot Capture(AddressableAssetSettings settings)
+        public static AddressTellerSnapshot Capture(AddressableAssetSettings settings) => Capture(settings, "");
+
+        /// <summary>
+        /// 現在の Addressables の状態をスナップショットとして収集する。
+        /// <paramref name="comment"/> はユーザーが付与する任意のコメントとしてそのまま記録される。
+        /// </summary>
+        public static AddressTellerSnapshot Capture(AddressableAssetSettings settings, string comment)
         {
             var snapshot = new AddressTellerSnapshot();
 
@@ -42,7 +53,95 @@ namespace Natsume777.AddressTeller.Editor
             }
 
             snapshot.Entries.Sort((a, b) => string.Compare(a.Guid, b.Guid, StringComparison.Ordinal));
+
+            snapshot.CapturedAtIso = DateTime.UtcNow.ToString("o");
+            snapshot.Comment = comment ?? "";
+            snapshot.UnityVersion = Application.unityVersion;
+            snapshot.PackageVersion = GetPackageVersion();
+            snapshot.SchemaVersion = CurrentSchemaVersion;
+
             return snapshot;
+        }
+
+        /// <summary>
+        /// AddressTeller パッケージのバージョンを取得する。
+        /// 取得に失敗した場合はログを出力し空文字を返す（呼び出し側で握りつぶさない）。
+        /// </summary>
+        private static string GetPackageVersion()
+        {
+            try
+            {
+                var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(AddressTellerSnapshot).Assembly);
+                return packageInfo?.version ?? "";
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AddressTeller] パッケージバージョンの取得に失敗しました: {e.Message}");
+                return "";
+            }
+        }
+
+        /// <summary>
+        /// スナップショット JSON ファイルを読み込み、<see cref="AddressTellerSnapshot"/> として復元する。
+        /// 読み込み・パース・内容検証のいずれかに失敗した場合は <paramref name="error"/> にメッセージを設定して false を返す。
+        /// </summary>
+        public static bool LoadFromFile(string path, out AddressTellerSnapshot snapshot, out string error)
+        {
+            snapshot = null;
+
+            string json;
+            try
+            {
+                json = File.ReadAllText(path);
+            }
+            catch (Exception e)
+            {
+                error = $"スナップショットの読み込みに失敗しました: {path} ({e.Message})";
+                return false;
+            }
+
+            AddressTellerSnapshot parsed;
+            try
+            {
+                parsed = AddressTellerSnapshot.FromJson(json);
+            }
+            catch (Exception e)
+            {
+                error = $"スナップショットの解析に失敗しました: {path} ({e.Message})";
+                return false;
+            }
+
+            if (parsed == null || parsed.Entries == null)
+            {
+                error = $"スナップショットの内容が不正です: {path}";
+                return false;
+            }
+
+            if (parsed.SchemaVersion > CurrentSchemaVersion)
+            {
+                error = $"スナップショットのスキーマバージョン({parsed.SchemaVersion})が未対応です: {path}";
+                return false;
+            }
+
+            var seenGuids = new HashSet<string>();
+            foreach (var entry in parsed.Entries)
+            {
+                if (entry == null || string.IsNullOrEmpty(entry.Guid))
+                {
+                    error = $"スナップショットの内容が不正です（GUID が空のエントリがあります）: {path}";
+                    return false;
+                }
+
+                if (!seenGuids.Add(entry.Guid))
+                {
+                    error = $"スナップショットの内容が不正です（GUID '{entry.Guid}' が重複しています）: {path}";
+                    return false;
+                }
+            }
+
+            snapshot = parsed;
+            error = null;
+            return true;
         }
 
         /// <summary>
