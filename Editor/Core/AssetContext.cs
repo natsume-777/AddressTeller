@@ -1,5 +1,7 @@
 using System;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 
 namespace Natsume777.AddressTeller
 {
@@ -26,6 +28,12 @@ namespace Natsume777.AddressTeller
         /// <summary>Assets/ 起点のディレクトリパス（例: "Assets/Game"）。</summary>
         public string Directory => System.IO.Path.GetDirectoryName(Path)?.Replace('\\', '/') ?? string.Empty;
 
+        /// <summary>小文字化した拡張子（例: ".png"）。拡張子なしの場合は空文字。</summary>
+        public string Extension => System.IO.Path.GetExtension(Path).ToLower(CultureInfo.InvariantCulture);
+
+        /// <summary>Path を "/" で分割したセグメント配列。空セグメントは除去し、大文字小文字・表記は変換しない。</summary>
+        public string[] PathSegments => Path.Split('/').Where(s => s.Length > 0).ToArray();
+
         public AssetContext(string guid, string path, Type type)
         {
             if (string.IsNullOrEmpty(guid)) throw new ArgumentException("guid must not be empty.", nameof(guid));
@@ -34,6 +42,33 @@ namespace Natsume777.AddressTeller
             Guid = guid;
             Path = path.Replace('\\', '/');
             Type = type ?? throw new ArgumentNullException(nameof(type));
+        }
+
+        /// <summary>指定フォルダ配下（再帰的に含む）かどうかを判定する。</summary>
+        public bool IsInFolder(string folder)
+        {
+            var normalized = NormalizeFolder(folder);
+            return Path.StartsWith(normalized + "/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>root 配下なら root からの相対パス（先頭 "/" なし）を返す。配下でない場合は Path をそのまま返す。</summary>
+        public string RelativePathFrom(string root)
+        {
+            var normalized = NormalizeFolder(root);
+            var prefix = normalized + "/";
+            if (Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.Substring(prefix.Length);
+            }
+
+            return Path;
+        }
+
+        /// <summary>フォルダパスを "/" 区切りに正規化し、末尾の "/" を除去する。</summary>
+        private static string NormalizeFolder(string folder)
+        {
+            var normalized = (folder ?? string.Empty).Replace('\\', '/');
+            return normalized.TrimEnd('/');
         }
     }
 }

@@ -83,6 +83,47 @@ rules.Group("グループ名")
 - `Label()` は**何度でも**呼び出せます。マッチした全ルールのラベルが蓄積されます。
 - 同じ `Configure()` 内で `Group()` を複数回呼び、複数のルールエントリを定義できます。
 
+### Match / Naming ヘルパー
+
+条件述語とアドレス生成の定型パターンをヘルパークラスで簡潔に記述できます。
+
+#### Match 静的クラス
+
+頻出の条件を組み立てる機能。自動生成される説明は Explain ウィンドウで確認でき、ルール検証時のエラーメッセージにも反映されます。
+
+```csharp
+using Natsume777.AddressTeller;
+
+rules.Group("Characters")
+    .Where(Match.InFolder("Assets/Game/Characters")
+               .And(Match.OfType<GameObject>()))
+    .Address(Naming.FileNameWithoutExtension())
+    .Label("character");
+```
+
+主なメソッド:
+- `Match.InFolder(string path)` — 指定フォルダ配下のアセットにマッチ
+- `Match.OfType<T>()` — 指定の型（GameObject, Sprite など）にマッチ
+- `Match.Glob(string pattern)` — ワイルドカード（`*.prefab` など）で照合
+- `Match.All()` — 常に真（条件なしルール）
+- `condition.And(otherCondition)` — 条件を AND 合成
+
+#### Naming 静的クラス
+
+アドレス値を生成する頻出パターン。パス正規化の細部を気にせずに記述できます。
+
+```csharp
+.Address(Naming.FileNameWithoutExtension())
+.Address(Naming.ParentFolderName())
+.Address(Naming.RelativePath("Assets/Game"))
+```
+
+主なメソッド:
+- `Naming.FileName()` — 拡張子付きファイル名
+- `Naming.FileNameWithoutExtension()` — 拡張子なしファイル名
+- `Naming.ParentFolderName()` — 親フォルダ名
+- `Naming.RelativePath(string root)` — 指定フォルダ起点の相対パス
+
 ### AssetContext
 
 ルールに渡されるアセット1件分の情報です。
@@ -95,6 +136,10 @@ rules.Group("グループ名")
 | `FileNameWithoutExtension` | 拡張子なしファイル名 | `"Player"` |
 | `FileName` | 拡張子ありファイル名 | `"Player.prefab"` |
 | `Directory` | ディレクトリパス | `"Assets/Game/Characters"` |
+| `Extension` | ファイル拡張子 | `".prefab"` |
+| `IsInFolder(string)` | フォルダ配下判定メソッド | `ctx.IsInFolder("Assets/Game")` → `true` |
+| `PathSegments` | パスを `/` で分割した配列 | `["Assets", "Game", "Characters", "Player.prefab"]` |
+| `RelativePathFrom(string root)` | 指定フォルダ起点の相対パス | `ctx.RelativePathFrom("Assets/Game")` → `"Characters/Player.prefab"` |
 
 ## 評価ルールと挙動
 
@@ -113,7 +158,7 @@ rules.Group("グループ名")
 | `Tools/AddressTeller/Apply All` | プロジェクト全体に手動でルールを適用します。 |
 | `Tools/AddressTeller/Validate` | 書き込みは行わず、競合・グループ未検出などの問題だけを Console に出力します。 |
 | `Tools/AddressTeller/Apply with Validate` | 先に Validate を実行し、問題があれば Apply を中止します。 |
-| `Assets/AddressTeller/Explain`（Project ウィンドウの右クリックメニュー） | 選択したアセットに対して全ルールを評価し、その結果を確認ウィンドウで表示します。マッチしたルール・マッチしなかったルール（その `Where` 説明付き）・ルール例外を一覧で見ることができるため、ルールの動作確認やデバッグが効率的です。 |
+| `Assets/AddressTeller/Explain`（Project ウィンドウの右クリックメニュー） | 選択したアセットに対して全ルールを評価し、その結果を確認ウィンドウで表示します。マッチしたルール・マッチしなかったルール（その `Where` 説明付き）・ルール例外を一覧で見ることができます。`Match` ヘルパーを使用したルールは自動生成された説明（例: `InFolder(Assets/Characters) AND OfType<GameObject>`）が表示されるため、生ラムダよりもルールの動作確認が効率的です。 |
 
 ### CI 連携
 

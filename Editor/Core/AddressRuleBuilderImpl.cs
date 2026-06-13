@@ -68,6 +68,12 @@ namespace Natsume777.AddressTeller
             return this;
         }
 
+        public IAddressRuleGroupBuilder Where(AssetCondition condition)
+        {
+            if (condition == null) throw new ArgumentNullException(nameof(condition));
+            return Where(condition.Predicate, condition.Description);
+        }
+
         private void ThrowIfWhereAlreadySet()
         {
             if (_whereSet)

@@ -7,6 +7,9 @@
 
 ### Added
 
+- `Match` 静的クラス: 条件述語を構築する頻出ヘルパー。`InFolder(string)`（フォルダ路下）/ `OfType<T>()`（型フィルタ）/ `Glob(string)`（ワイルドカード照合）を提供し、`And(AssetCondition)` で合成可能。各ヘルパーは人間可読な説明（`"InFolder(Assets/Characters)"`など）を自動生成し、Explain ウィンドウやエラーメッセージに反映される。`All()` で常に真の条件を返すため、条件なしルールも明示的に記述できる。
+- `Naming` 静的クラス: アドレス生成時の頻出パターン。`FileName()`（拡張子付きファイル名）/ `FileNameWithoutExtension()`（拡張子除き）/ `ParentFolderName()`（親フォルダ名）/ `RelativePath(string root)`（相対パス生成）を提供し、`Address()` メソッドに渡せる。パス正規化（大文字小文字・区切り文字）の手間を削減できる。
+- `AssetContext` に新規プロパティを追加: `Extension`（ファイル拡張子）/ `IsInFolder(string)`（フォルダ路下判定）/ `PathSegments`（パスをスラッシュで分割した文字列配列）/ `RelativePathFrom(string root)`（指定フォルダ起点の相対パス）。`Where()` で生ラムダを書く場合、これらを活用することでパス解析の定型コードを簡潔に記述できる。
 - 自動セーフティスナップショット機能。`Apply All` / `Apply with Validate` メニュー実行直前に現在の状態を `SnapshotFolder/Auto` 以下へ自動保存し、設定した保持件数（既定10件）でローテーションする。`Tools/AddressTeller/Undo Last Apply` メニューで最新の自動スナップショットから Exact モードで復元できる（CleanupStaleEntries によるエントリ削除等の実質的な Undo）。Project Settings で有効/無効・保持件数を設定可能（既定ON）。CLI（`ApplyAllCLI`/`ApplyWithValidateCLI`）は対象外。
 - `AddressTellerSnapshotService.BuildPredictedSnapshot`: Apply を実行せずに、適用後の状態（追加・変更・削除）の差分と、衝突・グループ未検出・ルール例外などの問題点を計算する dry-run API。`DryRunResult`（`SnapshotDiff` + `IReadOnlyList<ValidationResult>`）を返す。
 - `AddressTellerService.ApplyAll` / `ValidateAll` に `IProgressReporter` を受け取るオーバーロードを追加。`EditorProgressReporter` は `EditorUtility.DisplayCancelableProgressBar` で進捗表示し、キャンセル時はその時点までの結果を返して中断する（Apply のキャンセルは部分適用のまま、巻き戻しは行わない）。

@@ -125,5 +125,45 @@ namespace Natsume777.AddressTeller.Editor.Tests
 
             Assert.Throws<InvalidOperationException>(() => group.Where(ctx => false, "second"));
         }
+
+        [Test]
+        public void Where_WithAssetCondition_UsesPredicateAndDescription()
+        {
+            var condition = new AssetCondition(ctx => ctx.Path.StartsWith("Assets/A/"), "InFolderA");
+
+            var builder = new AddressRuleBuilderImpl();
+            builder.Group("G")
+                .Where(condition)
+                .Address("addr");
+
+            var entry = builder.Entries[0];
+            Assert.AreEqual("InFolderA", entry.Description);
+            Assert.IsTrue(entry.Predicate(MakeCtx("Assets/A/Foo.prefab")));
+            Assert.IsFalse(entry.Predicate(MakeCtx("Assets/B/Foo.prefab")));
+        }
+
+        [Test]
+        public void Where_WithAssetCondition_CalledTwice_Throws()
+        {
+            var condition = new AssetCondition(ctx => true, "cond");
+
+            var builder = new AddressRuleBuilderImpl();
+            var group = builder.Group("G").Where(condition);
+
+            Assert.Throws<InvalidOperationException>(() => group.Where(condition));
+        }
+
+        [Test]
+        public void Where_WithAssetCondition_NoDescription_DescriptionIsNull()
+        {
+            var condition = new AssetCondition(ctx => true);
+
+            var builder = new AddressRuleBuilderImpl();
+            builder.Group("G")
+                .Where(condition)
+                .Address("addr");
+
+            Assert.IsNull(builder.Entries[0].Description);
+        }
     }
 }

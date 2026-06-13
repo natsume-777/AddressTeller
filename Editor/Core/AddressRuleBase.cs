@@ -40,6 +40,13 @@ namespace Natsume777.AddressTeller
         /// </summary>
         IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate, string description);
 
+        /// <summary>
+        /// AssetCondition を使った Where 指定。Predicate と Description を condition から引き継ぐ。
+        /// 1グループにつき1回のみ呼び出し可能（他の Where() オーバーロードと合わせて1回）。
+        /// 2回目の呼び出しは InvalidOperationException をスローする。
+        /// </summary>
+        IAddressRuleGroupBuilder Where(AssetCondition condition);
+
         IAddressRuleGroupBuilder Address(Func<AssetContext, string> selector);
         IAddressRuleGroupBuilder Address(string address);
         IAddressRuleGroupBuilder Label(Func<AssetContext, string> selector);
