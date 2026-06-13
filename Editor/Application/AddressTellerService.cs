@@ -79,7 +79,6 @@ namespace Natsume777.AddressTeller.Editor
                 progress ??= NullProgressReporter.Instance;
 
                 var rules = RuleCollector.CollectEnabledRules();
-                RuleEvaluationPipeline.WarnOnDuplicateOrders(rules);
                 var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
                 // ManagedGroups（CleanupStaleEntriesの対象判定）は有効化されているルールのグループのみが対象。
                 // 無効化中のルールが管理するグループのエントリはApplyAllでは掃除対象外（managed外扱い）になるが、
@@ -100,6 +99,8 @@ namespace Natsume777.AddressTeller.Editor
                         cancelled = true;
                         break;
                     }
+
+                    if (AssetFilter.ShouldExcludeByPath(path, setup.ConfigFolder)) continue;
 
                     var ctx = RuleEvaluationPipeline.BuildContext(path);
                     if (ctx == null) continue;
@@ -181,7 +182,6 @@ namespace Natsume777.AddressTeller.Editor
             progress ??= NullProgressReporter.Instance;
 
             var rules = RuleCollector.CollectEnabledRules();
-            RuleEvaluationPipeline.WarnOnDuplicateOrders(rules);
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
             var issues = new List<ValidationResult>();
@@ -199,6 +199,8 @@ namespace Natsume777.AddressTeller.Editor
                     cancelled = true;
                     break;
                 }
+
+                if (AssetFilter.ShouldExcludeByPath(path, setup.ConfigFolder)) continue;
 
                 var ctx = RuleEvaluationPipeline.BuildContext(path);
                 if (ctx == null) continue;

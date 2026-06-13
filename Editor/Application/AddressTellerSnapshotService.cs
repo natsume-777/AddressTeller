@@ -56,10 +56,15 @@ namespace Natsume777.AddressTeller.Editor
         {
             var issues = new List<string>();
 
+            // FindGroup は内部で settings.groups を毎回線形探索するため、
+            // ループ外で一度だけ Dictionary 化して参照する。
+            var groupsByName = settings.groups
+                .Where(g => g != null)
+                .ToDictionary(g => g.Name, g => g);
+
             foreach (var entry in snapshot.Entries)
             {
-                var group = settings.FindGroup(entry.GroupName);
-                if (group == null)
+                if (!groupsByName.TryGetValue(entry.GroupName, out var group))
                 {
                     issues.Add($"Group '{entry.GroupName}' not found. Skipped entry '{entry.Guid}'.");
                     continue;
@@ -99,9 +104,8 @@ namespace Natsume777.AddressTeller.Editor
             var before = Capture(settings);
             var afterMap = before.Entries.ToDictionary(e => e.Guid);
 
-            // 重複 Order の警告は Apply 本体側で既に出るため、dry-run では出さない（二重ログ防止）。
-            // プレビュー単独実行（Apply を伴わない呼び出し）では警告が出ないため、
-            // 必要なら呼び出し側（UI）で RuleEvaluationPipeline.WarnOnDuplicateOrders を別途呼ぶこと。
+            // 重複 Order の警告は RuleCollector.CollectRules() のキャッシュ構築時（ドメインリロードごとに1回）に
+            // 出力済みのため、dry-run では出さない（二重ログ防止）。
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
             var issues = new List<ValidationResult>();
@@ -109,6 +113,8 @@ namespace Natsume777.AddressTeller.Editor
 
             foreach (var path in paths)
             {
+                if (AssetFilter.ShouldExcludeByPath(path, setup.ConfigFolder)) continue;
+
                 var ctx = RuleEvaluationPipeline.BuildContext(path);
                 if (ctx == null) continue;
                 if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;

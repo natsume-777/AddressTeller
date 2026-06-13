@@ -52,13 +52,16 @@ namespace Natsume777.AddressTeller.Editor
             return new EvaluationSetup(entries, configFolder, managedGroups, existingGroupNames, AddressTellerSettings.AutoCreateMissingGroups);
         }
 
-        /// <summary>同一 Order のルールクラスが複数あれば警告を出す。</summary>
+        /// <summary>
+        /// 同一 Order のルールクラスが複数あれば警告を出す。
+        /// Project Settings で無効化中のルールも含む全ルールが対象（無効化しても警告は消えない）。
+        /// </summary>
         public static void WarnOnDuplicateOrders(IReadOnlyList<AddressRuleBase> rules)
         {
             foreach (var group in RuleCollector.FindDuplicateOrders(rules))
             {
                 var names = string.Join(", ", group.Select(r => r.GetType().Name));
-                Debug.LogWarning($"[AddressTeller] Order={group.Key} のルールクラスが複数あります: {names}。評価順序が意図通りか確認してください。");
+                Debug.LogWarning($"[AddressTeller] Order={group.Key} のルールクラスが複数あります（無効化中のルールを含む全ルールが対象）: {names}。評価順序が意図通りか確認してください。");
             }
         }
 

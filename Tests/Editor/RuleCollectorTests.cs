@@ -79,6 +79,34 @@ namespace Natsume777.AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void CollectRules_SameOrder_SortedByFullNameOrdinal()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+
+            // DefaultOrderRule と AnotherDefaultOrderRule は両方 Order=0。
+            // Order が同値の場合は型のフルネーム（Ordinal）で決定的にソートされる。
+            var sameOrderRules = rules.Where(r => r.Order == 0).ToList();
+            for (int i = 1; i < sameOrderRules.Count; i++)
+            {
+                var prevName = sameOrderRules[i - 1].GetType().FullName;
+                var currName = sameOrderRules[i].GetType().FullName;
+                Assert.LessOrEqual(string.CompareOrdinal(prevName, currName), 0,
+                    $"{prevName} should sort before-or-equal {currName} (Ordinal)");
+            }
+
+            var defaultIndex = sameOrderRules.FindIndex(r => r is DefaultOrderRule);
+            var anotherIndex = sameOrderRules.FindIndex(r => r is AnotherDefaultOrderRule);
+            Assert.AreNotEqual(-1, defaultIndex);
+            Assert.AreNotEqual(-1, anotherIndex);
+
+            var expectedFirst = string.CompareOrdinal(typeof(DefaultOrderRule).FullName, typeof(AnotherDefaultOrderRule).FullName) <= 0
+                ? defaultIndex
+                : anotherIndex;
+            var expectedSecond = expectedFirst == defaultIndex ? anotherIndex : defaultIndex;
+            Assert.Less(expectedFirst, expectedSecond);
+        }
+
+        [Test]
         public void FindDuplicateOrders_SameOrder_GroupedTogether()
         {
             var rules = RuleCollector.CollectRules(new[] { ThisAssembly });

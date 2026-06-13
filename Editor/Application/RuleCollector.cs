@@ -15,9 +15,20 @@ namespace Natsume777.AddressTeller.Editor
         // 明示的な無効化処理は不要。
         private static IReadOnlyList<AddressRuleBase> s_cachedRules;
 
-        /// <summary>全ロード済みアセンブリから収集する。テストアセンブリ（nunit.framework 参照）は除外する。結果はドメインリロードまでキャッシュされる。</summary>
+        /// <summary>
+        /// 全ロード済みアセンブリから収集する。テストアセンブリ（nunit.framework 参照）は除外する。結果はドメインリロードまでキャッシュされる。
+        /// キャッシュ初回構築時に <see cref="RuleEvaluationPipeline.WarnOnDuplicateOrders"/> を1回だけ呼び、
+        /// Order 重複の警告を出す（毎 import / 毎走査での重複警告を避けるため）。
+        /// </summary>
         public static IReadOnlyList<AddressRuleBase> CollectRules()
-            => s_cachedRules ??= CollectRules(AppDomain.CurrentDomain.GetAssemblies().Where(a => !ReferencesNUnit(a)));
+        {
+            if (s_cachedRules != null) return s_cachedRules;
+
+            var rules = CollectRules(AppDomain.CurrentDomain.GetAssemblies().Where(a => !ReferencesNUnit(a)));
+            RuleEvaluationPipeline.WarnOnDuplicateOrders(rules);
+            s_cachedRules = rules;
+            return s_cachedRules;
+        }
 
         /// <summary>テストアセンブリかどうかを nunit.framework への参照の有無で判定する。</summary>
         private static bool ReferencesNUnit(Assembly assembly)
@@ -50,8 +61,11 @@ namespace Natsume777.AddressTeller.Editor
                 }
             }
 
-            rules.Sort((a, b) => a.Order.CompareTo(b.Order));
-            return rules;
+            // Order が同値の場合は型のフルネーム（Ordinal）で決定的に並べる。
+            return rules
+                .OrderBy(r => r.Order)
+                .ThenBy(r => r.GetType().FullName, StringComparer.Ordinal)
+                .ToList();
         }
 
         /// <summary>同一 Order 値を持つルールクラスのグループを返す（Order が重複していないものは含まない）。</summary>

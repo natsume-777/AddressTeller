@@ -86,6 +86,20 @@ namespace Natsume777.AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Restore_ResolvesMultipleGroupsByName()
+        {
+            var snapshot = new AddressTellerSnapshot();
+            snapshot.Entries.Add(Entry("guid-a", "FooA", "GroupA"));
+            snapshot.Entries.Add(Entry("guid-b", "FooB", "GroupB"));
+
+            var issues = AddressTellerSnapshotService.Restore(snapshot, _settings);
+
+            Assert.AreEqual(0, issues.Count);
+            Assert.AreEqual("GroupA", _settings.FindAssetEntry("guid-a").parentGroup.Name);
+            Assert.AreEqual("GroupB", _settings.FindAssetEntry("guid-b").parentGroup.Name);
+        }
+
+        [Test]
         public void Restore_GroupNotFound_ReturnsIssueAndSkipsEntry()
         {
             var snapshot = new AddressTellerSnapshot();

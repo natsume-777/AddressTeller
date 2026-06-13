@@ -52,6 +52,17 @@ namespace Natsume777.AddressTeller.Editor
 
             foreach (var path in assetPaths)
             {
+                if (AssetFilter.ShouldExcludeByPath(path, setup.ConfigFolder))
+                {
+                    // パス上は除外対象だが、BuildContext が null（GUID/型が取得不能=解決不能パス）の場合は
+                    // 旧経路と同じく結果に含めない（「除外」として積まない）。
+                    var earlyCtx = RuleEvaluationPipeline.BuildContext(path);
+                    if (earlyCtx == null) continue;
+
+                    results.Add(new AssetExplanation(path, isExcluded: true, explanation: null, validation: null));
+                    continue;
+                }
+
                 var ctx = RuleEvaluationPipeline.BuildContext(path);
                 if (ctx == null) continue;
 
