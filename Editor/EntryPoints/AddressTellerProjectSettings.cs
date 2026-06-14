@@ -125,7 +125,7 @@ namespace AddressTeller.Editor
 
         private static void OnGUI(string searchContext)
         {
-            EditorGUILayout.LabelField("自動適用", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("適用・検証の挙動", EditorStyles.boldLabel);
 
             EditorGUI.BeginChangeCheck();
             var postprocessEnabled = EditorGUILayout.ToggleLeft("インポート時に自動適用する", AddressTellerSettings.PostprocessEnabled);
