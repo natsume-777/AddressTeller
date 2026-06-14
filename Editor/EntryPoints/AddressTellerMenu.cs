@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
+using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
 namespace Natsume777.AddressTeller.Editor
@@ -79,7 +80,7 @@ namespace Natsume777.AddressTeller.Editor
             foreach (var issue in applyIssues)
                 Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
 
-            ExitWithReport(dryRun, applyIssues, cliArgs);
+            ExitWithReport(dryRun, applyIssues, cliArgs, settings);
         }
 
         /// <summary>Validate で問題が見つかった場合は Apply を中止する。</summary>
@@ -136,7 +137,7 @@ namespace Natsume777.AddressTeller.Editor
                 // Apply を行わないため、現在の状態のままの dry-run をレポート化する。
                 var paths = AssetDatabase.GetAllAssetPaths();
                 var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths);
-                ExitWithReport(dryRun, validateIssues, cliArgs);
+                ExitWithReport(dryRun, validateIssues, cliArgs, settings);
                 return;
             }
 
@@ -148,7 +149,7 @@ namespace Natsume777.AddressTeller.Editor
             foreach (var issue in applyIssues)
                 Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
 
-            ExitWithReport(applyDryRun, applyIssues, cliArgs);
+            ExitWithReport(applyDryRun, applyIssues, cliArgs, settings);
         }
 
         /// <summary>
@@ -158,13 +159,13 @@ namespace Natsume777.AddressTeller.Editor
         /// エラー（IsOk=false）が含まれる場合は 2 に昇格させる。
         /// レポートの書き込みに失敗した場合は exit 3。
         /// </summary>
-        private static void ExitWithReport(DryRunResult dryRun, IReadOnlyList<ValidationResult> executionIssues, AddressTellerCliArgs cliArgs)
+        private static void ExitWithReport(DryRunResult dryRun, IReadOnlyList<ValidationResult> executionIssues, AddressTellerCliArgs cliArgs, AddressableAssetSettings settings)
         {
             var exitCode = AddressTellerReportBuilder.DetermineExitCode(dryRun, executionIssues);
 
             if (!string.IsNullOrEmpty(cliArgs.ReportPath))
             {
-                var report = AddressTellerReportBuilder.Build(dryRun);
+                var report = AddressTellerReportBuilder.Build(dryRun, settings);
                 report.Summary.ExitCode = exitCode;
 
                 if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat))
@@ -209,7 +210,7 @@ namespace Natsume777.AddressTeller.Editor
 
             if (!string.IsNullOrEmpty(cliArgs.ReportPath))
             {
-                var report = AddressTellerReportBuilder.Build(result);
+                var report = AddressTellerReportBuilder.Build(result, settings);
                 if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat))
                 {
                     EditorApplication.Exit(3);

@@ -247,7 +247,7 @@ namespace Natsume777.AddressTeller.Editor
 
             var diff = Diff(before, after);
             var sortedGroupsToCreate = groupsToCreate.OrderBy(g => g, StringComparer.Ordinal).ToList();
-            return new DryRunResult(diff, issues, sortedGroupsToCreate);
+            return new DryRunResult(diff, issues, sortedGroupsToCreate, after);
         }
 
         /// <summary>2つのスナップショットを GUID 単位で比較し、追加・削除・変更の差分を返す。</summary>
@@ -306,11 +306,19 @@ namespace Natsume777.AddressTeller.Editor
         /// </summary>
         public IReadOnlyList<string> GroupsToCreate { get; }
 
-        public DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues, IReadOnlyList<string> groupsToCreate = null)
+        /// <summary>
+        /// Apply 適用後の予測状態の全エントリ。論理バンドル分布サマリ（<see cref="BundleDistributionCalculator"/>）など、
+        /// 差分だけでなく全アセットの配置情報が必要な派生計算のために保持する。
+        /// dry-run 計算経由でない構築（テスト等）では null になる場合がある。
+        /// </summary>
+        public AddressTellerSnapshot After { get; }
+
+        public DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues, IReadOnlyList<string> groupsToCreate = null, AddressTellerSnapshot after = null)
         {
             Diff = diff;
             Issues = issues;
             GroupsToCreate = groupsToCreate ?? Array.Empty<string>();
+            After = after;
         }
     }
 }

@@ -1,16 +1,26 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor.AddressableAssets.Settings;
 
 namespace Natsume777.AddressTeller.Editor
 {
     /// <summary>
     /// <see cref="DryRunResult"/> から CI 向け構造化レポート <see cref="AddressTellerReport"/> への変換と、
-    /// exit code の判定を行う。Addressables / AssetDatabase に依存しない純粋関数として、
-    /// dry-run の計算結果のみから組み立てる。
+    /// exit code の判定を行う。<see cref="Build(DryRunResult)"/> は dry-run の計算結果のみから組み立てる純粋関数だが、
+    /// <see cref="Build(DryRunResult, AddressableAssetSettings)"/> は論理バンドル分布サマリのために
+    /// <see cref="AddressableAssetSettings"/> から各グループの BundleMode を読み取る。
     /// </summary>
     internal static class AddressTellerReportBuilder
     {
+        /// <summary>
+        /// 論理バンドル分布サマリに付与する固定の注記文言。
+        /// この分布が Predict 結果と BundleMode から算出した論理推定であり、実ビルドのバンドル数を保証しないことを明記する。
+        /// </summary>
+        public const string BundleDistributionDisclaimer =
+            "この分布は Predict 結果と各グループの BundleMode から算出した論理推定であり、実 Addressables ビルドのバンドル数を保証しない。" +
+            "近似の既知差異: PackTogether のシーン別バンドル分離・PackSeparately のフォルダ単位まとめ・PackTogetherByLabel のラベル連結方式の違いは反映しない。";
+
         /// <summary>
         /// <see cref="DryRunResult"/> を <see cref="AddressTellerReport"/> に変換する。
         /// drift / issues はいずれも path の Ordinal 順で決定的に並べる。
@@ -84,6 +94,59 @@ namespace Natsume777.AddressTeller.Editor
             report.Summary.ExitCode = DetermineExitCode(result);
 
             return report;
+        }
+
+        /// <summary>
+        /// <see cref="Build(DryRunResult)"/> に加えて、<paramref name="settings"/> から各グループの BundleMode を読み取り、
+        /// 論理バンドル分布サマリ（<see cref="AddressTellerReport.BundleDistribution"/>）を算出して格納する。
+        /// <see cref="DryRunResult.After"/> が null（テスト構築等）の場合は分布サマリを付与しない。
+        /// </summary>
+        public static AddressTellerReport Build(DryRunResult result, AddressableAssetSettings settings)
+        {
+            var report = Build(result);
+
+            if (result.After == null || settings == null) return report;
+
+            try
+            {
+                var placements = result.After.Entries.ToDictionary(
+                    e => e.Guid,
+                    e => new BundleAssetPlacement(e.GroupName, e.Labels));
+
+                var groupModes = BundleModeReader.ReadBundleModes(settings.groups);
+
+                var distribution = BundleDistributionCalculator.Calculate(placements, groupModes);
+
+                report.BundleDistribution = ToBundleDistributionReport(distribution);
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogWarning($"[AddressTeller] 論理バンドル分布サマリの算出に失敗したため、レポートからは省略します: {ex.Message}");
+            }
+
+            return report;
+        }
+
+        /// <summary><see cref="BundleDistribution"/> を JsonUtility 向け DTO に変換する。</summary>
+        private static BundleDistributionReport ToBundleDistributionReport(BundleDistribution distribution)
+        {
+            var bundles = distribution.Bundles
+                .Select(b => new LogicalBundleDto
+                {
+                    GroupName = b.GroupName,
+                    Mode = b.Mode.ToString(),
+                    SplitKey = b.SplitKey,
+                    AssetCount = b.AssetCount,
+                })
+                .ToArray();
+
+            return new BundleDistributionReport
+            {
+                Bundles = bundles,
+                TotalLogicalBundleCount = distribution.Bundles.Count(b => b.Mode != BundleModeKind.Unknown),
+                UnknownGroupCount = distribution.Bundles.Count(b => b.Mode == BundleModeKind.Unknown),
+                Disclaimer = BundleDistributionDisclaimer,
+            };
         }
 
         /// <summary>

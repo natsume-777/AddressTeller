@@ -28,6 +28,18 @@ exit code:
 | 2 | Validation エラーあり |
 | 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・レポート書き込み失敗） |
 
+### 論理バンドル分布サマリ
+
+`json` 形式のレポートには `bundleDistribution` セクションが含まれます。これは dry-run の Predict 結果（アセット→グループ/ラベル）と各グループの BundleMode（PackTogether/PackSeparately/PackTogetherByLabel）から算出した、ビルド前の論理バンドル単位の個数・分布の概算です。「ルール設計が意図せず巨大バンドル1個や数百分割を生んでいないか」を検知するための目安であり、**実 Addressables ビルドのバンドル数を一致させることを保証しません**。
+
+近似の既知差異として以下は反映されません。
+
+- PackTogether のシーン別バンドル分離
+- PackSeparately のフォルダ単位まとめ
+- PackTogetherByLabel における Addressables 本体のラベル連結方式との差異（本サマリはラベル集合を昇順ソート＋区切り文字で連結した正規化キーで分割しています）
+
+`BundledAssetGroupSchema` が付与されていないグループは BundleMode が判定できないため `Unknown` として扱われ、バンドル数の集計（`totalLogicalBundleCount`）には含まれません（`unknownGroupCount` で別集計されます）。
+
 ## Project Settings
 
 `Project Settings > AddressTeller` に以下の項目があります。

@@ -15,6 +15,11 @@ namespace Natsume777.AddressTeller.Editor
         public List<AddressTellerReportDrift> Drift = new();
         public List<AddressTellerReportIssue> Issues = new();
 
+        /// <summary>
+        /// 論理バンドル分布サマリ。dry-run の <see cref="DryRunResult.After"/> が無い場合（テスト構築等）は null。
+        /// </summary>
+        public BundleDistributionReport BundleDistribution;
+
         public string ToJson() => JsonUtility.ToJson(this, true);
 
         public static AddressTellerReport FromJson(string json) => JsonUtility.FromJson<AddressTellerReport>(json);
@@ -64,5 +69,37 @@ namespace Natsume777.AddressTeller.Editor
         public string Status;
 
         public string Message;
+    }
+
+    /// <summary>
+    /// 論理バンドル分布サマリ。Predict 結果と各グループの BundleMode から算出した論理推定値であり、
+    /// 実 Addressables ビルドのバンドル数を保証しない（<see cref="Disclaimer"/> 参照）。
+    /// </summary>
+    [Serializable]
+    public sealed class BundleDistributionReport
+    {
+        public LogicalBundleDto[] Bundles = Array.Empty<LogicalBundleDto>();
+
+        /// <summary>Unknown を除いた論理バンドル数の合計。</summary>
+        public int TotalLogicalBundleCount;
+
+        /// <summary>BundleMode が判定できない（Unknown）グループの数。</summary>
+        public int UnknownGroupCount;
+
+        /// <summary>この分布が論理推定であることの注記。固定文言。</summary>
+        public string Disclaimer = "";
+    }
+
+    /// <summary>論理バンドル1件分の DTO（<see cref="LogicalBundle"/> のシリアライズ用）。</summary>
+    [Serializable]
+    public sealed class LogicalBundleDto
+    {
+        public string GroupName;
+
+        /// <summary><see cref="BundleModeKind"/> の名前。</summary>
+        public string Mode;
+
+        public string SplitKey;
+        public int AssetCount;
     }
 }
