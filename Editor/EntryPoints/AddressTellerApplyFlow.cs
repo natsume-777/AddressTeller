@@ -64,7 +64,7 @@ namespace Natsume777.AddressTeller.Editor
                 case 1: // キャンセル
                     break;
                 case 2: // 詳細を見る
-                    AddressTellerResultWindow.Show(dryRun, title, () => ExecuteApply(settings, paths));
+                    AddressTellerResultWindow.Show(dryRun, title, () => ExecuteApply(settings, paths), settings);
                     break;
             }
         }

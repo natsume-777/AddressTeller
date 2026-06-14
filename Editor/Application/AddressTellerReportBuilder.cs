@@ -109,13 +109,7 @@ namespace Natsume777.AddressTeller.Editor
 
             try
             {
-                var placements = result.After.Entries.ToDictionary(
-                    e => e.Guid,
-                    e => new BundleAssetPlacement(e.GroupName, e.Labels));
-
-                var groupModes = BundleModeReader.ReadBundleModes(settings.groups);
-
-                var distribution = BundleDistributionCalculator.Calculate(placements, groupModes);
+                var distribution = BundleDistributionSummarizer.Build(result.After, settings);
 
                 report.BundleDistribution = ToBundleDistributionReport(distribution);
             }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.AddressableAssets.Settings;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
@@ -19,9 +20,11 @@ namespace Natsume777.AddressTeller.Editor
         {
             Diff,
             Issues,
+            Distribution,
         }
 
-        private static readonly string[] TabLabels = { "Diff", "Issues" };
+        private static readonly string[] TabLabelsWithDistribution = { "Diff", "Issues", "Distribution" };
+        private static readonly string[] TabLabelsWithoutDistribution = { "Diff", "Issues" };
 
         [SerializeField] private TreeViewState<int> _diffTreeViewState;
         [SerializeField] private TreeViewState<int> _issueTreeViewState;
@@ -31,8 +34,12 @@ namespace Natsume777.AddressTeller.Editor
         private AddressTellerDiffTreeView _diffTreeView;
         private AddressTellerIssueTreeView _issueTreeView;
 
+        // _showDiffTab/_showDistributionTab は非シリアライズのため、ドメインリロード後は
+        // false にリセットされ、タブ構成が Issues のみに縮退する（_diffRows 等の非シリアライズ
+        // フィールドも空になるため、リロード後の再表示は元々想定していない割り切り）。
         private Tab _currentTab;
         private bool _showDiffTab;
+        private bool _showDistributionTab;
 
         // Apply実行用のコールバック。ドメインリロードを跨ぐとデリゲートは復元できないため非シリアライズとし、
         // リロード後は null（＝ボタン非表示）になることを許容する割り切り。
@@ -43,11 +50,20 @@ namespace Natsume777.AddressTeller.Editor
         private List<IssueRow> _allIssueRows = new();
         private IReadOnlyList<string> _groupsToCreate = Array.Empty<string>();
 
+        // Distribution タブの集計結果。Show() 時に一度だけ算出し、OnGUI では再計算しない。
+        // 算出失敗・対象外（After が null 等）の場合は null（タブ自体を非表示にする）。
+        private BundleDistribution _distribution;
+        private DistributionSummary _distributionSummary;
+        private Vector2 _distributionScroll;
+
         // Issues タブのステータス別フィルタ。キーは Enum.GetValues(typeof(ValidationStatus)) の全件、初期値は true（全件表示）。
         private readonly Dictionary<ValidationStatus, bool> _statusFilter = new();
 
         /// <summary>Diff/Issues の2タブでウィンドウを開く。dry-run の結果表示用。</summary>
-        public static void Show(DryRunResult dryRun, string title = "AddressTeller - Apply Preview")
+        /// <param name="settings">
+        /// Distribution タブの算出に使う。null または <paramref name="dryRun"/>.After が null の場合、Distribution タブは表示しない。
+        /// </param>
+        public static void Show(DryRunResult dryRun, string title = "AddressTeller - Apply Preview", AddressableAssetSettings settings = null)
         {
             var window = GetOrCreateWindow(title);
             window._showDiffTab = true;
@@ -56,6 +72,7 @@ namespace Natsume777.AddressTeller.Editor
             window._groupsToCreate = dryRun.GroupsToCreate;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
+            window.SetDistribution(dryRun, settings);
             window.Show();
             window.Focus();
         }
@@ -64,7 +81,10 @@ namespace Natsume777.AddressTeller.Editor
         /// Diff/Issues の2タブでウィンドウを開き、Diff タブに「この内容で Apply」ボタンを表示する。
         /// 確認ダイアログの「詳細を見る」から開かれることを想定する。
         /// </summary>
-        public static void Show(DryRunResult dryRun, string title, Action onApply)
+        /// <param name="settings">
+        /// Distribution タブの算出に使う。null または <paramref name="dryRun"/>.After が null の場合、Distribution タブは表示しない。
+        /// </param>
+        public static void Show(DryRunResult dryRun, string title, Action onApply, AddressableAssetSettings settings = null)
         {
             var window = GetOrCreateWindow(title);
             window._showDiffTab = true;
@@ -73,6 +93,7 @@ namespace Natsume777.AddressTeller.Editor
             window._groupsToCreate = dryRun.GroupsToCreate;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
+            window.SetDistribution(dryRun, settings);
             window.Show();
             window.Focus();
         }
@@ -87,6 +108,7 @@ namespace Natsume777.AddressTeller.Editor
             window._groupsToCreate = Array.Empty<string>();
             window.SetDiffRows(new List<DiffRow>());
             window.SetIssueRows(issues);
+            window.SetDistribution(default, null);
             window.Show();
             window.Focus();
         }
@@ -121,6 +143,33 @@ namespace Natsume777.AddressTeller.Editor
 
             EnsureIssueTreeView();
             ApplyIssueFilter();
+        }
+
+        /// <summary>
+        /// 論理バンドル分布サマリを算出し、フィールドにキャッシュする。OnGUI では再計算しない。
+        /// settings が null、または dryRun.After が null の場合、Distribution タブは表示しない。
+        /// </summary>
+        private void SetDistribution(DryRunResult dryRun, AddressableAssetSettings settings)
+        {
+            _distribution = null;
+            _distributionSummary = null;
+            _showDistributionTab = false;
+
+            if (settings == null || dryRun.After == null) return;
+
+            try
+            {
+                _distribution = BundleDistributionSummarizer.Build(dryRun.After, settings);
+                _distributionSummary = BundleDistributionSummarizer.Summarize(_distribution);
+                _showDistributionTab = true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[AddressTeller] 論理バンドル分布サマリの算出に失敗したため、Distribution タブは表示しません: {ex.Message}");
+                _distribution = null;
+                _distributionSummary = null;
+                _showDistributionTab = false;
+            }
         }
 
         private void EnsureDiffTreeView()
@@ -159,9 +208,15 @@ namespace Natsume777.AddressTeller.Editor
         {
             if (_showDiffTab)
             {
+                var labels = _showDistributionTab ? TabLabelsWithDistribution : TabLabelsWithoutDistribution;
+
                 EditorGUILayout.Space(2);
-                _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, TabLabels);
+                _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, labels);
                 EditorGUILayout.Space(2);
+
+                // Distribution タブが非表示のときに Tab.Distribution が選択されたままになるのを防ぐ。
+                if (_currentTab == Tab.Distribution && !_showDistributionTab)
+                    _currentTab = Tab.Diff;
             }
             else
             {
@@ -175,6 +230,9 @@ namespace Natsume777.AddressTeller.Editor
                     break;
                 case Tab.Issues:
                     DrawIssuesTab();
+                    break;
+                case Tab.Distribution:
+                    DrawDistributionTab();
                     break;
             }
         }
@@ -266,6 +324,38 @@ namespace Natsume777.AddressTeller.Editor
                 ApplyIssueFilter();
 
             EditorGUILayout.EndHorizontal();
+        }
+
+        /// <summary>論理バンドル分布サマリを表示する。算出済みの値（SetDistribution でキャッシュ済み）のみ参照する。</summary>
+        private void DrawDistributionTab()
+        {
+            if (_distribution == null || _distributionSummary == null)
+            {
+                EditorGUILayout.HelpBox("分布情報なし。", MessageType.Info);
+                return;
+            }
+
+            EditorGUILayout.LabelField($"論理バンドル数: {_distributionSummary.TotalLogicalBundleCount}");
+            EditorGUILayout.LabelField($"BundleMode 未判定のグループ数: {_distributionSummary.UnknownGroupCount}");
+
+            var largest = _distributionSummary.LargestBundle;
+            if (largest != null)
+            {
+                EditorGUILayout.LabelField(
+                    $"最大集約バンドル: {largest.GroupName} / {largest.SplitKey} ({largest.AssetCount} アセット)");
+            }
+
+            EditorGUILayout.Space(2);
+            EditorGUILayout.LabelField(AddressTellerReportBuilder.BundleDistributionDisclaimer, EditorStyles.miniLabel, GUILayout.MaxWidth(position.width - 10));
+
+            EditorGUILayout.Space(4);
+            _distributionScroll = EditorGUILayout.BeginScrollView(_distributionScroll);
+            foreach (var bundle in _distribution.Bundles)
+            {
+                EditorGUILayout.LabelField(
+                    $"{bundle.GroupName} / {bundle.Mode} / {bundle.SplitKey} : {bundle.AssetCount}");
+            }
+            EditorGUILayout.EndScrollView();
         }
     }
 }
