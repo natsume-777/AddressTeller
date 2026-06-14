@@ -8,7 +8,7 @@ namespace Natsume777.AddressTeller.Editor
     /// <summary>
     /// ロード済みアセンブリから AddressRuleBase 継承クラスを収集し Order 昇順でソートする。
     /// </summary>
-    public static class RuleCollector
+    internal static class RuleCollector
     {
         // ルール集合はドメインリロードまで不変なのでキャッシュする。
         // static フィールドはドメインリロード時に自動でリセットされるため、

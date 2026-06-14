@@ -9,7 +9,7 @@ namespace Natsume777.AddressTeller.Editor
     /// SnapshotFolder 配下のスナップショット JSON ファイルを列挙し、メタデータを読み込んで一覧化する。
     /// GUI に依存しないため、Snapshot Manager ウィンドウとテストの両方から利用できる。
     /// </summary>
-    public static class SnapshotFileCatalog
+    internal static class SnapshotFileCatalog
     {
         /// <summary>
         /// <paramref name="folderAbsolutePath"/> 配下の *.json を列挙し、各ファイルのメタデータを読み込む。
@@ -95,7 +95,7 @@ namespace Natsume777.AddressTeller.Editor
     }
 
     /// <summary>スナップショット1ファイル分の表示用メタデータ。</summary>
-    public sealed class SnapshotFileInfo
+    internal sealed class SnapshotFileInfo
     {
         /// <summary>絶対パス。</summary>
         public string Path { get; set; } = "";

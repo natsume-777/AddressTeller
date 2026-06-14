@@ -9,7 +9,7 @@ namespace Natsume777.AddressTeller.Editor
     /// exit code の判定を行う。Addressables / AssetDatabase に依存しない純粋関数として、
     /// dry-run の計算結果のみから組み立てる。
     /// </summary>
-    public static class AddressTellerReportBuilder
+    internal static class AddressTellerReportBuilder
     {
         /// <summary>
         /// <see cref="DryRunResult"/> を <see cref="AddressTellerReport"/> に変換する。

@@ -6,7 +6,7 @@ using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 
 namespace Natsume777.AddressTeller.Editor
 {
-    public static class AssetFilter
+    internal static class AssetFilter
     {
         private static readonly HashSet<string> ExcludedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {

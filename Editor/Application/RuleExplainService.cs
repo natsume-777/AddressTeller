@@ -8,7 +8,7 @@ namespace Natsume777.AddressTeller.Editor
     /// <summary>
     /// 1アセットに対する Explain の結果。除外対象かどうかと、評価詳細・最終的な検証結果を持つ。
     /// </summary>
-    public sealed class AssetExplanation
+    internal sealed class AssetExplanation
     {
         public string AssetPath { get; }
 
@@ -35,7 +35,7 @@ namespace Natsume777.AddressTeller.Editor
     /// 最終的な検証結果（ConflictingAddress, GroupNotFound 等）をまとめて返す。
     /// 書き込みは行わない読み取り専用処理。
     /// </summary>
-    public static class RuleExplainService
+    internal static class RuleExplainService
     {
         /// <summary>
         /// settings が null の場合はプロジェクトのデフォルト設定を使う。Addressables 未設定の場合は空リストを返す。

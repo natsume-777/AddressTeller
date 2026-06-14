@@ -9,7 +9,7 @@ namespace Natsume777.AddressTeller.Editor
     /// <see cref="AddressTellerExplainReport"/> への変換を行う。
     /// Addressables / AssetDatabase に依存しない純粋関数として、Explain の計算結果のみから組み立てる。
     /// </summary>
-    public static class AddressTellerExplainReportBuilder
+    internal static class AddressTellerExplainReportBuilder
     {
         /// <summary>
         /// <paramref name="explanations"/> を <see cref="AddressTellerExplainReport"/> に変換する。

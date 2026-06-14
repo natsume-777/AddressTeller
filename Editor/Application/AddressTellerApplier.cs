@@ -9,7 +9,7 @@ using UnityEngine;
 namespace Natsume777.AddressTeller.Editor
 {
     /// <summary>Predict が返す、適用後のアセットの予測される変化の種類。</summary>
-    public enum PredictedAction
+    internal enum PredictedAction
     {
         /// <summary>エントリが新規追加または更新される（現状と内容が一致している場合も含む）。</summary>
         AddOrUpdate,
@@ -24,7 +24,7 @@ namespace Natsume777.AddressTeller.Editor
     /// <summary>
     /// 書き込みを行わずに Apply 実行後の状態を予測した結果。
     /// </summary>
-    public readonly struct ApplyPrediction
+    internal readonly struct ApplyPrediction
     {
         public PredictedAction Action { get; }
         public ValidationResult Validation { get; }
@@ -47,7 +47,7 @@ namespace Natsume777.AddressTeller.Editor
     /// <summary>
     /// AddressResolution を受け取り、検証または Addressables への書き込みを行う。
     /// </summary>
-    public static class AddressTellerApplier
+    internal static class AddressTellerApplier
     {
         /// <summary>
         /// 書き込みは行わず、検証結果だけを返す。

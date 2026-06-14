@@ -12,7 +12,7 @@ namespace Natsume777.AddressTeller.Editor
     /// 自動スナップショット（SnapshotFolder/Auto 以下）の保存・ローテーション・読み込みを担う。
     /// 既存の <see cref="AddressTellerSnapshot"/>/<see cref="AddressTellerSnapshotService"/> を再利用する。
     /// </summary>
-    public static class AddressTellerAutoSnapshotService
+    internal static class AddressTellerAutoSnapshotService
     {
         private const string FilePrefix = "AddressTellerSnapshot_";
         private const string FileExtension = ".json";
