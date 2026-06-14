@@ -10,10 +10,15 @@
 
 - `ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` に `-addressTellerDisableRules <FullName>[,...]` を追加。永続設定（Project Settings）の無効化ルールとの和集合をCLI実行時のみ一時的に除外できる（CI実行時のデバッグ用ルール除外などを想定）。指定したFullNameが既知のルールクラスに一致しない場合はexit code 3で停止する。この除外はCLI実行限定で、Postprocessor/メニューには影響しない。
 
+### Added
+
+- Project Settings の AddressTeller 画面に「管理対象グループ」一覧（折りたたみ表示）を追加。`CleanupStaleEntries`/`AutoCreateMissingGroups`が対象とする、有効なルールが参照しているグループ名を確認できる。これらのグループに手動で登録したエントリは、対応するルールがなければ削除対象になる旨も説明文に明記した。
+
 ### Documentation
 
 - Documentation~/operations.md のCI連携セクションに `CheckCLI` の記載が漏れていたため追記した。exit code表は3つのCLIメソッド（`ApplyAllCLI`/`ApplyWithValidateCLI`/`CheckCLI`）共通であることを明記した。
 - `CleanupStaleEntries` の説明（Project Settings画面・operations.md）にあった「ラベルは削除されません」という誤った記述を修正。エントリ削除（`RemoveAssetEntry`）により、アドレスとAddressablesラベルの両方が失われる。
+- `design-decisions.md`/`operations.md`に、管理対象グループ内に手動で登録したエントリも、対応するルールがなければ`CleanupStaleEntries`の削除対象になることを明記した（従来は「管理外グループには触れない」という保証のみが記述されており、逆方向の挙動が書かれていなかった）。
 
 ### Changed
 

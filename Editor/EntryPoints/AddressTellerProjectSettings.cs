@@ -112,6 +112,9 @@ namespace AddressTeller.Editor
         // ルール一覧の Foldout 開閉状態。クラスごとに保持する。ドメインリロードでリセットされて問題ない。
         private static readonly Dictionary<Type, bool> s_ruleFoldouts = new Dictionary<Type, bool>();
 
+        // 「管理対象グループ」一覧の Foldout 開閉状態。
+        private static bool s_managedGroupsFoldout;
+
         [SettingsProvider]
         public static SettingsProvider CreateSettingsProvider()
         {
@@ -125,6 +128,8 @@ namespace AddressTeller.Editor
 
         private static void OnGUI(string searchContext)
         {
+            var overviewCache = GetRuleOverviewCache();
+
             EditorGUILayout.LabelField("適用・検証の挙動", EditorStyles.boldLabel);
 
             EditorGUI.BeginChangeCheck();
@@ -148,10 +153,24 @@ namespace AddressTeller.Editor
                 AddressTellerSettings.AutoCreateMissingGroups = autoCreateMissingGroups;
             }
 
+            EditorGUILayout.Space(4);
+
+            var managedGroups = CollectManagedGroups(overviewCache);
+            s_managedGroupsFoldout = EditorGUILayout.Foldout(s_managedGroupsFoldout, $"管理対象グループ ({managedGroups.Count}件)", true);
+            if (s_managedGroupsFoldout)
+            {
+                EditorGUI.indentLevel++;
+                if (managedGroups.Count == 0)
+                    EditorGUILayout.LabelField("(有効なルールが参照しているグループはありません)", EditorStyles.wordWrappedMiniLabel);
+                else
+                    foreach (var groupName in managedGroups)
+                        EditorGUILayout.LabelField(groupName, EditorStyles.wordWrappedMiniLabel);
+                EditorGUI.indentLevel--;
+            }
+            DrawDescription("有効なルールがいずれかの Group() で参照しているグループです。マッチしなくなったエントリを削除する／存在しないグループを自動作成する の対象になります。これらのグループに手動で登録したエントリは、対応するルールがなければ削除対象になります。");
+
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("登録されているルール", EditorStyles.boldLabel);
-
-            var overviewCache = GetRuleOverviewCache();
 
             foreach (var duplicate in overviewCache.DuplicateOrders)
             {
@@ -259,6 +278,24 @@ namespace AddressTeller.Editor
             }
 
             EditorGUILayout.Space();
+        }
+
+        /// <summary>
+        /// 有効なルールクラスが Configure() で参照しているグループ名を、<see cref="RuleEvaluationPipeline.BuildSetup"/>
+        /// の managedGroups（<see cref="AddressTellerSettings.CleanupStaleEntries"/> /
+        /// <see cref="AddressTellerSettings.AutoCreateMissingGroups"/> の対象）と同じ条件で集約する。
+        /// 表示順序は決定的にするため Ordinal でソートする。
+        /// </summary>
+        internal static IReadOnlyList<string> CollectManagedGroups(in RuleOverviewCache overviewCache)
+        {
+            var groups = new HashSet<string>();
+            foreach (var rule in overviewCache.Rules)
+            {
+                if (!AddressTellerSettings.IsRuleEnabled(rule.RuleType.FullName)) continue;
+                foreach (var entry in rule.Entries)
+                    groups.Add(entry.GroupName);
+            }
+            return groups.OrderBy(g => g, StringComparer.Ordinal).ToList();
         }
 
         /// <summary>

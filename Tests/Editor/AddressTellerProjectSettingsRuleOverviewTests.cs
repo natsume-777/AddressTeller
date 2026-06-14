@@ -132,5 +132,74 @@ namespace AddressTeller.Editor.Tests
                 new[] { typeof(AnotherOrder1Rule), typeof(NoEntryRule), typeof(TwoGroupRule) },
                 cache.Rules.Select(r => r.RuleType).ToArray());
         }
+
+        // --- CollectManagedGroups ---
+        // AddressTellerSettings.DisabledRuleClassNames は ProjectSettings/AddressTellerSettings.asset に
+        // 永続化されるため、テスト前後で状態を復元する。
+
+        private System.Collections.Generic.List<string> _originalDisabled;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _originalDisabled = AddressTellerSettings.DisabledRuleClassNames.ToList();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            foreach (var name in AddressTellerSettings.DisabledRuleClassNames.ToList())
+                if (!_originalDisabled.Contains(name))
+                    AddressTellerSettings.SetRuleEnabled(name, true);
+
+            foreach (var name in _originalDisabled)
+                if (!AddressTellerSettings.DisabledRuleClassNames.Contains(name))
+                    AddressTellerSettings.SetRuleEnabled(name, false);
+        }
+
+        [Test]
+        public void CollectManagedGroups_CollectsGroupNamesFromEnabledRules()
+        {
+            var rules = new AddressRuleBase[] { new TwoGroupRule() };
+            var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
+
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+
+            CollectionAssert.AreEqual(new[] { "Atlas", "Textures" }, managedGroups);
+        }
+
+        [Test]
+        public void CollectManagedGroups_DisabledRule_ExcludesItsGroups()
+        {
+            var rules = new AddressRuleBase[] { new TwoGroupRule() };
+            var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
+            AddressTellerSettings.SetRuleEnabled(typeof(TwoGroupRule).FullName, false);
+
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+
+            Assert.IsEmpty(managedGroups);
+        }
+
+        [Test]
+        public void CollectManagedGroups_ConfigureThrows_ContributesNoGroups()
+        {
+            var rules = new AddressRuleBase[] { new ThrowingRule() };
+            var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
+
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+
+            Assert.IsEmpty(managedGroups);
+        }
+
+        [Test]
+        public void CollectManagedGroups_DuplicateGroupNamesAcrossRules_Deduplicated()
+        {
+            var rules = new AddressRuleBase[] { new TwoGroupRule(), new TwoGroupRule() };
+            var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
+
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+
+            CollectionAssert.AreEqual(new[] { "Atlas", "Textures" }, managedGroups);
+        }
     }
 }
