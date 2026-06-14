@@ -32,7 +32,7 @@ namespace Natsume777.AddressTeller
     /// <summary>
     /// ルール評価中に Predicate / AddressSelector / LabelSelector が送出した例外1件。
     /// </summary>
-    public readonly struct RuleEvaluationError
+    internal readonly struct RuleEvaluationError
     {
         /// <summary>例外を送出したルールの識別文字列。</summary>
         public string RuleSource { get; }
@@ -52,7 +52,7 @@ namespace Natsume777.AddressTeller
     /// AddressCandidates が 2 件以上のとき競合。0 件のときこのアセットは対象外。
     /// Labels は全マッチルールから蓄積される。
     /// </summary>
-    public sealed class AddressResolution
+    internal sealed class AddressResolution
     {
         /// <summary>アドレスを発行したルールのグループ名＋アドレスのリスト。</summary>
         public IReadOnlyList<AddressCandidate> AddressCandidates { get; }
