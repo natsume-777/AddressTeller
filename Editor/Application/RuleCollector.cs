@@ -90,5 +90,44 @@ namespace AddressTeller.Editor
             var disabled = new HashSet<string>(disabledClassNames);
             return rules.Where(r => !disabled.Contains(r.GetType().FullName)).ToList();
         }
+
+        /// <summary>
+        /// <see cref="CollectEnabledRules(IReadOnlyList{AddressRuleBase}, IReadOnlyList{string})"/> に、
+        /// 永続設定（<paramref name="disabledClassNames"/>）とは別経路で一時的に追加指定された除外クラス名
+        /// （<paramref name="additionalDisabledClassNames"/>、CLIの一時除外指定を想定）の和集合を適用するオーバーロード。
+        /// </summary>
+        /// <param name="additionalDisabledClassNames">
+        /// <paramref name="rules"/> に存在しない FullName が1件でも含まれる場合は false を返す
+        /// （CLIのtypoによる除外漏れの静かな放置を防ぐ）。
+        /// </param>
+        /// <param name="unknownClassNames">false の場合、未知だった FullName の一覧。成功時は空。</param>
+        public static bool TryCollectEnabledRules(
+            IReadOnlyList<AddressRuleBase> rules,
+            IReadOnlyList<string> disabledClassNames,
+            IReadOnlyList<string> additionalDisabledClassNames,
+            out IReadOnlyList<AddressRuleBase> enabledRules,
+            out IReadOnlyList<string> unknownClassNames)
+        {
+            if (additionalDisabledClassNames != null && additionalDisabledClassNames.Count > 0)
+            {
+                var known = new HashSet<string>(rules.Select(r => r.GetType().FullName));
+                var unknown = additionalDisabledClassNames.Where(name => !known.Contains(name)).Distinct().ToList();
+                if (unknown.Count > 0)
+                {
+                    enabledRules = null;
+                    unknownClassNames = unknown;
+                    return false;
+                }
+            }
+
+            var disabled = (disabledClassNames ?? Array.Empty<string>())
+                .Concat(additionalDisabledClassNames ?? Array.Empty<string>())
+                .Distinct()
+                .ToList();
+
+            enabledRules = CollectEnabledRules(rules, disabled);
+            unknownClassNames = Array.Empty<string>();
+            return true;
+        }
     }
 }

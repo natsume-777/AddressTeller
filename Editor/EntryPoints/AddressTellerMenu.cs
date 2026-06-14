@@ -72,11 +72,18 @@ namespace AddressTeller.Editor
                 return;
             }
 
+            if (!TryBuildCliRules(cliArgs, out var rules, out var rulesError))
+            {
+                Debug.LogError($"[AddressTeller] {rulesError}");
+                EditorApplication.Exit(3);
+                return;
+            }
+
             // 母集合を1回確定し、dry-run（レポート化）と実 Apply で同じ対象パスを使う。
             var paths = AssetDatabase.GetAllAssetPaths();
-            var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths);
+            var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
 
-            var applyIssues = AddressTellerService.ApplyAll(paths, settings);
+            var applyIssues = AddressTellerService.ApplyAll(paths, settings, NullProgressReporter.Instance, rules);
             foreach (var issue in applyIssues)
                 Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
 
@@ -123,7 +130,14 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            var validateIssues = AddressTellerService.ValidateAll(settings);
+            if (!TryBuildCliRules(cliArgs, out var rules, out var rulesError))
+            {
+                Debug.LogError($"[AddressTeller] {rulesError}");
+                EditorApplication.Exit(3);
+                return;
+            }
+
+            var validateIssues = AddressTellerService.ValidateAll(settings, NullProgressReporter.Instance, rules);
 
             // validateIssues には GroupWillBeCreated（IsOk=true、AutoCreateMissingGroups による作成予定の提示）が
             // 含まれる場合がある。中止が必要なのは IsOk=false の要素のみ。
@@ -136,20 +150,40 @@ namespace AddressTeller.Editor
 
                 // Apply を行わないため、現在の状態のままの dry-run をレポート化する。
                 var paths = AssetDatabase.GetAllAssetPaths();
-                var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths);
+                var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
                 ExitWithReport(dryRun, validateIssues, cliArgs, settings);
                 return;
             }
 
             // 母集合を1回確定し、dry-run（レポート化）と実 Apply で同じ対象パスを使う。
             var applyPaths = AssetDatabase.GetAllAssetPaths();
-            var applyDryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, applyPaths);
+            var applyDryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, applyPaths, rules);
 
-            var applyIssues = AddressTellerService.ApplyAll(applyPaths, settings);
+            var applyIssues = AddressTellerService.ApplyAll(applyPaths, settings, NullProgressReporter.Instance, rules);
             foreach (var issue in applyIssues)
                 Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
 
             ExitWithReport(applyDryRun, applyIssues, cliArgs, settings);
+        }
+
+        /// <summary>
+        /// CLI指定の <c>-addressTellerDisableRules</c> と永続設定（<see cref="AddressTellerSettings.DisabledRuleClassNames"/>）
+        /// の和集合で除外したルール一覧を返す。
+        /// </summary>
+        /// <remarks>
+        /// この除外は CLI 実行限定の一時除外であり、Postprocessor/Menu には波及しない。
+        /// DEVELOPMENT_GUIDELINESの「設定フラグの全エントリポイント一貫評価」原則からの意図的な逸脱。
+        /// </remarks>
+        private static bool TryBuildCliRules(AddressTellerCliArgs cliArgs, out IReadOnlyList<AddressRuleBase> rules, out string error)
+        {
+            if (!RuleCollector.TryCollectEnabledRules(RuleCollector.CollectRules(), AddressTellerSettings.DisabledRuleClassNames, cliArgs.DisableRuleFullNames, out rules, out var unknown))
+            {
+                error = $"-addressTellerDisableRules に未知のルールクラスが指定されています: {string.Join(", ", unknown)}";
+                return false;
+            }
+
+            error = null;
+            return true;
         }
 
         /// <summary>
@@ -201,8 +235,15 @@ namespace AddressTeller.Editor
                 return;
             }
 
+            if (!TryBuildCliRules(cliArgs, out var rules, out var rulesError))
+            {
+                Debug.LogError($"[AddressTeller] {rulesError}");
+                EditorApplication.Exit(3);
+                return;
+            }
+
             var paths = AssetDatabase.GetAllAssetPaths();
-            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths);
+            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
 
             Debug.Log($"[AddressTeller] Check 完了: 差分 追加{result.Diff.Added.Count}件 / 削除{result.Diff.Removed.Count}件 / 変更{result.Diff.Changed.Count}件、問題 {result.Issues.Count}件。");
             foreach (var issue in result.Issues)

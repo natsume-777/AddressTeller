@@ -6,6 +6,10 @@
 
 ## [0.3.0] - 2026-06-14
 
+### Added
+
+- `ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` に `-addressTellerDisableRules <FullName>[,...]` を追加。永続設定（Project Settings）の無効化ルールとの和集合をCLI実行時のみ一時的に除外できる（CI実行時のデバッグ用ルール除外などを想定）。指定したFullNameが既知のルールクラスに一致しない場合はexit code 3で停止する。この除外はCLI実行限定で、Postprocessor/メニューには影響しない。
+
 ### Documentation
 
 - Documentation~/operations.md のCI連携セクションに `CheckCLI` の記載が漏れていたため追記した。exit code表は3つのCLIメソッド（`ApplyAllCLI`/`ApplyWithValidateCLI`/`CheckCLI`）共通であることを明記した。

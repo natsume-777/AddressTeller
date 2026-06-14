@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace AddressTeller.Editor
 {
@@ -19,8 +21,15 @@ namespace AddressTeller.Editor
         /// </summary>
         public string ReportFormat { get; private set; }
 
+        /// <summary>
+        /// -addressTellerDisableRules で指定されたルールクラスのフルネーム一覧（カンマ区切り、trim済み、空要素除去）。
+        /// 未指定なら空リスト。CLI実行限定の一時除外（<see cref="AddressTellerSettings.DisabledRuleClassNames"/> との和集合）に使う。
+        /// </summary>
+        public IReadOnlyList<string> DisableRuleFullNames { get; private set; } = Array.Empty<string>();
+
         private const string ReportPathFlag = "-addressTellerReport";
         private const string ReportFormatFlag = "-addressTellerReportFormat";
+        private const string DisableRulesFlag = "-addressTellerDisableRules";
 
         /// <summary>
         /// 引数配列をパースする。
@@ -36,6 +45,7 @@ namespace AddressTeller.Editor
 
             string reportPath = null;
             string reportFormat = null;
+            IReadOnlyList<string> disableRuleFullNames = Array.Empty<string>();
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -63,6 +73,19 @@ namespace AddressTeller.Editor
                             return false;
                         }
                         break;
+
+                    case DisableRulesFlag:
+                        if (i + 1 >= args.Length)
+                        {
+                            error = $"{DisableRulesFlag} に値が指定されていません。";
+                            return false;
+                        }
+                        disableRuleFullNames = args[++i]
+                            .Split(',')
+                            .Select(name => name.Trim())
+                            .Where(name => name.Length > 0)
+                            .ToList();
+                        break;
                 }
             }
 
@@ -73,6 +96,7 @@ namespace AddressTeller.Editor
             {
                 ReportPath = reportPath,
                 ReportFormat = reportFormat,
+                DisableRuleFullNames = disableRuleFullNames,
             };
             return true;
         }

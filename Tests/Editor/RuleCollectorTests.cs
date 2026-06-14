@@ -175,5 +175,89 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(rules.Count, enabled.Count);
         }
+
+        // --- TryCollectEnabledRules（CLI -addressTellerDisableRules の和集合計算） ---
+
+        [Test]
+        public void TryCollectEnabledRules_NoAdditional_SameAsCollectEnabledRules()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var persisted = new[] { typeof(LowPriorityRule).FullName };
+
+            var ok = RuleCollector.TryCollectEnabledRules(rules, persisted, System.Array.Empty<string>(), out var enabled, out var unknown);
+
+            Assert.IsTrue(ok);
+            Assert.IsEmpty(unknown);
+            CollectionAssert.AreEqual(RuleCollector.CollectEnabledRules(rules, persisted), enabled);
+        }
+
+        [Test]
+        public void TryCollectEnabledRules_AdditionalKnownName_ExcludesThatRule()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var additional = new[] { typeof(HighPriorityRule).FullName };
+
+            var ok = RuleCollector.TryCollectEnabledRules(rules, System.Array.Empty<string>(), additional, out var enabled, out var unknown);
+
+            Assert.IsTrue(ok);
+            Assert.IsEmpty(unknown);
+            Assert.IsFalse(enabled.Any(r => r is HighPriorityRule));
+            Assert.IsTrue(enabled.Any(r => r is LowPriorityRule));
+        }
+
+        [Test]
+        public void TryCollectEnabledRules_PersistedAndAdditional_UnionApplied()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var persisted = new[] { typeof(LowPriorityRule).FullName };
+            var additional = new[] { typeof(HighPriorityRule).FullName };
+
+            var ok = RuleCollector.TryCollectEnabledRules(rules, persisted, additional, out var enabled, out var unknown);
+
+            Assert.IsTrue(ok);
+            Assert.IsEmpty(unknown);
+            Assert.IsFalse(enabled.Any(r => r is LowPriorityRule));
+            Assert.IsFalse(enabled.Any(r => r is HighPriorityRule));
+            Assert.IsTrue(enabled.Any(r => r is DefaultOrderRule));
+        }
+
+        [Test]
+        public void TryCollectEnabledRules_DuplicateBetweenPersistedAndAdditional_NoError()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var name = typeof(LowPriorityRule).FullName;
+
+            var ok = RuleCollector.TryCollectEnabledRules(rules, new[] { name }, new[] { name }, out var enabled, out var unknown);
+
+            Assert.IsTrue(ok);
+            Assert.IsEmpty(unknown);
+            Assert.IsFalse(enabled.Any(r => r is LowPriorityRule));
+        }
+
+        [Test]
+        public void TryCollectEnabledRules_UnknownAdditionalName_ReturnsFalseWithUnknownName()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var additional = new[] { "Some.Nonexistent.Namespace.NoSuchRule" };
+
+            var ok = RuleCollector.TryCollectEnabledRules(rules, System.Array.Empty<string>(), additional, out var enabled, out var unknown);
+
+            Assert.IsFalse(ok);
+            Assert.IsNull(enabled);
+            CollectionAssert.AreEqual(additional, unknown);
+        }
+
+        [Test]
+        public void TryCollectEnabledRules_MixedKnownAndUnknownAdditionalNames_ReturnsOnlyUnknown()
+        {
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var additional = new[] { typeof(LowPriorityRule).FullName, "Some.Nonexistent.Namespace.NoSuchRule" };
+
+            var ok = RuleCollector.TryCollectEnabledRules(rules, System.Array.Empty<string>(), additional, out var enabled, out var unknown);
+
+            Assert.IsFalse(ok);
+            Assert.IsNull(enabled);
+            CollectionAssert.AreEqual(new[] { "Some.Nonexistent.Namespace.NoSuchRule" }, unknown);
+        }
     }
 }

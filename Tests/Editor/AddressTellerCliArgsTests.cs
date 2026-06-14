@@ -109,5 +109,54 @@ namespace AddressTeller.Editor.Tests
             Assert.IsNull(result.ReportPath);
             Assert.AreEqual("junit", result.ReportFormat);
         }
+
+        [Test]
+        public void NoDisableRulesFlag_DisableRuleFullNamesIsEmpty()
+        {
+            var args = new[] { "-batchmode", "-quit" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            Assert.IsEmpty(result.DisableRuleFullNames);
+        }
+
+        [Test]
+        public void DisableRules_CommaSeparated_TrimmedAndEmptyEntriesRemoved()
+        {
+            var args = new[] { "-addressTellerDisableRules", " MyNamespace.RuleA ,, MyNamespace.RuleB" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            CollectionAssert.AreEqual(new[] { "MyNamespace.RuleA", "MyNamespace.RuleB" }, result.DisableRuleFullNames);
+        }
+
+        [Test]
+        public void DisableRules_DuplicateNames_KeptAsIs()
+        {
+            // 重複は RuleCollector.TryCollectEnabledRules 側で Distinct されるため、パーサでは除去しない。
+            var args = new[] { "-addressTellerDisableRules", "MyNamespace.RuleA,MyNamespace.RuleA" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            CollectionAssert.AreEqual(new[] { "MyNamespace.RuleA", "MyNamespace.RuleA" }, result.DisableRuleFullNames);
+        }
+
+        [Test]
+        public void DisableRulesFlagWithoutValue_ReturnsError()
+        {
+            var args = new[] { "-addressTellerDisableRules" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsFalse(ok);
+            Assert.IsNull(result);
+            Assert.IsNotEmpty(error);
+        }
     }
 }
