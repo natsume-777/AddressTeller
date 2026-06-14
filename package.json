@@ -1,6 +1,6 @@
 {
   "name": "com.natsume777.addressteller",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "AddressTeller",
   "description": "Code-first auto-assignment of Unity Addressables addresses and labels. Define rules in C# instead of ScriptableObject UI.",
   "type": "tool",
