@@ -134,7 +134,7 @@ namespace AddressTeller.Editor
             EditorGUILayout.Space(4);
 
             var cleanupStaleEntries = EditorGUILayout.ToggleLeft("マッチしなくなったエントリを削除する", AddressTellerSettings.CleanupStaleEntries);
-            DrawDescription("どのルールにもマッチしなくなったアセットを、AddressTeller が管理するグループから自動的に削除します。ラベルは削除されません。");
+            DrawDescription("どのルールにもマッチしなくなったアセットを、AddressTeller が管理するグループから自動的に削除します。エントリ自体が削除されるため、アドレスと（Addressablesの）ラベルの両方が失われます。");
 
             EditorGUILayout.Space(4);
 
@@ -146,57 +146,6 @@ namespace AddressTeller.Editor
                 AddressTellerSettings.PostprocessEnabled = postprocessEnabled;
                 AddressTellerSettings.CleanupStaleEntries = cleanupStaleEntries;
                 AddressTellerSettings.AutoCreateMissingGroups = autoCreateMissingGroups;
-            }
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("スナップショット", EditorStyles.boldLabel);
-
-            EditorGUI.BeginChangeCheck();
-            var snapshotFolder = EditorGUILayout.TextField("保存先フォルダ", AddressTellerSettings.SnapshotFolder);
-            if (EditorGUI.EndChangeCheck())
-                AddressTellerSettings.SnapshotFolder = snapshotFolder;
-
-            DrawDescription("プロジェクトルート（Assets の親ディレクトリ）からの相対パス。既定値は \"AddressTellerSnapshots\"（Assets 外、Unity にインポートされない）。");
-
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("フォルダを選択...", GUILayout.Width(120)))
-                PickSnapshotFolder();
-            EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.Space(4);
-
-            EditorGUI.BeginChangeCheck();
-            var autoSnapshotBeforeApplyAll = EditorGUILayout.ToggleLeft("Apply実行前に自動スナップショットを保存する", AddressTellerSettings.AutoSnapshotBeforeApplyAll);
-            DrawDescription("対象は Apply All / Apply with Validate メニューのみです。import時の自動適用やCLIでの実行は対象外です。");
-
-            var autoSnapshotRetention = EditorGUILayout.IntField("自動スナップショットの保持件数", AddressTellerSettings.AutoSnapshotRetention);
-            DrawDescription("これを超える古い自動スナップショットは自動的に削除されます。最小値は1件です。");
-
-            if (EditorGUI.EndChangeCheck())
-            {
-                AddressTellerSettings.AutoSnapshotBeforeApplyAll = autoSnapshotBeforeApplyAll;
-                AddressTellerSettings.AutoSnapshotRetention = autoSnapshotRetention;
-            }
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("運用アクション", EditorStyles.boldLabel);
-
-            var addressablesSettings = AddressableAssetSettingsDefaultObject.Settings;
-
-            if (addressablesSettings == null)
-                EditorGUILayout.HelpBox("AddressableAssetSettings が見つかりません。Addressables を初期化してください。", MessageType.Warning);
-
-            using (new EditorGUI.DisabledScope(addressablesSettings == null))
-            {
-                EditorGUILayout.BeginHorizontal();
-                if (GUILayout.Button("Validate 実行"))
-                    AddressTellerMenu.Validate();
-                if (GUILayout.Button("プレビュー（Validate付き）"))
-                    AddressTellerMenu.ApplyWithValidate();
-                if (GUILayout.Button("Apply 実行"))
-                    AddressTellerMenu.ApplyAll();
-                EditorGUILayout.EndHorizontal();
             }
 
             EditorGUILayout.Space();
@@ -219,7 +168,6 @@ namespace AddressTeller.Editor
                     "AddressRuleBase を継承したクラスが見つかりません。\n" +
                     "AddressRuleBase を継承し、Configure() でアドレス／ラベルのルールを定義してください。",
                     MessageType.Info);
-                return;
             }
 
             foreach (var overview in overviewRules)
@@ -258,6 +206,59 @@ namespace AddressTeller.Editor
                 if (newFoldout)
                     DrawRuleOverview(overview);
             }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("運用アクション", EditorStyles.boldLabel);
+
+            var addressablesSettings = AddressableAssetSettingsDefaultObject.Settings;
+
+            if (addressablesSettings == null)
+                EditorGUILayout.HelpBox("AddressableAssetSettings が見つかりません。Addressables を初期化してください。", MessageType.Warning);
+
+            using (new EditorGUI.DisabledScope(addressablesSettings == null))
+            {
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("Validate 実行"))
+                    AddressTellerMenu.Validate();
+                if (GUILayout.Button("プレビュー（Validate付き）"))
+                    AddressTellerMenu.ApplyWithValidate();
+                if (GUILayout.Button("Apply 実行"))
+                    AddressTellerMenu.ApplyAll();
+                EditorGUILayout.EndHorizontal();
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("スナップショット", EditorStyles.boldLabel);
+
+            EditorGUI.BeginChangeCheck();
+            var snapshotFolder = EditorGUILayout.TextField("保存先フォルダ", AddressTellerSettings.SnapshotFolder);
+            if (EditorGUI.EndChangeCheck())
+                AddressTellerSettings.SnapshotFolder = snapshotFolder;
+
+            DrawDescription("プロジェクトルート（Assets の親ディレクトリ）からの相対パス。既定値は \"AddressTellerSnapshots\"（Assets 外、Unity にインポートされない）。");
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("フォルダを選択...", GUILayout.Width(120)))
+                PickSnapshotFolder();
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(4);
+
+            EditorGUI.BeginChangeCheck();
+            var autoSnapshotBeforeApplyAll = EditorGUILayout.ToggleLeft("Apply実行前に自動スナップショットを保存する", AddressTellerSettings.AutoSnapshotBeforeApplyAll);
+            DrawDescription("対象は Apply All / Apply with Validate メニューのみです。import時の自動適用やCLIでの実行は対象外です。");
+
+            var autoSnapshotRetention = EditorGUILayout.IntField("自動スナップショットの保持件数", AddressTellerSettings.AutoSnapshotRetention);
+            DrawDescription("これを超える古い自動スナップショットは自動的に削除されます。最小値は1件です。");
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                AddressTellerSettings.AutoSnapshotBeforeApplyAll = autoSnapshotBeforeApplyAll;
+                AddressTellerSettings.AutoSnapshotRetention = autoSnapshotRetention;
+            }
+
+            EditorGUILayout.Space();
         }
 
         /// <summary>

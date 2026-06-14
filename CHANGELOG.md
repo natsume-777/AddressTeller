@@ -13,6 +13,11 @@
 ### Documentation
 
 - Documentation~/operations.md のCI連携セクションに `CheckCLI` の記載が漏れていたため追記した。exit code表は3つのCLIメソッド（`ApplyAllCLI`/`ApplyWithValidateCLI`/`CheckCLI`）共通であることを明記した。
+- `CleanupStaleEntries` の説明（Project Settings画面・operations.md）にあった「ラベルは削除されません」という誤った記述を修正。エントリ削除（`RemoveAssetEntry`）により、アドレスとAddressablesラベルの両方が失われる。
+
+### Changed
+
+- Project Settings の AddressTeller 画面のセクション順序を「自動適用 → 登録されているルール → 運用アクション → スナップショット」に変更し、最も確認頻度の高い「登録されているルール」一覧が画面途中で切れないようにした。
 
 ### Changed
 
