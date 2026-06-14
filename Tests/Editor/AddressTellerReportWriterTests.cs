@@ -1,8 +1,11 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace AddressTeller.Editor.Tests
 {
@@ -235,6 +238,32 @@ namespace AddressTeller.Editor.Tests
 
             Assert.Throws<ArgumentException>(() =>
                 AddressTellerReportWriter.WriteToFile(path, report, "yaml"));
+        }
+
+        [Test]
+        public void WriteToFile_InvalidPath_ReturnsFalseAndLogsError()
+        {
+            // CLI の exit code 3（実行環境エラー）はレポート書き込み失敗時にも発生する。
+            // 出力先ディレクトリ名が既存のファイルと衝突する（ディレクトリ作成不可な）パスで、
+            // その経路（false 復帰 + エラーログ）を確認する。
+            var report = EmptyReport();
+            var blockingFile = Path.Combine(Path.GetTempPath(), "AddressTellerReportWriterTests_blocking_" + Guid.NewGuid());
+            var path = Path.Combine(blockingFile, "report.json");
+
+            try
+            {
+                File.WriteAllText(blockingFile, "blocking");
+
+                LogAssert.Expect(LogType.Error, new Regex("レポートの書き込みに失敗しました"));
+                var ok = AddressTellerReportWriter.WriteToFile(path, report, "json");
+
+                Assert.IsFalse(ok);
+            }
+            finally
+            {
+                if (File.Exists(blockingFile))
+                    File.Delete(blockingFile);
+            }
         }
     }
 }

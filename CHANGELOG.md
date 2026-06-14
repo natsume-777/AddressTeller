@@ -6,6 +6,10 @@
 
 ## [0.3.0] - 2026-06-14
 
+### Documentation
+
+- Documentation~/operations.md のCI連携セクションに `CheckCLI` の記載が漏れていたため追記した。exit code表は3つのCLIメソッド（`ApplyAllCLI`/`ApplyWithValidateCLI`/`CheckCLI`）共通であることを明記した。
+
 ### Changed
 
 - **BREAKING**: ルート namespace を `Natsume777.AddressTeller` から `AddressTeller` に変更。利用者は `using Natsume777.AddressTeller;` を `using AddressTeller;` に書き換える必要がある。Editor アセンブリ名も `Natsume777.AddressTeller.Editor` から `AddressTeller.Editor` に変更されたため、他の asmdef からこのアセンブリを参照している場合は `references` の更新が必要。
