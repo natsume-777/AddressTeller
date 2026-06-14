@@ -58,6 +58,7 @@ public sealed class GameAddressRules : AddressRuleBase
 - [ルールの書き方](Documentation~/writing-rules.md) — `AddressRuleBase` の書き方、`Match`/`Naming` ヘルパー、`AssetContext`、評価ルールの詳細
 - [適用と運用](Documentation~/operations.md) — 適用方法、CI 連携、Project Settings、スナップショット、サンプル
 - [設計上の決定事項](Documentation~/design-decisions.md) — アドレス・ラベル・グループの扱いをこう決めた理由
+- [アーキテクチャ](Documentation~/architecture.md) — レイヤ構成・フォルダ別の責務・ルール評価の流れ
 - [コントリビュート](CONTRIBUTING.md)
 
 ## 背景
