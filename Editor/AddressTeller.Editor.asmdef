@@ -1,6 +1,6 @@
 {
-    "name": "Natsume777.AddressTeller.Editor",
-    "rootNamespace": "Natsume777.AddressTeller.Editor",
+    "name": "AddressTeller.Editor",
+    "rootNamespace": "AddressTeller.Editor",
     "references": [
         "Unity.Addressables",
         "Unity.Addressables.Editor",

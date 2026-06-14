@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// Configure() で組み立てられたグループ単位のルール1件。

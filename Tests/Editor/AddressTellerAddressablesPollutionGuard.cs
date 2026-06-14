@@ -5,7 +5,7 @@ using UnityEditor.AddressableAssets.Settings;
 using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// EditMode テストの実行中に、本番の Addressables 設定

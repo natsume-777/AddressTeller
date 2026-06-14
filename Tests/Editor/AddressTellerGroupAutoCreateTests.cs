@@ -5,7 +5,7 @@ using System.Linq;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AutoCreateMissingGroups（グループ自動作成オプション）の Validate/Apply/Predict 分岐と

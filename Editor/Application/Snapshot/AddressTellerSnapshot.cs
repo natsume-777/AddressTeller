@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// Addressables のアドレス／ラベル／グループ割り当ての状態を表すスナップショット。

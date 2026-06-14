@@ -32,7 +32,7 @@ https://github.com/natsume-777/AddressTeller.git
 `Configure()` 内で `Group().Where().Address().Label()` をチェーンしてルールを記述します。
 
 ```csharp
-using Natsume777.AddressTeller;
+using AddressTeller;
 using UnityEngine;
 
 public sealed class GameAddressRules : AddressRuleBase

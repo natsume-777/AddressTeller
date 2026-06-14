@@ -3,7 +3,7 @@ using System;
 using System.IO;
 using System.Linq;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// SnapshotFileCatalog の Collect/SortByCapturedDesc/Filter を、OS の一時ディレクトリに

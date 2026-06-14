@@ -6,7 +6,7 @@ using System.Security;
 using System.Text;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// <see cref="AddressTellerReport"/> を JSON / JUnit XML にシリアライズし、ファイルへ書き出す。

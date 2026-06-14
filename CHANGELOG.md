@@ -4,6 +4,14 @@
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) に従います。
 `0.x` 系のため、SemVer 上は破壊的変更もマイナーバージョン内で扱います。
 
+## [0.3.0] - 2026-06-14
+
+### Changed
+
+- **BREAKING**: ルート namespace を `Natsume777.AddressTeller` から `AddressTeller` に変更。利用者は `using Natsume777.AddressTeller;` を `using AddressTeller;` に書き換える必要がある。Editor アセンブリ名も `Natsume777.AddressTeller.Editor` から `AddressTeller.Editor` に変更されたため、他の asmdef からこのアセンブリを参照している場合は `references` の更新が必要。
+- `Editor/Application/` 配下および Snapshot 関連の EntryPoints を機能別サブフォルダ（`Snapshot/` / `Reporting/` / `Bundle/`）に整理した（内部構成のみの変更で、公開 API への影響はない）。
+- パッケージ名（`com.natsume777.addressteller`）は変更していない。
+
 ## [0.2.0] - 2026-06-14
 
 ### Added

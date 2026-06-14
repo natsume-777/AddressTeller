@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// SnapshotFolder 配下のスナップショット JSON ファイルを列挙し、メタデータを読み込んで一覧化する。

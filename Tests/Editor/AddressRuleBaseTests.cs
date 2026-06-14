@@ -1,6 +1,6 @@
 using NUnit.Framework;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     public class AddressRuleBaseTests
     {

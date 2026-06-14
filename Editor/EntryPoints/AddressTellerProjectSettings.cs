@@ -6,7 +6,7 @@ using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// 1つの <see cref="AddressRuleEntry"/>（Configure() 内の Group() 1回分）から抽出した表示用メタ情報。

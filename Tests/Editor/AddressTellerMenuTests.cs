@@ -4,7 +4,7 @@ using UnityEditor.AddressableAssets;
 using UnityEngine;
 using UnityEngine.TestTools;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressableAssetSettings が存在しない環境でメニューが安全に失敗することを確認する。

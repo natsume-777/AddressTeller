@@ -1,6 +1,6 @@
 using System;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// 説明文付きの条件式。Where() に渡してエラーメッセージ表示を分かりやすくするためのラッパー。

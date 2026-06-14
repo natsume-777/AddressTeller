@@ -6,7 +6,7 @@ using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     public static class AddressTellerMenu
     {
@@ -47,7 +47,7 @@ namespace Natsume777.AddressTeller.Editor
         }
 
         /// <summary>
-        /// CI 向け。-executeMethod Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI で実行。
+        /// CI 向け。-executeMethod AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI で実行。
         /// 自動スナップショット（<see cref="AddressTellerSettings.AutoSnapshotBeforeApplyAll"/>）は
         /// 対話メニュー（Apply All / Apply with Validate）のみが対象であり、
         /// ビルド時間とディスク I/O を避けるため CLI/CI では実行しない。
@@ -98,7 +98,7 @@ namespace Natsume777.AddressTeller.Editor
         }
 
         /// <summary>
-        /// CI 向け。-executeMethod Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI で実行。
+        /// CI 向け。-executeMethod AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI で実行。
         /// 自動スナップショット（<see cref="AddressTellerSettings.AutoSnapshotBeforeApplyAll"/>）は
         /// 対話メニュー（Apply All / Apply with Validate）のみが対象であり、
         /// ビルド時間とディスク I/O を避けるため CLI/CI では実行しない。
@@ -179,7 +179,7 @@ namespace Natsume777.AddressTeller.Editor
         }
 
         /// <summary>
-        /// CI 向け。-executeMethod Natsume777.AddressTeller.Editor.AddressTellerMenu.CheckCLI で実行。
+        /// CI 向け。-executeMethod AddressTeller.Editor.AddressTellerMenu.CheckCLI で実行。
         /// Apply を行わない dry-run（読み取り専用）で、ルール適用後の状態と現在の状態の差分・問題を検出する。
         /// -addressTellerReport &lt;path&gt; / -addressTellerReportFormat json|junit でレポートをファイル出力できる。
         /// exit code: 0=差分なし・問題なし、1=ドリフトあり、2=Validation エラーあり、3=実行環境エラー。

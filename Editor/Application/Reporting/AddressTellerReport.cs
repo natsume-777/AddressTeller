@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// Check（dry-run）/ Apply の結果を CI 向けに構造化したレポート。

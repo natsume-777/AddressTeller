@@ -1,7 +1,7 @@
 using System.Reflection;
 using UnityEditor.AddressableAssets.Settings;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// テスト専用の <see cref="AddressableAssetSettings"/> をディスクに永続化せずに生成するためのヘルパー。

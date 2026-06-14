@@ -6,7 +6,7 @@ using UnityEditor.AddressableAssets.Settings;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// dry-run の差分（<see cref="DryRunResult"/>）や Apply/Validate の問題点

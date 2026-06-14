@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor.AddressableAssets.Settings;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// 論理バンドル分布（<see cref="BundleDistribution"/>）の算出と、表示用の集計をまとめる。

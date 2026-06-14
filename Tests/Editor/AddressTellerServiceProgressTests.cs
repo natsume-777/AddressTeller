@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.AddressableAssets.Settings;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressTellerService.ApplyAll/ValidateAll の IProgressReporter 連携オーバーロードを検証する。

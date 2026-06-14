@@ -1,6 +1,6 @@
 using System;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// Address()/Label() に渡すアドレス生成式を簡潔に組み立てるための静的ヘルパー群。

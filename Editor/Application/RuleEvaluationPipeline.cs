@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// ルール評価のループに入る前に1回だけ構築すればよいセットアップ情報。

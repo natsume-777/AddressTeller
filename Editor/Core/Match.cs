@@ -2,7 +2,7 @@ using System;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// Where() に渡す条件を簡潔に組み立てるための静的ヘルパー群。

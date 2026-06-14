@@ -2,7 +2,7 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressTellerSettings のルールクラス単位 On/Off 切り替え（IsRuleEnabled/SetRuleEnabled）を検証する。
@@ -10,7 +10,7 @@ namespace Natsume777.AddressTeller.Editor.Tests
     /// </summary>
     public class AddressTellerSettingsRuleToggleTests
     {
-        private const string DummyClassName = "Natsume777.AddressTeller.Editor.Tests.DummyRuleForToggleTest";
+        private const string DummyClassName = "AddressTeller.Editor.Tests.DummyRuleForToggleTest";
 
         private List<string> _originalDisabled;
 

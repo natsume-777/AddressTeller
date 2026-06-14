@@ -2,7 +2,7 @@ using NUnit.Framework;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     public class AssetFilterTests
     {

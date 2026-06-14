@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// Explain（<see cref="RuleExplainService.Explain"/>）の結果を CI/外部ツール向けに構造化したレポート。

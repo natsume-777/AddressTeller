@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// Apply All / Apply with Validate の対話フロー（dry-run → 確認ダイアログ → 実行）を担う調停クラス。

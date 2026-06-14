@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressTellerApplier.Predict (dry-run) の判定分岐を、

@@ -4,7 +4,7 @@ using System.IO;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     internal static class AssetFilter
     {

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// 1アセットに対する全ルールの評価結果。Explain 機能の表示単位。

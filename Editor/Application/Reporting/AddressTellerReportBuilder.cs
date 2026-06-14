@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor.AddressableAssets.Settings;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// <see cref="DryRunResult"/> から CI 向け構造化レポート <see cref="AddressTellerReport"/> への変換と、

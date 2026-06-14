@@ -1,4 +1,4 @@
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// 1ルール×1アセットの評価結果。

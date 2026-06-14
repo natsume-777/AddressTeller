@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// Tools/AddressTeller/Apply All・Apply with Validate メニューの実行直前に保存する

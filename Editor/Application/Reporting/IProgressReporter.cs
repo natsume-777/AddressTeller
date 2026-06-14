@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using UnityEditor;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// ApplyAll/ValidateAll の進捗を呼び出し元に通知するためのインターフェース。

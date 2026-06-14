@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEditor;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>Project ウィンドウのコンテキストメニューから Explain ウィンドウを開く。</summary>
     public static class AddressTellerExplainMenu

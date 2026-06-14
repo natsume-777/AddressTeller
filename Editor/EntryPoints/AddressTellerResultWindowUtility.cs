@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>結果ウィンドウの TreeView 間で共有する補助処理。</summary>
     internal static class AddressTellerResultWindowUtility

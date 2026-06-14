@@ -3,7 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// ルール評価に渡すアセット1件分の情報。

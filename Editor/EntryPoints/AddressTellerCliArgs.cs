@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// AddressTeller CLI（<see cref="AddressTellerMenu.CheckCLI"/> など）のコマンドライン引数。

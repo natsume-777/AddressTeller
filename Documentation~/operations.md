@@ -14,8 +14,8 @@
 
 `-executeMethod` で以下を実行できます。
 
-- `Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI`
-- `Natsume777.AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI`（`ApplyWithValidateCLI` は先に Validate を行い、問題があれば Apply を中止します）
+- `AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI`
+- `AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI`（`ApplyWithValidateCLI` は先に Validate を行い、問題があれば Apply を中止します）
 
 `-addressTellerReport <path>` / `-addressTellerReportFormat json|junit` を指定すると、Apply 実行前の差分（dry-run）から構造化レポートをファイル出力します。`-addressTellerReportFormat` を省略した場合、拡張子が `.xml` なら `junit`、それ以外は `json` として扱われます。
 

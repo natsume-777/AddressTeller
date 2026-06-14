@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     internal sealed class AddressRuleBuilderImpl : IAddressRuleBuilder
     {

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// AssetContext に対してルールエントリを評価し AddressResolution を返す。

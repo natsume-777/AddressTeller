@@ -5,14 +5,14 @@ AddressTeller のコード構成・レイヤ依存・ルール評価の流れを
 
 ## アセンブリと名前空間
 
-エディタコードは単一アセンブリ `Natsume777.AddressTeller.Editor`（asmdef名/rootNamespace）にまとまっているが、名前空間は2つに分かれている。
+エディタコードは単一アセンブリ `AddressTeller.Editor`（asmdef名/rootNamespace）にまとまっているが、名前空間は2つに分かれている。
 
-- `Editor/Core` 配下のルール定義面・評価エンジン（`AddressRuleBase`/`Match`/`Naming`/`AssetContext`/`AddressResolution`/`RuleEvaluator` など）は `namespace Natsume777.AddressTeller`（`.Editor` なし）。
-- `Editor/Application`・`Editor/EntryPoints` 配下の型は `namespace Natsume777.AddressTeller.Editor`。
+- `Editor/Core` 配下のルール定義面・評価エンジン（`AddressRuleBase`/`Match`/`Naming`/`AssetContext`/`AddressResolution`/`RuleEvaluator` など）は `namespace AddressTeller`（`.Editor` なし）。
+- `Editor/Application`・`Editor/EntryPoints` 配下の型は `namespace AddressTeller.Editor`。
 
 `Editor/Core`・`Editor/Application`・`Editor/EntryPoints` というフォルダ分けは論理レイヤの区分であり、アセンブリ境界で分離されているわけではない（名前空間は上記の通り Core のみ異なる）。レイヤ間の依存方向（後述）は、フォルダ構成の規約と `internal`/`public` のアクセス修飾子によって表現される規律であり、コンパイラが強制するのは「型が `internal` なら同一アセンブリ外からは不可視」という点までである。
 
-テストアセンブリ `Natsume777.AddressTeller.Editor.Tests` は `Editor/AssemblyInfo.cs` の `InternalsVisibleTo` 属性によって、アセンブリ `Natsume777.AddressTeller.Editor` 内の `internal` 型（`Natsume777.AddressTeller`/`Natsume777.AddressTeller.Editor` いずれの名前空間の型も含む）を直接参照できる。`InternalsVisibleTo` はアセンブリ単位の許可であり、名前空間には依存しない。
+テストアセンブリ `AddressTeller.Editor.Tests` は `Editor/AssemblyInfo.cs` の `InternalsVisibleTo` 属性によって、アセンブリ `AddressTeller.Editor` 内の `internal` 型（`AddressTeller`/`AddressTeller.Editor` いずれの名前空間の型も含む）を直接参照できる。`InternalsVisibleTo` はアセンブリ単位の許可であり、名前空間には依存しない。
 
 ## レイヤ依存
 
@@ -38,21 +38,21 @@ Core         ── ルール定義面・評価エンジン（Addressables 非�
 
 ### Editor/Core
 
-Addressables に依存しないドメインモデルと評価エンジン。アセンブリは `Natsume777.AddressTeller.Editor` だが、ここに置かれる型の名前空間は `Natsume777.AddressTeller`（`.Editor` なし）である。
+Addressables に依存しないドメインモデルと評価エンジン。アセンブリは `AddressTeller.Editor` だが、ここに置かれる型の名前空間は `AddressTeller`（`.Editor` なし）である。
 
 - ルール定義面（公開）: `AddressRuleBase`、`IAddressRuleBuilder`、`Match`、`AssetCondition`、`Naming`、`AssetContext`、`AddressRuleEntry` など
 - 評価実装（内部）: `RuleEvaluator`、`AddressRuleBuilderImpl`、`AddressResolution`、`RuleExplanation` など
 
 ### Editor/Application
 
-Addressables 統合層。ルール収集・評価パイプラインの実行・Addressables への書き込み・スナップショット・レポート・設定を担う。名前空間は `Natsume777.AddressTeller.Editor`。
+Addressables 統合層。ルール収集・評価パイプラインの実行・Addressables への書き込み・スナップショット・レポート・設定を担う。名前空間は `AddressTeller.Editor`。
 
 - 公開: 実行エントリ（`AddressTellerService`、`AddressTellerSettings`）、スナップショット関連、進捗報告、結果型、レポートDTO群
 - 内部: `AddressTellerApplier`、`RuleEvaluationPipeline`、`RuleCollector` などの組み立て系
 
 ### Editor/EntryPoints
 
-Unity Editor へのフック・UI・CLI。名前空間は `Natsume777.AddressTeller.Editor`。`AddressTellerPostprocessor`（インポート時の自動適用）、`AddressTellerMenu`/`AddressTellerCliArgs`（メニュー操作・CI連携）、`AddressTellerProjectSettings`、各種 Window・TreeView などが置かれる。
+Unity Editor へのフック・UI・CLI。名前空間は `AddressTeller.Editor`。`AddressTellerPostprocessor`（インポート時の自動適用）、`AddressTellerMenu`/`AddressTellerCliArgs`（メニュー操作・CI連携）、`AddressTellerProjectSettings`、各種 Window・TreeView などが置かれる。
 
 このレイヤは Application の公開面を呼び出すだけで、ドメインロジック自体は持たない。
 

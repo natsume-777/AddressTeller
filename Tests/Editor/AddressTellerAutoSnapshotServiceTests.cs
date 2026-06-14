@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using UnityEditor.AddressableAssets.Settings;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressTellerAutoSnapshotService の CaptureAndSave/Rotate/FindLatestAuto/LoadAuto を、

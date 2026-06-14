@@ -6,7 +6,7 @@ using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>Predict が返す、適用後のアセットの予測される変化の種類。</summary>
     internal enum PredictedAction

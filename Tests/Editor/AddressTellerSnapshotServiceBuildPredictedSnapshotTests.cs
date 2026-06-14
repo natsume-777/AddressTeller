@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressTellerSnapshotService.BuildPredictedSnapshot (dry-run) の統合テスト。

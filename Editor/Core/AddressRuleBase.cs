@@ -1,6 +1,6 @@
 using System;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// ルール定義の基底クラス。利用者はこれを継承し、C# でアドレス／ラベル付与ルールを記述する。

@@ -2,7 +2,7 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressTellerExplainReportBuilder.Build / AddressTellerExplainReport.ToJson/FromJson の単体テスト。

@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     public static class AddressTellerService
     {

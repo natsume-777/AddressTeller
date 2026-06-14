@@ -1,4 +1,4 @@
-using Natsume777.AddressTeller;
+using AddressTeller;
 using UnityEngine;
 
 namespace AddressTellerSamples

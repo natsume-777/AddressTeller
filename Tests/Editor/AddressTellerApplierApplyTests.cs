@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressTellerApplier.Apply の Skipped 時クリーンアップ挙動(コードレビュー#5対応)を、

@@ -3,7 +3,7 @@ using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     public class AddressTellerPostprocessor : AssetPostprocessor
     {

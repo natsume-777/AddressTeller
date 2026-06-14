@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// 1アセットに対する Explain の結果。除外対象かどうかと、評価詳細・最終的な検証結果を持つ。

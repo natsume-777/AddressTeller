@@ -1,7 +1,7 @@
 using NUnit.Framework;
 using System.Collections.Generic;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// BundleDistributionSummarizer.Summarize の単体テスト。

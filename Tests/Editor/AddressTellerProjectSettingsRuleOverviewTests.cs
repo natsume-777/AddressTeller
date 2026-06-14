@@ -2,7 +2,7 @@ using NUnit.Framework;
 using System;
 using System.Linq;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     public class AddressTellerProjectSettingsRuleOverviewTests
     {

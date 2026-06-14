@@ -6,7 +6,7 @@ using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// SnapshotFolder 配下のスナップショット一覧を表示し、復元・比較を行う管理ウィンドウ。

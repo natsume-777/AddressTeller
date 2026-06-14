@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     public enum ValidationStatus
     {

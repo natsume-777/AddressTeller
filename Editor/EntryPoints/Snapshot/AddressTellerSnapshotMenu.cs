@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>Tools/AddressTeller/Snapshot 以下のメニュー。スナップショットの保存・復元・比較を行う。</summary>
     public static class AddressTellerSnapshotMenu

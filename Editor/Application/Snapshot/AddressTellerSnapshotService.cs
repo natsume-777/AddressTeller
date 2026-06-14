@@ -5,7 +5,7 @@ using System.Linq;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>復元時にスナップショットにないラベルをどう扱うか。</summary>
     public enum SnapshotRestoreMode

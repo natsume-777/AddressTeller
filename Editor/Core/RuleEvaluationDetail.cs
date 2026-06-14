@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// ルール1件×アセット1件の評価結果。Explain 機能で各ルールの判定理由を表示するために使う。

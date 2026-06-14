@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Natsume777.AddressTeller
+namespace AddressTeller
 {
     /// <summary>
     /// アドレス候補1件（グループ名 + アドレス文字列）。

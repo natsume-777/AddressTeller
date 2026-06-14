@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using UnityEditor.AddressableAssets.Settings;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressTellerSnapshotService の Capture/Restore/Diff を、

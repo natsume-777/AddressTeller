@@ -4,7 +4,7 @@ using System.Linq;
 using System.Xml.Linq;
 using NUnit.Framework;
 
-namespace Natsume777.AddressTeller.Editor.Tests
+namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressTellerReportWriter の単体テスト。

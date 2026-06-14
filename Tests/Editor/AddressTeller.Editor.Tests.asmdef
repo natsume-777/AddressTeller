@@ -1,8 +1,8 @@
 {
-    "name": "Natsume777.AddressTeller.Editor.Tests",
-    "rootNamespace": "Natsume777.AddressTeller.Editor.Tests",
+    "name": "AddressTeller.Editor.Tests",
+    "rootNamespace": "AddressTeller.Editor.Tests",
     "references": [
-        "Natsume777.AddressTeller.Editor",
+        "AddressTeller.Editor",
         "Unity.Addressables",
         "Unity.Addressables.Editor",
         "UnityEngine.TestRunner",

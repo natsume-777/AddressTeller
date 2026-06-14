@@ -1,7 +1,7 @@
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// AutoCreateMissingGroups が有効なときに、ルールが参照するグループを

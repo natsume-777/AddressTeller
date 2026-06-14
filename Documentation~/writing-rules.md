@@ -37,7 +37,7 @@ rules.Group("グループ名")
 頻出の条件を組み立てる機能。自動生成される説明は Explain ウィンドウで確認でき、ルール検証時のエラーメッセージにも反映されます。
 
 ```csharp
-using Natsume777.AddressTeller;
+using AddressTeller;
 
 rules.Group("Characters")
     .Where(Match.InFolder("Assets/Game/Characters")

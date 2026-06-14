@@ -4,7 +4,7 @@ using UnityEditor.AddressableAssets.Settings;
 using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 using UnityEngine;
 
-namespace Natsume777.AddressTeller.Editor
+namespace AddressTeller.Editor
 {
     /// <summary>
     /// <see cref="AddressableAssetGroup"/> の BundleMode（PackTogether/PackSeparately/PackTogetherByLabel）を
