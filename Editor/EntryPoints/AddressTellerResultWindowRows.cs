@@ -52,12 +52,17 @@ namespace AddressTeller.Editor
         public string Guid { get; }
         public string Message { get; }
 
-        public IssueRow(ValidationStatus status, string assetPath, string guid, string message)
+        /// <summary><see cref="ValidationStatus.ConflictingAddress"/> のときのみ2件以上。それ以外は空。</summary>
+        public IReadOnlyList<AddressCandidate> ConflictingCandidates { get; }
+
+        public IssueRow(ValidationStatus status, string assetPath, string guid, string message,
+            IReadOnlyList<AddressCandidate> conflictingCandidates)
         {
             Status = status;
             AssetPath = assetPath;
             Guid = guid;
             Message = message;
+            ConflictingCandidates = conflictingCandidates;
         }
     }
 
@@ -131,7 +136,8 @@ namespace AddressTeller.Editor
         public static List<IssueRow> BuildIssueRows(IReadOnlyList<ValidationResult> issues)
         {
             return issues
-                .Select(issue => new IssueRow(issue.Status, issue.Context.Path, issue.Context.Guid, issue.Message))
+                .Select(issue => new IssueRow(issue.Status, issue.Context.Path, issue.Context.Guid, issue.Message,
+                    issue.ConflictingCandidates ?? (IReadOnlyList<AddressCandidate>)Array.Empty<AddressCandidate>()))
                 .OrderBy(r => r.Status)
                 .ThenBy(r => r.AssetPath, StringComparer.Ordinal)
                 .ThenBy(r => r.Guid, StringComparer.Ordinal)

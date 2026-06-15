@@ -246,5 +246,45 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(0, rows.Count);
         }
+
+        [Test]
+        public void BuildIssueRows_ConflictingAddress_CarriesConflictingCandidates()
+        {
+            var ctx = new AssetContext(Guid(AssetAPath), AssetAPath, typeof(GameObject));
+            var candidates = new List<AddressCandidate>
+            {
+                new AddressCandidate("GroupA", "AddressA", "RuleA", "descA", 0),
+                new AddressCandidate("GroupB", "AddressB", "RuleB", "descB", 1),
+            };
+            var issues = new List<ValidationResult>
+            {
+                new ValidationResult(ctx, ValidationStatus.ConflictingAddress, "conflict", candidates),
+            };
+
+            var rows = AddressTellerResultWindowRows.BuildIssueRows(issues);
+
+            Assert.AreEqual(1, rows.Count);
+            var row = rows[0];
+            Assert.AreEqual(ValidationStatus.ConflictingAddress, row.Status);
+            Assert.AreEqual(2, row.ConflictingCandidates.Count);
+            Assert.AreEqual("AddressA", row.ConflictingCandidates[0].Address);
+            Assert.AreEqual("AddressB", row.ConflictingCandidates[1].Address);
+        }
+
+        [Test]
+        public void BuildIssueRows_NonConflictingIssue_HasEmptyConflictingCandidates()
+        {
+            var ctx = new AssetContext(Guid(AssetAPath), AssetAPath, typeof(GameObject));
+            var issues = new List<ValidationResult>
+            {
+                new ValidationResult(ctx, ValidationStatus.GroupNotFound, "Group 'Foo' not found."),
+            };
+
+            var rows = AddressTellerResultWindowRows.BuildIssueRows(issues);
+
+            Assert.AreEqual(1, rows.Count);
+            Assert.IsNotNull(rows[0].ConflictingCandidates);
+            Assert.AreEqual(0, rows[0].ConflictingCandidates.Count);
+        }
     }
 }
