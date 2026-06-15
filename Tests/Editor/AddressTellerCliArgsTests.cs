@@ -184,7 +184,7 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void NoClearScopeFlag_DefaultsToAll()
+        public void NoClearScopeFlag_DefaultsToManaged()
         {
             var args = new[] { "-batchmode", "-quit" };
 
@@ -192,7 +192,7 @@ namespace AddressTeller.Editor.Tests
 
             Assert.IsTrue(ok);
             Assert.IsNull(error);
-            Assert.AreEqual(ClearScope.All, result.ClearScope);
+            Assert.AreEqual(ClearScope.Managed, result.ClearScope);
         }
 
         [Test]

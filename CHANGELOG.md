@@ -31,6 +31,7 @@
 
 - Project Settings の AddressTeller 画面のセクション順序を「自動適用 → 登録されているルール → 運用アクション → スナップショット」に変更し、最も確認頻度の高い「登録されているルール」一覧が画面途中で切れないようにした。
 - Project Settings の「自動適用」セクション見出しを「適用・検証の挙動」に変更。`CleanupStaleEntries`/`AutoCreateMissingGroups`はインポート時の自動適用に限らず Apply All/Validate/CLI/スナップショット dry-run など全エントリポイント共通の設定であり、「自動適用」という見出しは誤解を招くため。
+- `Tools/AddressTeller/Clear All Addresses & Labels...`（メニュー）および `ClearCLI`（`-addressTellerClearScope` 未指定時）の既定スコープを `All`（全エントリ）から `Managed`（AddressTeller が管理するグループのエントリのみ）に変更。全エントリをクリアする場合は `-addressTellerClearScope all` を指定する。
 
 ### Changed
 

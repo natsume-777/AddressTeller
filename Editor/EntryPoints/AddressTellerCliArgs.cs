@@ -34,9 +34,9 @@ namespace AddressTeller.Editor
         public bool ConfirmClear { get; private set; }
 
         /// <summary>
-        /// -addressTellerClearScope で指定されたクリア対象のスコープ。未指定なら <see cref="ClearScope.All"/>。
+        /// -addressTellerClearScope で指定されたクリア対象のスコープ。未指定なら <see cref="ClearScope.Managed"/>。
         /// </summary>
-        public ClearScope ClearScope { get; private set; } = ClearScope.All;
+        public ClearScope ClearScope { get; private set; } = ClearScope.Managed;
 
         private const string ReportPathFlag = "-addressTellerReport";
         private const string ReportFormatFlag = "-addressTellerReportFormat";
@@ -60,7 +60,7 @@ namespace AddressTeller.Editor
             string reportFormat = null;
             IReadOnlyList<string> disableRuleFullNames = Array.Empty<string>();
             var confirmClear = false;
-            var clearScope = ClearScope.All;
+            var clearScope = ClearScope.Managed;
 
             for (int i = 0; i < args.Length; i++)
             {
