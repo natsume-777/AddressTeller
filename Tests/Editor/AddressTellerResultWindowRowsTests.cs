@@ -272,6 +272,27 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void BuildIssueRows_ConflictingAddress_MultiLineMessage_TruncatesToFirstLine()
+        {
+            var ctx = new AssetContext(Guid(AssetAPath), AssetAPath, typeof(GameObject));
+            var candidates = new List<AddressCandidate>
+            {
+                new AddressCandidate("GroupA", "AddressA", "RuleA", "descA", 0),
+                new AddressCandidate("GroupB", "AddressB", "RuleB", "descB", 1),
+            };
+            var message = $"Address conflict for '{AssetAPath}':\n  RuleA [GroupA] -> \"AddressA\"\n  RuleB [GroupB] -> \"AddressB\"";
+            var issues = new List<ValidationResult>
+            {
+                new ValidationResult(ctx, ValidationStatus.ConflictingAddress, message, candidates),
+            };
+
+            var rows = AddressTellerResultWindowRows.BuildIssueRows(issues);
+
+            Assert.AreEqual(1, rows.Count);
+            Assert.AreEqual($"Address conflict for '{AssetAPath}':", rows[0].Message);
+        }
+
+        [Test]
         public void BuildIssueRows_NonConflictingIssue_HasEmptyConflictingCandidates()
         {
             var ctx = new AssetContext(Guid(AssetAPath), AssetAPath, typeof(GameObject));

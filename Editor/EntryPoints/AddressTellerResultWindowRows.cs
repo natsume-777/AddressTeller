@@ -136,8 +136,19 @@ namespace AddressTeller.Editor
         public static List<IssueRow> BuildIssueRows(IReadOnlyList<ValidationResult> issues)
         {
             return issues
-                .Select(issue => new IssueRow(issue.Status, issue.Context.Path, issue.Context.Guid, issue.Message,
-                    issue.ConflictingCandidates ?? (IReadOnlyList<AddressCandidate>)Array.Empty<AddressCandidate>()))
+                .Select(issue =>
+                {
+                    var candidates = issue.ConflictingCandidates ?? (IReadOnlyList<AddressCandidate>)Array.Empty<AddressCandidate>();
+
+                    // ConflictingAddress の Message は候補ごとの内訳を含む複数行文字列だが、
+                    // 候補が2件以上ある場合はその内訳を子行（TreeView）側で表示するため、
+                    // 親行には概要（1行目）のみを表示し重複・行高オーバーフローを避ける。
+                    var message = candidates.Count >= 2
+                        ? issue.Message.Split('\n')[0]
+                        : issue.Message;
+
+                    return new IssueRow(issue.Status, issue.Context.Path, issue.Context.Guid, message, candidates);
+                })
                 .OrderBy(r => r.Status)
                 .ThenBy(r => r.AssetPath, StringComparer.Ordinal)
                 .ThenBy(r => r.Guid, StringComparer.Ordinal)
