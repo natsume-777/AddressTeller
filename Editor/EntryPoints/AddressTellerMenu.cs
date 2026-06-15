@@ -80,6 +80,16 @@ namespace AddressTeller.Editor
                 return;
             }
 
+            var entryCount = settings.groups.Where(g => g != null).Sum(g => g.entries.Count);
+
+            var message = $"全 {entryCount} 件の Addressable エントリ（アドレス・グループ割り当て・ラベル）を削除します。\n"
+                + $"対象: All\n\n"
+                + "実行前に SnapshotFolder/Clear/ 以下へスナップショットを保存します。\n"
+                + "この操作はそのスナップショットから Restore で復元できます。よろしいですか？";
+
+            if (!EditorUtility.DisplayDialog("AddressTeller - Clear All Addresses & Labels", message, "クリアする", "キャンセル"))
+                return;
+
             var snapshotPath = AddressTellerClearSnapshotService.CaptureAndSave(settings, out var snapshotError);
             if (snapshotPath == null)
             {
@@ -91,21 +101,11 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            var entryCount = settings.groups.Where(g => g != null).Sum(g => g.entries.Count);
-
-            var message = $"全 {entryCount} 件の Addressable エントリ（アドレス・グループ割り当て・ラベル）を削除します。\n"
-                + $"対象: All\n\n"
-                + $"実行前のスナップショットを保存しました:\n{snapshotPath}\n\n"
-                + "この操作は Snapshot Restore で復元できます。よろしいですか？";
-
-            if (!EditorUtility.DisplayDialog("AddressTeller - Clear All Addresses & Labels", message, "クリアする", "キャンセル"))
-                return;
-
             var cleared = AddressTellerClearService.Clear(settings, ClearScope.All);
             foreach (var entry in cleared)
                 Debug.LogWarning($"[AddressTeller] Cleared entry: guid={entry.Guid}, group='{entry.GroupName}', address='{entry.Address}', labels=[{string.Join(", ", entry.Labels)}]");
 
-            Debug.Log($"[AddressTeller] Clear All 完了: {cleared.Count} 件のエントリを削除しました。");
+            Debug.Log($"[AddressTeller] Clear All 完了: {cleared.Count} 件のエントリを削除しました。スナップショット: {snapshotPath}");
         }
 
         /// <summary>
