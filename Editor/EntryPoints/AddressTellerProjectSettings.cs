@@ -138,6 +138,11 @@ namespace AddressTeller.Editor
 
             EditorGUILayout.Space(4);
 
+            var postprocessOrder = EditorGUILayout.IntField("Postprocessor の実行順序", AddressTellerSettings.PostprocessOrder);
+            DrawDescription("AssetPostprocessor.GetPostprocessOrder() に渡される値です。値が小さいほど他の Postprocessor より先に実行されます。既定値は 1000（後段寄り）です。");
+
+            EditorGUILayout.Space(4);
+
             var cleanupStaleEntries = EditorGUILayout.ToggleLeft("マッチしなくなったエントリを削除する", AddressTellerSettings.CleanupStaleEntries);
             DrawDescription("どのルールにもマッチしなくなったアセットを、AddressTeller が管理するグループから自動的に削除します。エントリ自体が削除されるため、アドレスと（Addressablesの）ラベルの両方が失われます。");
 
@@ -149,6 +154,7 @@ namespace AddressTeller.Editor
             if (EditorGUI.EndChangeCheck())
             {
                 AddressTellerSettings.PostprocessEnabled = postprocessEnabled;
+                AddressTellerSettings.PostprocessOrder = postprocessOrder;
                 AddressTellerSettings.CleanupStaleEntries = cleanupStaleEntries;
                 AddressTellerSettings.AutoCreateMissingGroups = autoCreateMissingGroups;
             }

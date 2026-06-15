@@ -56,6 +56,7 @@ exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 `Project Settings > AddressTeller` に以下の項目があります。
 
 - **インポート時に自動適用する**（既定: ON）— オフにすると `AssetPostprocessor` による自動適用を行いません。手動メニューには影響しません。
+- **Postprocessor の実行順序**（`PostprocessOrder`、既定: 1000）— `AssetPostprocessor.GetPostprocessOrder()` に渡す値です。値が小さいほど他の `AssetPostprocessor` より先に実行されます。既定値は後段寄りの大きな値で、他パッケージの Postprocessor がアセットを生成・変更してから AddressTeller が評価することを期待します。
 - **マッチしなくなったエントリを削除する**（`CleanupStaleEntries`、既定: ON）— `Apply All` 実行時、どのルールにもマッチしなくなったアセットを、AddressTeller が管理するグループ（いずれかのルールが参照しているグループ）から削除します。削除はエントリ単位（`RemoveAssetEntry`）のため、アドレスと（Addressablesの）ラベルの両方が失われます。AddressTeller が管理していないグループに手動で登録したエントリには触れません。**一方、管理グループ内に手動で登録したエントリは、対応するルールがなければ削除対象になります**（資産単位で「現在どのルールにもマッチするか」のみを判定するため）。この挙動の理由は [設計上の決定事項: 削除は資産単位の所有権で判定する](design-decisions.md#削除は資産単位の所有権で判定する) および [設計上の決定事項: 存在しないグループは作らない（既定）](design-decisions.md#存在しないグループは作らない既定) を参照してください。
 - **スナップショット保存先フォルダ**（後述）
 

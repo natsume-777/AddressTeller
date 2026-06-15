@@ -13,6 +13,8 @@ namespace AddressTeller.Editor
         // Postprocessor から呼ばれた場合はそちらが false のままのため、両方が必要。
         private static bool s_isApplying;
 
+        public override int GetPostprocessOrder() => AddressTellerSettings.PostprocessOrder;
+
         static void OnPostprocessAllAssets(
             string[] importedAssets,
             string[] deletedAssets,

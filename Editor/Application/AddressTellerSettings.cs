@@ -139,6 +139,34 @@ namespace AddressTeller.Editor
         public static bool IsRuleEnabled(string ruleClassFullName)
             => !AddressTellerSettingsAsset.instance._disabledRuleClassNames.Contains(ruleClassFullName);
 
+        /// <summary>
+        /// <see cref="PostprocessOrder"/> の既定値。AssetPostprocessor の実行順序としては
+        /// 後段寄りの大きな値とし、他パッケージの Postprocessor が先に実行されることを期待する。
+        /// </summary>
+        public const int DefaultPostprocessOrder = 1000;
+
+        /// <summary>
+        /// <see cref="AddressTellerPostprocessor.GetPostprocessOrder"/> が返す値。
+        /// AssetPostprocessor の実行順序を制御し、値が小さいほど早く実行される。
+        /// 既存アセットでフィールドが未設定（0）の場合は <see cref="DefaultPostprocessOrder"/> にフォールバックする。
+        /// 0 を明示的に設定した場合も同様に DefaultPostprocessOrder として読まれる。
+        /// </summary>
+        public static int PostprocessOrder
+        {
+            get
+            {
+                var value = AddressTellerSettingsAsset.instance._postprocessOrder;
+                return value == 0 ? DefaultPostprocessOrder : value;
+            }
+            set
+            {
+                var asset = AddressTellerSettingsAsset.instance;
+                if (asset._postprocessOrder == value) return;
+                asset._postprocessOrder = value;
+                asset.SaveChanges();
+            }
+        }
+
         /// <summary>指定したルールクラスの有効・無効を切り替える。</summary>
         public static void SetRuleEnabled(string ruleClassFullName, bool enabled)
         {
@@ -172,6 +200,7 @@ namespace AddressTeller.Editor
         [SerializeField] internal bool _autoSnapshotBeforeApplyAll = true;
         [SerializeField] internal int _autoSnapshotRetention = 10;
         [SerializeField] internal bool _autoCreateMissingGroups = false;
+        [SerializeField] internal int _postprocessOrder = AddressTellerSettings.DefaultPostprocessOrder;
         [SerializeField] internal List<string> _disabledRuleClassNames = new();
 
         /// <summary>変更内容を ProjectSettings/AddressTellerSettings.asset へ書き出す。</summary>
