@@ -59,17 +59,23 @@ namespace AddressTeller.Editor
         // Issues タブのステータス別フィルタ。キーは Enum.GetValues(typeof(ValidationStatus)) の全件、初期値は true（全件表示）。
         private readonly Dictionary<ValidationStatus, bool> _statusFilter = new();
 
+        // タブ描画より前に HelpBox として表示する任意の注意文。スコープ付きプレビューでの
+        // 「ルール絞り込み中は削除予測が縮小される」等の案内に使う。
+        private string _notice;
+
         /// <summary>Diff/Issues の2タブでウィンドウを開く。dry-run の結果表示用。</summary>
         /// <param name="settings">
         /// Distribution タブの算出に使う。null または <paramref name="dryRun"/>.After が null の場合、Distribution タブは表示しない。
         /// </param>
-        public static void Show(DryRunResult dryRun, string title = "AddressTeller - Apply Preview", AddressableAssetSettings settings = null)
+        /// <param name="notice">非 null の場合、タブ描画前に HelpBox(Info) として表示する注意文。</param>
+        public static void Show(DryRunResult dryRun, string title = "AddressTeller - Apply Preview", AddressableAssetSettings settings = null, string notice = null)
         {
             var window = GetOrCreateWindow(title);
             window._showDiffTab = true;
             window._currentTab = Tab.Diff;
             window._onApply = null; // ウィンドウ再利用時に前回の onApply が残らないようにクリア
             window._groupsToCreate = dryRun.GroupsToCreate;
+            window._notice = notice;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
             window.SetDistribution(dryRun, settings);
@@ -91,6 +97,7 @@ namespace AddressTeller.Editor
             window._currentTab = Tab.Diff;
             window._onApply = onApply;
             window._groupsToCreate = dryRun.GroupsToCreate;
+            window._notice = null; // ウィンドウ再利用時に前回の notice が残らないようにクリア
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
             window.SetDistribution(dryRun, settings);
@@ -106,6 +113,7 @@ namespace AddressTeller.Editor
             window._currentTab = Tab.Issues;
             window._onApply = null; // ウィンドウ再利用時に前回の onApply が残らないようにクリア
             window._groupsToCreate = Array.Empty<string>();
+            window._notice = null; // ウィンドウ再利用時に前回の notice が残らないようにクリア
             window.SetDiffRows(new List<DiffRow>());
             window.SetIssueRows(issues);
             window.SetDistribution(default, null);
@@ -206,6 +214,9 @@ namespace AddressTeller.Editor
 
         private void OnGUI()
         {
+            if (!string.IsNullOrEmpty(_notice))
+                EditorGUILayout.HelpBox(_notice, MessageType.Info);
+
             if (_showDiffTab)
             {
                 var labels = _showDistributionTab ? TabLabelsWithDistribution : TabLabelsWithoutDistribution;

@@ -1,9 +1,10 @@
 using System.Collections.Generic;
 using UnityEditor;
+using UnityEditor.AddressableAssets;
 
 namespace AddressTeller.Editor
 {
-    /// <summary>Project ウィンドウのコンテキストメニューから Explain ウィンドウを開く。</summary>
+    /// <summary>Project ウィンドウのコンテキストメニューから Explain ウィンドウ・プレビューを開く。</summary>
     public static class AddressTellerExplainMenu
     {
         [MenuItem("Assets/AddressTeller/Explain")]
@@ -16,6 +17,31 @@ namespace AddressTeller.Editor
 
         [MenuItem("Assets/AddressTeller/Explain", true)]
         public static bool ExplainValidate()
+        {
+            var guids = Selection.assetGUIDs;
+            return guids != null && guids.Length > 0;
+        }
+
+        /// <summary>
+        /// 選択アセット（フォルダ含む）に有効な全ルールを適用した場合の dry-run プレビューを表示する。
+        /// 即時 Apply は行わない（ResultWindow から手動で Apply All / Validate を実行する）。
+        /// </summary>
+        [MenuItem("Assets/AddressTeller/Preview (Apply予測)")]
+        public static void Preview()
+        {
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+            {
+                UnityEngine.Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。Addressables を初期化してください。");
+                return;
+            }
+
+            var paths = GetSelectedAssetPaths();
+            AddressTellerScopedPreview.RunAssetPreview(settings, paths);
+        }
+
+        [MenuItem("Assets/AddressTeller/Preview (Apply予測)", true)]
+        public static bool PreviewValidate()
         {
             var guids = Selection.assetGUIDs;
             return guids != null && guids.Length > 0;

@@ -23,6 +23,46 @@ namespace AddressTeller.Editor
             AddressTellerApplyFlow.Run(settings, validateFirst: false);
         }
 
+        /// <summary>
+        /// 指定グループの現メンバー起点で、有効な全ルールを適用した場合の dry-run プレビューを表示する。
+        /// 即時 Apply は行わない（ResultWindow から手動で Apply All / Validate を実行する）。
+        /// グループ選択はメニュー直下のドロップダウンで行う。
+        /// </summary>
+        [MenuItem("Tools/AddressTeller/Preview Group...")]
+        public static void PreviewGroup()
+        {
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+            {
+                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。Addressables を初期化してください。");
+                return;
+            }
+
+            var groups = settings.groups
+                .Where(g => g != null)
+                .OrderBy(g => g.Name, StringComparer.Ordinal)
+                .ToList();
+
+            if (groups.Count == 0)
+            {
+                Debug.LogError("[AddressTeller] グループが存在しません。");
+                return;
+            }
+
+            var menuItems = groups.Select(g => new GUIContent(g.Name)).ToArray();
+
+            EditorUtility.DisplayCustomMenu(
+                new Rect(Event.current?.mousePosition ?? Vector2.zero, Vector2.zero),
+                menuItems,
+                -1,
+                (data, options, selected) =>
+                {
+                    if (selected < 0 || selected >= groups.Count) return;
+                    AddressTellerScopedPreview.RunGroupPreview(settings, groups[selected]);
+                },
+                null);
+        }
+
         [MenuItem("Tools/AddressTeller/Validate")]
         public static void Validate()
         {

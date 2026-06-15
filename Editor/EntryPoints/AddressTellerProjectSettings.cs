@@ -180,6 +180,13 @@ namespace AddressTeller.Editor
                     MessageType.Warning);
             }
 
+            // ルール一覧行の「このルールだけ」プレビューボタンと、末尾の運用アクションで共用する。
+            var addressablesSettings = AddressableAssetSettingsDefaultObject.Settings;
+
+            // 「このルールだけ Validate/Apply」ボタン用に、型からルールインスタンスを引けるようにしておく。
+            // RuleCollector.CollectRules() 自体はキャッシュ済みのため、毎フレームの再構築コストは Dictionary 化のみ。
+            var ruleInstancesByType = RuleCollector.CollectRules().ToDictionary(r => r.GetType());
+
             var overviewRules = overviewCache.Rules;
             if (overviewRules.Count == 0)
             {
@@ -220,6 +227,12 @@ namespace AddressTeller.Editor
                         Selection.activeObject = script;
                 }
 
+                using (new EditorGUI.DisabledScope(addressablesSettings == null))
+                {
+                    if (GUILayout.Button("このルールだけ Validate/Apply", GUILayout.Width(180)))
+                        AddressTellerScopedPreview.RunRulePreview(addressablesSettings, ruleInstancesByType[type]);
+                }
+
                 EditorGUILayout.EndHorizontal();
 
                 if (newFoldout)
@@ -228,8 +241,6 @@ namespace AddressTeller.Editor
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("運用アクション", EditorStyles.boldLabel);
-
-            var addressablesSettings = AddressableAssetSettingsDefaultObject.Settings;
 
             if (addressablesSettings == null)
                 EditorGUILayout.HelpBox("AddressableAssetSettings が見つかりません。Addressables を初期化してください。", MessageType.Warning);
