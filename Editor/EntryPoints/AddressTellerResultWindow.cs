@@ -367,6 +367,27 @@ namespace AddressTeller.Editor
                     $"{bundle.GroupName} / {bundle.Mode} / {bundle.SplitKey} : {bundle.AssetCount}");
             }
             EditorGUILayout.EndScrollView();
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Export CSV..."))
+                ExportDistribution("csv", "csv");
+            if (GUILayout.Button("Export Markdown..."))
+                ExportDistribution("markdown", "md");
+            EditorGUILayout.EndHorizontal();
+        }
+
+        /// <summary>
+        /// 算出済みの論理バンドル分布を、ユーザーが選択したファイルに書き出す。
+        /// </summary>
+        /// <param name="format">"csv" または "markdown"。<see cref="BundleDistributionSerializer.WriteToFile"/> に渡す。</param>
+        /// <param name="extension">保存ダイアログのデフォルト拡張子。</param>
+        private void ExportDistribution(string format, string extension)
+        {
+            var path = EditorUtility.SaveFilePanel("Export Bundle Distribution", string.Empty, $"bundle-distribution.{extension}", extension);
+            if (string.IsNullOrEmpty(path)) return;
+
+            BundleDistributionSerializer.WriteToFile(path, _distribution, _distributionSummary, format);
         }
     }
 }
