@@ -310,7 +310,7 @@ namespace AddressTeller.Editor
             {
                 if (!AddressTellerSettings.IsRuleEnabled(rule.RuleType.FullName)) continue;
                 foreach (var entry in rule.Entries)
-                    groups.Add(entry.GroupName);
+                    groups.Add(AddressRuleBuilderImpl.DisplayGroupName(entry.GroupName));
             }
             return groups.OrderBy(g => g, StringComparer.Ordinal).ToList();
         }
@@ -337,8 +337,9 @@ namespace AddressTeller.Editor
                 {
                     var where = entry.Description ?? $"(条件 #{entry.RuleIndex})";
                     var address = entry.HasAddress ? "動的" : "なし";
+                    var groupName = AddressRuleBuilderImpl.DisplayGroupName(entry.GroupName);
                     EditorGUILayout.LabelField(
-                        $"Group: \"{entry.GroupName}\"  Where: \"{where}\"  Address: {address}  Labels: {entry.LabelCount}個",
+                        $"Group: \"{groupName}\"  Where: \"{where}\"  Address: {address}  Labels: {entry.LabelCount}個",
                         EditorStyles.wordWrappedMiniLabel);
                 }
             }

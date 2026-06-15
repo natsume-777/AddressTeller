@@ -28,6 +28,20 @@ rules.Group("グループ名")
 - `Label()` は**何度でも**呼び出せます。マッチした全ルールのラベルが蓄積されます。
 - 同じ `Configure()` 内で `Group()` を複数回呼び、複数のルールエントリを定義できます。
 
+## GroupDefault
+
+`Group("名前")` の代わりに `GroupDefault()` を使うと、Addressables の DefaultGroup にアドレス・ラベルを付与できます。
+`Where`/`Address`/`Label` は `Group()` と同様にチェーンできます。
+
+```csharp
+rules.GroupDefault()
+    .Where(ctx => ctx.IsInFolder("Assets/Game/Misc"))
+    .Address(ctx => ctx.FileNameWithoutExtension);
+```
+
+- DefaultGroup は評価時に `AddressableAssetSettings.DefaultGroup` から解決されるため、**DefaultGroup をリネームしても追従**します（グループ名をコードに書く必要がありません）。
+- `Group("実名")` と `GroupDefault()` が同一の実グループを指している場合も、通常のグループルールと同様に競合検出の対象になります。
+
 ## Match / Naming ヘルパー
 
 条件述語とアドレス生成の定型パターンをヘルパークラスで簡潔に記述できます。

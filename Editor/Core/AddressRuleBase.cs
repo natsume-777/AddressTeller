@@ -20,6 +20,13 @@ namespace AddressTeller
     public interface IAddressRuleBuilder
     {
         IAddressRuleGroupBuilder Group(string groupName);
+
+        /// <summary>
+        /// Addressables の DefaultGroup にアドレス／ラベルを付与する。グループ名は評価時に
+        /// AddressableAssetSettings.DefaultGroup から解決されるため、DefaultGroup をリネームしても
+        /// 追従する。Where / Address / Label は <see cref="Group(string)"/> と同様にチェーンできる。
+        /// </summary>
+        IAddressRuleGroupBuilder GroupDefault();
     }
 
     /// <summary>

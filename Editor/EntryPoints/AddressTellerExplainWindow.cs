@@ -144,6 +144,8 @@ namespace AddressTeller.Editor
                     return ($"アドレス \"{createdAddress}\" を採用（グループは新規作成されます: {validation.Message}）", Color.yellow);
                 case ValidationStatus.GroupCreationFailed:
                     return ($"グループ作成失敗: {validation.Message}", Color.red);
+                case ValidationStatus.DefaultGroupUnavailable:
+                    return ($"DefaultGroup 未解決: {validation.Message}", Color.red);
                 default:
                     return (validation.Message ?? string.Empty, GUI.color);
             }
@@ -181,7 +183,7 @@ namespace AddressTeller.Editor
             GUI.color = originalColor;
 
             EditorGUI.indentLevel++;
-            EditorGUILayout.LabelField($"Group: {detail.GroupName}");
+            EditorGUILayout.LabelField($"Group: {AddressRuleBuilderImpl.DisplayGroupName(detail.GroupName)}");
 
             if (!string.IsNullOrEmpty(detail.ProducedAddress))
                 EditorGUILayout.LabelField($"Address: {detail.ProducedAddress}");

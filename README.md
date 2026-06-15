@@ -52,6 +52,7 @@ public sealed class GameAddressRules : AddressRuleBase
 
 `Tools/AddressTeller/Apply All` を実行すると、対象アセットにアドレスとラベルが設定されます。
 `Characters` グループは事前に Addressable Groups ウィンドウで作成しておく必要があります（存在しないグループ名はエラーになります）。
+Addressables の DefaultGroup に付与したい場合は `Group("名前")` の代わりに `GroupDefault()` を使えます（DefaultGroup のリネームに追従します）。詳しくは [ルールの書き方](Documentation~/writing-rules.md#groupdefault) を参照してください。
 
 ## ドキュメント
 

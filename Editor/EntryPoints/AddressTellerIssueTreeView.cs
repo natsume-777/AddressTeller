@@ -138,7 +138,7 @@ namespace AddressTeller.Editor
                     var rect = args.GetCellRect(i);
                     var columnId = (ColumnId)args.GetColumn(i);
                     var text = columnId == ColumnId.Message
-                        ? $"{candidate.DescribeSource()} → {candidate.GroupName} / {candidate.Address}"
+                        ? $"{candidate.DescribeSource()} → {AddressRuleBuilderImpl.DisplayGroupName(candidate.GroupName)} / {candidate.Address}"
                         : string.Empty;
                     EditorGUI.LabelField(rect, text);
                 }

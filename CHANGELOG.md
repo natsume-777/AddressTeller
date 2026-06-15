@@ -8,6 +8,11 @@
 
 ### Added
 
+- `IAddressRuleBuilder.GroupDefault()` を追加。`Group("名前")` の代わりに使うと、Addressables の `AddressableAssetSettings.DefaultGroup` にアドレス・ラベルを付与する。DefaultGroup は評価時に解決されるため、DefaultGroup をリネームしても追従する。`Where`/`Address`/`Label` は `Group()` と同様にチェーンできる。
+- `ValidationStatus.DefaultGroupUnavailable` を追加。`GroupDefault()` を使うルールが存在するが `AddressableAssetSettings.DefaultGroup` を解決できない場合に返され、該当アセットへの書き込みはスキップされる（`IsOk = false`）。
+
+### Added
+
 - Project Settings の AddressTeller 画面に「Postprocessor の実行順序」設定を追加（`AddressTellerSettings.PostprocessOrder`、既定値1000）。`AddressTellerPostprocessor.GetPostprocessOrder()` がこの値を返し、他のAssetPostprocessorとの実行順序を調整できる。
 
 - `ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` に `-addressTellerDisableRules <FullName>[,...]` を追加。永続設定（Project Settings）の無効化ルールとの和集合をCLI実行時のみ一時的に除外できる（CI実行時のデバッグ用ルール除外などを想定）。指定したFullNameが既知のルールクラスに一致しない場合はexit code 3で停止する。この除外はCLI実行限定で、Postprocessor/メニューには影響しない。

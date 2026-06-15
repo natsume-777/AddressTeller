@@ -72,7 +72,7 @@ namespace AddressTeller.Editor
                 var sb = new StringBuilder();
                 sb.Append($"Address conflict for '{context.Path}':");
                 foreach (var c in resolution.AddressCandidates)
-                    sb.Append($"\n  {c.DescribeSource()} [{c.GroupName}] → \"{c.Address}\"");
+                    sb.Append($"\n  {c.DescribeSource()} [{AddressRuleBuilderImpl.DisplayGroupName(c.GroupName)}] → \"{c.Address}\"");
 
                 return new ValidationResult(
                     context,
@@ -88,6 +88,17 @@ namespace AddressTeller.Editor
                     context,
                     ValidationStatus.InvalidAddress,
                     $"{candidate.DescribeSource()} returned a null/empty address for '{context.Path}'.");
+            }
+
+            // RuleEvaluationPipeline.BuildSetup が DefaultGroup を取得できなかった場合、
+            // GroupDefault() を使うエントリのグループ名はセンチネルのまま残っている。
+            // existingGroupNames には存在しないため、GroupNotFound より優先してここで報告する。
+            if (candidate.GroupName == AddressRuleBuilderImpl.DefaultGroupSentinel)
+            {
+                return new ValidationResult(
+                    context,
+                    ValidationStatus.DefaultGroupUnavailable,
+                    $"{candidate.DescribeSource()} uses GroupDefault(), but AddressableAssetSettings.DefaultGroup could not be resolved for '{context.Path}'.");
             }
 
             if (!existingGroupNames.Contains(candidate.GroupName))

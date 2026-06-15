@@ -36,7 +36,7 @@ namespace AddressTeller.Editor
                         asset.Rules.Add(new AddressTellerExplainRule
                         {
                             RuleSource = detail.RuleSource,
-                            GroupName = detail.GroupName,
+                            GroupName = AddressRuleBuilderImpl.DisplayGroupName(detail.GroupName),
                             Description = detail.Description ?? string.Empty,
                             Outcome = detail.Outcome.ToString(),
                             ProducedAddress = detail.ProducedAddress ?? string.Empty,

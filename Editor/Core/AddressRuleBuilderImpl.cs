@@ -5,6 +5,21 @@ namespace AddressTeller
 {
     internal sealed class AddressRuleBuilderImpl : IAddressRuleBuilder
     {
+        /// <summary>
+        /// GroupDefault() の内部表現として使う予約文字列。通常のグループ名と衝突しないよう
+        /// NUL 文字を含む。RuleEvaluationPipeline.BuildSetup でループ開始前に
+        /// AddressableAssetSettings.DefaultGroup.Name へ正規化される。
+        /// </summary>
+        internal const string DefaultGroupSentinel = "\0AddressTeller.DefaultGroup\0";
+
+        /// <summary>
+        /// 表示用にグループ名を整形する。<see cref="DefaultGroupSentinel"/> を解決できなかった場合
+        /// （<see cref="ValidationStatus.DefaultGroupUnavailable"/>）に、生のセンチネル文字列を画面へ
+        /// 漏出させないための共通ヘルパー。
+        /// </summary>
+        internal static string DisplayGroupName(string groupName)
+            => groupName == DefaultGroupSentinel ? "(Default Group)" : groupName;
+
         private readonly string _sourceClass;
         private readonly List<AddressRuleGroupBuilder> _groupBuilders = new List<AddressRuleGroupBuilder>();
 
@@ -27,6 +42,16 @@ namespace AddressTeller
         public IAddressRuleGroupBuilder Group(string groupName)
         {
             if (string.IsNullOrEmpty(groupName)) throw new ArgumentException("groupName must not be empty.", nameof(groupName));
+            return AddGroupBuilder(groupName);
+        }
+
+        public IAddressRuleGroupBuilder GroupDefault()
+        {
+            return AddGroupBuilder(DefaultGroupSentinel);
+        }
+
+        private IAddressRuleGroupBuilder AddGroupBuilder(string groupName)
+        {
             var builder = new AddressRuleGroupBuilder(groupName, _sourceClass);
             _groupBuilders.Add(builder);
             return builder;
@@ -78,7 +103,7 @@ namespace AddressTeller
         {
             if (_whereSet)
                 throw new InvalidOperationException(
-                    $"Group(\"{_groupName}\") の Where() は1回しか呼び出せません。" +
+                    $"Group(\"{AddressRuleBuilderImpl.DisplayGroupName(_groupName)}\") の Where() は1回しか呼び出せません。" +
                     "複数の条件は1つのラムダ式に && でまとめてください。");
         }
 

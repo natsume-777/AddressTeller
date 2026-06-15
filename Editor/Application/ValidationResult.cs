@@ -23,6 +23,11 @@ namespace AddressTeller.Editor
         GroupWillBeCreated,
         /// <summary>AutoCreateMissingGroups が有効な状態で、グループの自動作成に失敗した。</summary>
         GroupCreationFailed,
+        /// <summary>
+        /// GroupDefault() を使うルールが存在するが、AddressableAssetSettings.DefaultGroup を取得できなかった。
+        /// 該当ルールが関わるアセットへの書き込みはスキップされる。
+        /// </summary>
+        DefaultGroupUnavailable,
     }
 
     public sealed class ValidationResult

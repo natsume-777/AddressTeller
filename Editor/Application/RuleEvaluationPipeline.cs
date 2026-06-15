@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -23,13 +24,21 @@ namespace AddressTeller.Editor
         /// </summary>
         public bool AutoCreateMissingGroups { get; }
 
-        public EvaluationSetup(IReadOnlyList<AddressRuleEntry> entries, string configFolder, HashSet<string> managedGroups, HashSet<string> existingGroupNames, bool autoCreateMissingGroups)
+        /// <summary>
+        /// true の場合、GroupDefault() を使うルールが存在するが AddressableAssetSettings.DefaultGroup が
+        /// 取得できなかった。該当エントリのグループ名はセンチネルのまま残っており、
+        /// AddressTellerApplier.Validate が <see cref="ValidationStatus.DefaultGroupUnavailable"/> を返す。
+        /// </summary>
+        public bool DefaultGroupUnavailable { get; }
+
+        public EvaluationSetup(IReadOnlyList<AddressRuleEntry> entries, string configFolder, HashSet<string> managedGroups, HashSet<string> existingGroupNames, bool autoCreateMissingGroups, bool defaultGroupUnavailable = false)
         {
             Entries = entries;
             ConfigFolder = configFolder;
             ManagedGroups = managedGroups;
             ExistingGroupNames = existingGroupNames;
             AutoCreateMissingGroups = autoCreateMissingGroups;
+            DefaultGroupUnavailable = defaultGroupUnavailable;
         }
     }
 
@@ -41,15 +50,54 @@ namespace AddressTeller.Editor
     {
         /// <summary>
         /// ループ外で1回だけ構築するセットアップ情報をまとめて返す。
+        /// GroupDefault() を使うルールがある場合のみ settings.DefaultGroup を1回取得し、
+        /// そのグループ名へ正規化する（センチネル文字列はここで解消する。以降は実名のみを扱う）。
+        /// DefaultGroup が取得できない場合は該当エントリのグループ名をセンチネルのまま残し、
+        /// <see cref="EvaluationSetup.DefaultGroupUnavailable"/> を true にする
+        /// （AddressTellerApplier.Validate がセンチネルを検出して <see cref="ValidationStatus.DefaultGroupUnavailable"/> を返す）。
         /// </summary>
         public static EvaluationSetup BuildSetup(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
         {
             var entries = GetOrderedEntries(rules);
             var configFolder = settings.ConfigFolder;
-            var managedGroups = new HashSet<string>(entries.Select(e => e.GroupName));
+            var defaultGroupUnavailable = false;
+
+            // センチネルを使うルールが1件もなければ DefaultGroup を取得しない（不要な Addressables アクセスを避ける）。
+            if (entries.Any(e => e.GroupName == AddressRuleBuilderImpl.DefaultGroupSentinel))
+            {
+                // settings.DefaultGroup は通常 null を返さず未設定時は自動作成するが、
+                // その自動作成自体が失敗する異常系（CreateGroup の例外等）に備えて try/catch する。
+                AddressableAssetGroup defaultGroup = null;
+                try
+                {
+                    defaultGroup = settings.DefaultGroup;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[AddressTeller] AddressableAssetSettings.DefaultGroup の取得に失敗しました: {ex.Message}。GroupDefault() を使うルールの適用はスキップされます。");
+                }
+
+                if (defaultGroup != null)
+                {
+                    entries = entries
+                        .Select(e => e.GroupName == AddressRuleBuilderImpl.DefaultGroupSentinel
+                            ? new AddressRuleEntry(defaultGroup.Name, e.Predicate, e.AddressSelector, e.LabelSelectors, e.SourceClass, e.Description, e.RuleIndex)
+                            : e)
+                        .ToArray();
+                }
+                else
+                {
+                    defaultGroupUnavailable = true;
+                    Debug.LogWarning("[AddressTeller] AddressableAssetSettings.DefaultGroup を取得できませんでした。GroupDefault() を使うルールの適用はスキップされます。");
+                }
+            }
+
+            var managedGroups = new HashSet<string>(entries
+                .Where(e => e.GroupName != AddressRuleBuilderImpl.DefaultGroupSentinel)
+                .Select(e => e.GroupName));
             // settings.groups の null 要素を除外する（Capture の if (group == null) continue; と対称にする）。
             var existingGroupNames = new HashSet<string>(settings.groups.Where(g => g != null).Select(g => g.Name));
-            return new EvaluationSetup(entries, configFolder, managedGroups, existingGroupNames, AddressTellerSettings.AutoCreateMissingGroups);
+            return new EvaluationSetup(entries, configFolder, managedGroups, existingGroupNames, AddressTellerSettings.AutoCreateMissingGroups, defaultGroupUnavailable);
         }
 
         /// <summary>
