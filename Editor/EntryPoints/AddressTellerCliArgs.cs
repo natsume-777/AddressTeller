@@ -27,9 +27,22 @@ namespace AddressTeller.Editor
         /// </summary>
         public IReadOnlyList<string> DisableRuleFullNames { get; private set; } = Array.Empty<string>();
 
+        /// <summary>
+        /// -addressTellerConfirmClear が指定されたかどうか。<see cref="AddressTellerMenu.ClearCLI"/> の実行確認に使う
+        /// （未指定の場合は意図的な拒否としてエラー終了する）。
+        /// </summary>
+        public bool ConfirmClear { get; private set; }
+
+        /// <summary>
+        /// -addressTellerClearScope で指定されたクリア対象のスコープ。未指定なら <see cref="ClearScope.All"/>。
+        /// </summary>
+        public ClearScope ClearScope { get; private set; } = ClearScope.All;
+
         private const string ReportPathFlag = "-addressTellerReport";
         private const string ReportFormatFlag = "-addressTellerReportFormat";
         private const string DisableRulesFlag = "-addressTellerDisableRules";
+        private const string ConfirmClearFlag = "-addressTellerConfirmClear";
+        private const string ClearScopeFlag = "-addressTellerClearScope";
 
         /// <summary>
         /// 引数配列をパースする。
@@ -46,6 +59,8 @@ namespace AddressTeller.Editor
             string reportPath = null;
             string reportFormat = null;
             IReadOnlyList<string> disableRuleFullNames = Array.Empty<string>();
+            var confirmClear = false;
+            var clearScope = ClearScope.All;
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -86,6 +101,31 @@ namespace AddressTeller.Editor
                             .Where(name => name.Length > 0)
                             .ToList();
                         break;
+
+                    case ConfirmClearFlag:
+                        confirmClear = true;
+                        break;
+
+                    case ClearScopeFlag:
+                        if (i + 1 >= args.Length)
+                        {
+                            error = $"{ClearScopeFlag} に値が指定されていません。";
+                            return false;
+                        }
+                        var clearScopeValue = args[++i];
+                        switch (clearScopeValue)
+                        {
+                            case "all":
+                                clearScope = ClearScope.All;
+                                break;
+                            case "managed":
+                                clearScope = ClearScope.Managed;
+                                break;
+                            default:
+                                error = $"{ClearScopeFlag} の値が不正です（'all' または 'managed' を指定してください）: {clearScopeValue}";
+                                return false;
+                        }
+                        break;
                 }
             }
 
@@ -97,6 +137,8 @@ namespace AddressTeller.Editor
                 ReportPath = reportPath,
                 ReportFormat = reportFormat,
                 DisableRuleFullNames = disableRuleFullNames,
+                ConfirmClear = confirmClear,
+                ClearScope = clearScope,
             };
             return true;
         }

@@ -158,5 +158,89 @@ namespace AddressTeller.Editor.Tests
             Assert.IsNull(result);
             Assert.IsNotEmpty(error);
         }
+
+        [Test]
+        public void NoConfirmClearFlag_ConfirmClearIsFalse()
+        {
+            var args = new[] { "-batchmode", "-quit" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            Assert.IsFalse(result.ConfirmClear);
+        }
+
+        [Test]
+        public void ConfirmClearFlag_SetsConfirmClearTrue()
+        {
+            var args = new[] { "-addressTellerConfirmClear" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            Assert.IsTrue(result.ConfirmClear);
+        }
+
+        [Test]
+        public void NoClearScopeFlag_DefaultsToAll()
+        {
+            var args = new[] { "-batchmode", "-quit" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            Assert.AreEqual(ClearScope.All, result.ClearScope);
+        }
+
+        [Test]
+        public void ClearScopeManaged_SetsClearScopeManaged()
+        {
+            var args = new[] { "-addressTellerClearScope", "managed" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            Assert.AreEqual(ClearScope.Managed, result.ClearScope);
+        }
+
+        [Test]
+        public void ClearScopeAll_SetsClearScopeAll()
+        {
+            var args = new[] { "-addressTellerClearScope", "all" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            Assert.AreEqual(ClearScope.All, result.ClearScope);
+        }
+
+        [Test]
+        public void ClearScopeFlagWithoutValue_ReturnsError()
+        {
+            var args = new[] { "-addressTellerClearScope" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsFalse(ok);
+            Assert.IsNull(result);
+            Assert.IsNotEmpty(error);
+        }
+
+        [Test]
+        public void UnknownClearScope_ReturnsError()
+        {
+            var args = new[] { "-addressTellerClearScope", "unknown" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsFalse(ok);
+            Assert.IsNull(result);
+            Assert.IsNotEmpty(error);
+        }
     }
 }

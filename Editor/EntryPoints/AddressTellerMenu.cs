@@ -63,6 +63,107 @@ namespace AddressTeller.Editor
                 null);
         }
 
+        /// <summary>
+        /// Addressables の全エントリ（アドレス・グループ割り当て・ラベル）を削除する。
+        /// 既定の安全側運用（資産単位の所有権判定・デフォルト OFF）から意図的に逸脱した、
+        /// 公開前パッケージの初期セットアップ用途向けの割り切り機能。実行前に専用スナップショット
+        /// （SnapshotFolder/Clear 以下、ローテーション対象外）を必須で保存し、確認ダイアログを経て実行する。
+        /// スコープは常に All（managed 限定は <see cref="ClearCLI"/> の -addressTellerClearScope managed のみ）。
+        /// </summary>
+        [MenuItem("Tools/AddressTeller/Clear All Addresses & Labels...")]
+        public static void ClearAll()
+        {
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+            {
+                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。Addressables を初期化してください。");
+                return;
+            }
+
+            var snapshotPath = AddressTellerClearSnapshotService.CaptureAndSave(settings, out var snapshotError);
+            if (snapshotPath == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "AddressTeller - Clear All Addresses & Labels",
+                    $"クリア前のスナップショット保存に失敗したため中止しました。\n\n{snapshotError}",
+                    "OK");
+                Debug.LogError($"[AddressTeller] Clear All: {snapshotError}");
+                return;
+            }
+
+            var entryCount = settings.groups.Where(g => g != null).Sum(g => g.entries.Count);
+
+            var message = $"全 {entryCount} 件の Addressable エントリ（アドレス・グループ割り当て・ラベル）を削除します。\n"
+                + $"対象: All\n\n"
+                + $"実行前のスナップショットを保存しました:\n{snapshotPath}\n\n"
+                + "この操作は Snapshot Restore で復元できます。よろしいですか？";
+
+            if (!EditorUtility.DisplayDialog("AddressTeller - Clear All Addresses & Labels", message, "クリアする", "キャンセル"))
+                return;
+
+            var cleared = AddressTellerClearService.Clear(settings, ClearScope.All);
+            foreach (var entry in cleared)
+                Debug.LogWarning($"[AddressTeller] Cleared entry: guid={entry.Guid}, group='{entry.GroupName}', address='{entry.Address}', labels=[{string.Join(", ", entry.Labels)}]");
+
+            Debug.Log($"[AddressTeller] Clear All 完了: {cleared.Count} 件のエントリを削除しました。");
+        }
+
+        /// <summary>
+        /// CI 向け。-executeMethod AddressTeller.Editor.AddressTellerMenu.ClearCLI で実行。
+        /// 確認フラグ <c>-addressTellerConfirmClear</c> が無い場合は意図的な拒否として exit code 4 で終了する
+        /// （ダイアログを出せない CLI での誤実行防止）。
+        /// <c>-addressTellerClearScope all|managed</c> でクリア対象を切り替える（既定 all）。
+        /// 実行前に専用スナップショット（SnapshotFolder/Clear 以下）の保存を必須とし、失敗時は exit code 3 で中止する。
+        /// exit code: 0=完了、3=実行環境エラー（スナップショット保存失敗を含む）、4=確認フラグ未指定。
+        /// </summary>
+        public static void ClearCLI()
+        {
+            if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
+            {
+                Debug.LogError($"[AddressTeller] 引数の解析に失敗しました: {parseError}");
+                EditorApplication.Exit(3);
+                return;
+            }
+
+            if (!cliArgs.ConfirmClear)
+            {
+                Debug.LogError($"[AddressTeller] Clear All の実行には -addressTellerConfirmClear の指定が必要です（意図的な拒否）。");
+                EditorApplication.Exit(4);
+                return;
+            }
+
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+            {
+                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。");
+                EditorApplication.Exit(3);
+                return;
+            }
+
+            var snapshotPath = AddressTellerClearSnapshotService.CaptureAndSave(settings, out var snapshotError);
+            if (snapshotPath == null)
+            {
+                Debug.LogError($"[AddressTeller] Clear All: {snapshotError}");
+                EditorApplication.Exit(3);
+                return;
+            }
+
+            IReadOnlyCollection<string> managedGroups = null;
+            if (cliArgs.ClearScope == ClearScope.Managed)
+            {
+                var setup = RuleEvaluationPipeline.BuildSetup(settings, RuleCollector.CollectRules());
+                managedGroups = setup.ManagedGroups;
+            }
+
+            var cleared = AddressTellerClearService.Clear(settings, cliArgs.ClearScope, managedGroups);
+            foreach (var entry in cleared)
+                Debug.LogWarning($"[AddressTeller] Cleared entry: guid={entry.Guid}, group='{entry.GroupName}', address='{entry.Address}', labels=[{string.Join(", ", entry.Labels)}]");
+
+            Debug.Log($"[AddressTeller] Clear All 完了: {cleared.Count} 件のエントリを削除しました（scope={cliArgs.ClearScope}）。スナップショット: {snapshotPath}");
+
+            EditorApplication.Exit(0);
+        }
+
         [MenuItem("Tools/AddressTeller/Validate")]
         public static void Validate()
         {
