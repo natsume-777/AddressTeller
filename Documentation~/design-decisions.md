@@ -1,49 +1,51 @@
-# 設計上の決定事項
+[日本語](./design-decisions.ja.md)
 
-AddressTeller の挙動には、一見不便に見えても意図的に選んでいる仕様がいくつかある。
-ここでは、その判断とその理由をまとめる。仕様変更を検討する際は、まずここに書かれた前提が変わったかどうかを確認してほしい。
+# Design Decisions
 
-## アドレスは競合時にエラーにする
+Some AddressTeller behaviors are intentional choices that may seem inconvenient at first glance.
+This document explains those decisions and the reasoning behind them. Before proposing a spec change, check whether the underlying assumptions described here have actually changed.
 
-全ルールを `Order` 昇順で評価し、アドレスを発行するルール（`Address()` を呼んだルール）が2件以上マッチした場合は競合エラーとして書き込みを行わない。1件のみなら採用する。Apply・Validate で同じ判定をする。
+## Address Conflicts Cause an Error
 
-暗黙のファーストマッチ採用にすると、ルールの定義順やリフレクション列挙順という見えにくい要因で最終アドレスが変わり、利用者が気づかないまま意図しないアドレスが採用される。曖昧な状態は黙って解決せず、エラーとして表面化させる方を選んだ。
+All rules are evaluated in ascending `Order`. If two or more rules that call `Address()` match the same asset, it is treated as a conflict — no write occurs. A single match is accepted. The same logic applies to both Apply and Validate.
 
-## ラベルは全ルールから蓄積する
+Silently adopting the first match would mean the final address could change based on rule definition order or reflection enumeration order — subtle factors the user might not notice, leading to unintended addresses being adopted without warning. Ambiguous states should surface as errors rather than being silently resolved.
 
-ラベルはアドレスと異なり、マッチした全ルールから蓄積する（複数ラベルの同時付与）。ラベルは1アセットに複数付くことが正常な使い方であり、競合の概念がない。分類軸ごとに独立したルールを書けるようにするため、蓄積を既定とする。
+## Labels Accumulate from All Rules
 
-## 存在しないグループは作らない（既定）
+Unlike addresses, labels accumulate from all matching rules (multiple labels can be assigned simultaneously). Having multiple labels on a single asset is normal usage, and there is no concept of label conflict. To allow independent rules per classification axis, accumulation is the default.
 
-既定では、ルールが指定したグループが存在しない場合はエラーにし、自動生成はしない。グループはバンドル設定（圧縮・分割方針）を伴う設計上の単位であり、タイプミスで意図しないグループが量産されると気づきにくい。グループの作成は明示的な操作に委ねる。自動作成が必要な場合に備え、既定OFFのオプトイン設定を別途用意している。
+## Missing Groups Are an Error (Default)
 
-## 削除は資産単位の所有権で判定する
+By default, if a rule specifies a group that does not exist, it is an error — groups are not created automatically. Groups are architectural units that carry bundle settings (compression and splitting policies), and silently creating groups from typos can go unnoticed. Group creation is left as an explicit operation. An opt-in setting (off by default) is available for cases where automatic creation is needed.
 
-`CleanupStaleEntries`（既定: ON）は、`Apply All` 実行時にどのルールにもマッチしなくなった資産を Addressables から取り除く機能だが、対象は AddressTeller が管理しているグループ（いずれかのルールが参照しているグループ）に登録されているエントリに限る。AddressTeller が関与していないグループのエントリには一切触れない。
+## Deletions Are Determined by Per-Asset Ownership
 
-判定は資産（GUID）単位で「現在どのルールにもマッチするか」のみを見るため、手動で登録したエントリであっても、それが管理グループ内にあり、かつどのルールにもマッチしない場合は削除対象になる。管理グループ内に AddressTeller のルールが対象としないエントリを置きたい場合は、別グループ（AddressTeller が管理しないグループ）に登録すること。
+`CleanupStaleEntries` (default: ON) removes assets from Addressables during `Apply All` when no rule matches them anymore, but only from groups managed by AddressTeller (groups referenced by at least one rule). Entries in groups that AddressTeller does not manage are never touched.
 
-また、エントリそのものの削除は行うが、ラベルは剥がさない。ラベルは「全ルールから蓄積する」という設計上、どのルールがいつ付与したラベルかを後から一意に特定できないため、誤って利用者が手動で付けたラベルや他ツールのラベルを剥がしてしまうリスクがある。削除してよいと確信できる範囲（管理対象グループのエントリ）だけを対象にし、判断が難しい操作（ラベルの剥がし）は行わない。これにより、所有権が明確な操作だけを安全に自動化し、不確実な操作は利用者の手動操作（スナップショットの Exact 復元など）に委ねる。
+The determination is per-asset (GUID): only "does any rule currently match this asset?" is checked. Therefore, manually registered entries inside a managed group will be deleted if no rule matches them. If you want entries that AddressTeller rules do not target inside a managed group, place them in a separate group (one that AddressTeller does not manage).
 
-## 公開APIと内部実装の境界
+Entries themselves are deleted, but labels are not stripped. Because labels accumulate from all rules by design, it is impossible to uniquely identify after the fact which rule assigned which label — stripping labels risks accidentally removing labels the user attached manually or that another tool assigned. The scope of automatic operations is limited to what ownership clearly covers (entries in managed groups), leaving uncertain operations (label stripping) to manual user action (e.g., Snapshot Exact restore).
 
-利用者が触れるべき面を最小に保つため、公開（`public`）にするのは次に限る。それ以外の評価エンジン・Addressables 統合の実装詳細は `internal` とし、将来のリファクタリングで自由に変更できる余地を残す。
+## Public API and Internal Implementation Boundary
 
-公開API:
+To keep the surface area that users interact with as small as possible, only the following are `public`. Everything else — evaluation engine internals and Addressables integration details — is `internal`, leaving room for future refactoring without breaking changes.
 
-- **ルール定義面**: `AddressRuleBase`、`IAddressRuleBuilder`、`IAddressRuleGroupBuilder`、`Match`、`AssetCondition`、`Naming`、`AssetContext`、`AddressRuleEntry`
-- **実行エントリ**: `AddressTellerService`、`AddressTellerSettings`
-- **スナップショット**: `AddressTellerSnapshotService`、`SnapshotRestoreMode`、`SnapshotDiff`、`AddressTellerSnapshot`、`SnapshotEntry`
-- **結果型**: `ValidationResult`、`ValidationStatus`
-- **進捗報告**: `IProgressReporter`、`NullProgressReporter`、`EditorProgressReporter`
-- **レポート**: `AddressTellerReportWriter`、`AddressTellerExplainReport`、`AddressTellerExplainAsset`、`AddressTellerExplainRule` などのレポートDTO群
-- **CLI・メニューエントリ**: `AddressTellerMenu`、`AddressTellerSnapshotMenu`、`AddressTellerExplainMenu`、`AddressTellerCliArgs`
-- **インポート時自動適用**: `AddressTellerPostprocessor`
+Public API:
 
-内部実装（`internal`）:
+- **Rule-definition surface**: `AddressRuleBase`, `IAddressRuleBuilder`, `IAddressRuleGroupBuilder`, `Match`, `AssetCondition`, `Naming`, `AssetContext`, `AddressRuleEntry`
+- **Execution entry points**: `AddressTellerService`, `AddressTellerSettings`
+- **Snapshot**: `AddressTellerSnapshotService`, `SnapshotRestoreMode`, `SnapshotDiff`, `AddressTellerSnapshot`, `SnapshotEntry`
+- **Result types**: `ValidationResult`, `ValidationStatus`
+- **Progress reporting**: `IProgressReporter`, `NullProgressReporter`, `EditorProgressReporter`
+- **Reports**: `AddressTellerReportWriter`, `AddressTellerExplainReport`, `AddressTellerExplainAsset`, `AddressTellerExplainRule`, and other report DTOs
+- **CLI and menu entry points**: `AddressTellerMenu`, `AddressTellerSnapshotMenu`, `AddressTellerExplainMenu`, `AddressTellerCliArgs`
+- **Auto-apply on import**: `AddressTellerPostprocessor`
 
-- ルール収集・評価・説明文生成の実装
-- Addressables への書き込み実装
-- スナップショットのファイル管理・自動退避・レポート組み立て
+Internal implementation (`internal`):
 
-これらは単一のエディタアセンブリ内に閉じており、テストからは `InternalsVisibleTo` で限定的に参照できるようにしている。利用者から直接参照されない前提のため、内部実装の型・メソッドはシグネチャを保たずに変更できる。
+- Rule collection, evaluation, and explanation generation
+- Addressables write implementation
+- Snapshot file management, auto-evacuation, and report assembly
+
+These are all contained within a single editor assembly. Tests can access them in a limited way via `InternalsVisibleTo`. Because users are not expected to reference internal types directly, their signatures may change freely in future refactors.

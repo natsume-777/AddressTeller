@@ -1,26 +1,28 @@
-# テストガイドライン
+[日本語](./testing-guidelines.ja.md)
 
-AddressTeller のテスト（EditMode）を書く・レビューする際に守るべき事項をまとめる。
-第1部は実装全体が守るべき不変条件、第2部はテストコード特有のルール。
+# Testing Guidelines
 
-## 第1部: 設計が守る不変条件
+Rules for writing and reviewing AddressTeller tests (EditMode).
+Part 1 covers invariants the entire implementation must uphold; Part 2 covers rules specific to test code.
 
-- **「Project」スコープの設定はプロジェクト配下に永続化する**: `Project Settings` に表示される設定は `ProjectSettings/AddressTellerSettings.asset` のようなプロジェクト配下のファイルに保存し、バージョン管理・チーム共有の対象にする。マシン全体に紐づく保存先（個人のエディタ設定のみが使うもの）には置かない。
-- **横断処理は結果を返し、握りつぶさない**: `ApplyAll`/`ValidateAll` のようにアセットを横断処理するメソッドは `IReadOnlyList<ValidationResult>` のような結果を必ず呼び出し元に返す。Menu/CLI/Postprocessor などすべての呼び出し側は、返された結果を必ずログ等でユーザーに提示する。
-- **破壊的操作は資産単位の所有権で判定し、既定は安全側にする**: エントリ削除やラベル変更のような不可逆操作は、「そのエントリ・ラベルが AddressTeller によって作成・管理されているか」を資産単位で判定する。所有権の判定が難しい場合、関連する自動削除系オプションの既定値はOFFにする。削除を実行した場合は対象（パス・GUID・理由）を Warning 以上のログで個別に出す。
-- **Fluent API の重複呼び出しは例外にする**: `Where()` のように「複数回呼ぶと意図が曖昧になる」メソッドは、2回目以降の呼び出しで `InvalidOperationException` を投げ、サイレントな上書きを許さない。
-- **ユーザールールの例外はルール/アセット単位で分離する**: リフレクションで読み込むユーザー定義の `Configure()`・述語・アドレス生成処理は、ルール単位・アセット単位で `try/catch` する。例外発生時は `RuleError` のような専用ステータスで個別に報告し、1つのルールの不具合で全体の処理を止めない。
-- **ユーザー指定ファイルの読込はtry/catch + スキーマ検証**: ファイル選択ダイアログ等で読み込む JSON などは、パースを `try/catch` し、パース成功後も必須フィールド（例: エントリ一覧が空でないこと）を検証する。想定外の内容を「成功」として扱わない。
-- **設定フラグは全エントリポイントで一貫評価する**: オン/オフ設定を追加する場合、それを参照すべき全エントリポイント（インポート時自動適用・メニュー・CLI）を洗い出し、共通のチェック関数を経由させる。一部の経路だけがチェックする非対称な実装を避ける。
-- **再入ガードは役割をコメントで明示する**: 再入防止フラグを追加・変更する際は、どの呼び出し経路から再入しうるか、他のガードとの役割分担をコメントで残す。複数ガードがある場合は、それぞれが機能するケースをテストでカバーする。
-- **高頻度処理の不変計算はキャッシュする**: `OnGUI`、毎資産ループ、インポート時処理の中で、結果が変わらない計算（リフレクションによるルール収集、`AssetDatabase` 系API呼び出し、LINQ の集合演算など）を直接呼ばない。static フィールドや辞書にキャッシュし、ドメインリロード以外で無効化が必要な場合のみ明示的に無効化する。
-- **同値順序が意味を持つソートは決定的タイブレークにする**: 評価順序や衝突メッセージの並びのように、同値要素間の相対順序が結果に影響する場合は `OrderBy(...).ThenBy(...)` のように決定的なキーを指定し、不安定ソートに依存しない。
+## Part 1: Design Invariants
 
-## 第2部: テストを書く際の固有ルール
+- **"Project"-scoped settings must persist under the project**: Settings shown in `Project Settings` must be saved to project-scoped files such as `ProjectSettings/AddressTellerSettings.asset`, making them version-controllable and shareable across team members. Do not store them in machine-wide locations (e.g., personal editor preferences).
+- **Cross-asset operations must return results and not suppress them**: Methods that process assets broadly (such as `ApplyAll`/`ValidateAll`) must always return a result such as `IReadOnlyList<ValidationResult>` to the caller. All callers — Menu, CLI, Postprocessor — must surface the returned results to the user via logs or similar.
+- **Destructive operations default to safe behavior, determined by per-asset ownership**: Irreversible operations such as entry deletion or label changes must determine "was this entry or label created and managed by AddressTeller?" on a per-asset basis. When ownership is ambiguous, auto-delete options must default to OFF. When a deletion is executed, the target (path, GUID, reason) must be logged individually at Warning level or above.
+- **Duplicate calls to Fluent API methods must throw**: Methods like `Where()`, where a second call would create ambiguity, must throw `InvalidOperationException` on the second call — silent overwrites are not allowed.
+- **User rule exceptions must be isolated per rule/asset**: User-defined `Configure()` methods, predicates, and address generation functions loaded via reflection must be wrapped in per-rule, per-asset `try/catch`. Exceptions must be reported individually as a dedicated status like `RuleError`, without halting processing for other rules or assets.
+- **User-specified file loading requires try/catch and schema validation**: JSON loaded via file dialogs etc. must be wrapped in `try/catch` for parsing, and required fields (e.g., non-empty entry list) must be validated after a successful parse. Unexpected content must not be treated as success.
+- **Feature flags must be evaluated consistently across all entry points**: When adding an on/off setting, identify all entry points that should check it (import-time auto-apply, menu, CLI) and route them through a common check function. Avoid asymmetric implementations where only some paths perform the check.
+- **Re-entry guards must document their role in comments**: When adding or changing a re-entry prevention flag, leave a comment explaining which call paths can re-enter and how this guard's role differs from any others. When multiple guards exist, test cases must cover each guard's scenario.
+- **Cache invariant computations in hot paths**: Do not call expensive computations directly inside `OnGUI`, per-asset loops, or import-time processing — this includes reflection-based rule collection, `AssetDatabase` API calls, and LINQ set operations. Cache in static fields or dictionaries, and invalidate only when necessary (outside of domain reloads).
+- **Sorts where tie order is meaningful must be deterministic**: When relative order among equal elements affects outcomes (e.g., evaluation order, conflict message ordering), use `OrderBy(...).ThenBy(...)` with a deterministic key rather than relying on unstable sort behavior.
 
-- **テスト用 `AddressableAssetSettings` は必ず非永続（メモリ上）で生成する**: テストがプロジェクトの Addressables 設定を汚染すると、AssetPostprocessor 連携が副作用を残してしまうため。本番の `.asset` をディスクに書き出してはならない。`AddressTellerTestSettingsFactory.CreateInMemory(configFolder, ...)`（`Tests/Editor/AddressTellerTestSettingsFactory.cs`）を使うこと。
-- **`ConfigFolder` を参照するAPIのテストにはテスト用フォルダパスの注入が必要**: `ConfigFolder` を内部で参照するAPI（`ApplyAll`/`ValidateAll` 等）をテストする場合、テスト用のフォルダパスを設定に注入する。`ConfigFolder` を参照しないAPIのみをテストする場合は不要。
-- **グループ生成は静的変更イベントを発火させない**: テスト内でグループを作成する際は `postEvent: false` を指定し、Addressables の静的変更イベントを発火させない。
-- **テストアセンブリ全体の汚染検出ガードを壊さない**: 各テストアセンブリには `AddressTellerAddressablesPollutionGuard`（`[SetUpFixture]`、`Tests/Editor/AddressTellerAddressablesPollutionGuard.cs`）が常設されており、実行前後で本番 Addressables 設定のシリアライズ状態を比較し、差分があれば失敗する。新規テストを追加する際はこのガードを壊さないこと（非永続設定の使用・後始末を徹底する）。
+## Part 2: Test-Specific Rules
 
-EditMode テスト実行時、環境要因で2件 skip となるのが正常な状態。
+- **Test `AddressableAssetSettings` must always be created non-persistent (in memory)**: Tests that write to the project's Addressables settings contaminate the project and leave side effects from `AssetPostprocessor` integration. Never write production `.asset` files to disk from tests. Use `AddressTellerTestSettingsFactory.CreateInMemory(configFolder, ...)` (`Tests/Editor/AddressTellerTestSettingsFactory.cs`).
+- **APIs that reference `ConfigFolder` require test folder path injection**: When testing APIs that internally reference `ConfigFolder` (such as `ApplyAll`/`ValidateAll`), inject a test folder path into the settings. Not required when only testing APIs that do not reference `ConfigFolder`.
+- **Group creation must not fire static change events**: When creating groups in tests, pass `postEvent: false` to avoid firing Addressables' static change events.
+- **Do not break the per-assembly pollution detection guard**: Each test assembly has `AddressTellerAddressablesPollutionGuard` (`[SetUpFixture]`, `Tests/Editor/AddressTellerAddressablesPollutionGuard.cs`) permanently in place. It compares the serialized state of the production Addressables settings before and after each test run, failing if any diff is found. New tests must not break this guard — use non-persistent settings and clean up after each test.
+
+It is normal for 2 tests to be skipped due to environment factors when running EditMode tests.

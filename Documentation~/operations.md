@@ -1,97 +1,99 @@
-# 適用と運用
+[日本語](./operations.ja.md)
 
-## 適用方法
+# Apply & Operations
 
-| 方法 | 説明 |
+## Apply Methods
+
+| Method | Description |
 |---|---|
-| インポート時自動適用 | `AssetPostprocessor` により、アセットのインポート・移動・削除のたびに自動で `Apply All` 相当が実行されます。Project Settings でオフにできます。 |
-| `Tools/AddressTeller/Apply All` | プロジェクト全体に手動でルールを適用します。 |
-| `Tools/AddressTeller/Validate` | 書き込みは行わず、競合・グループ未検出などの問題だけを Console に出力します。 |
-| `Tools/AddressTeller/Apply with Validate` | 先に Validate を実行し、問題があれば Apply を中止します。 |
-| `Assets/AddressTeller/Explain`（Project ウィンドウの右クリックメニュー） | 選択したアセットに対して全ルールを評価し、その結果を確認ウィンドウで表示します。マッチしたルール・マッチしなかったルール（その `Where` 説明付き）・ルール例外を一覧で見ることができます。`Match` ヘルパーを使用したルールは自動生成された説明（例: `InFolder(Assets/Characters) AND OfType<GameObject>`）が表示されるため、生ラムダよりもルールの動作確認が効率的です。 |
-| `Tools/AddressTeller/Clear All Addresses & Labels...` | プロジェクト内の全 Addressable エントリ（アドレス・グループ割り当て・ラベル）を削除します。実行前に専用スナップショット（`SnapshotFolder/Clear` 以下、ローテーション対象外）を必須で保存し、確認ダイアログを経て実行します。公開前パッケージの初期セットアップ用途を想定した割り切り機能です。削除したエントリは Console に個別ログ（Warning）され、Snapshot Restore で復元できます。 |
+| Auto-apply on import | `AssetPostprocessor` automatically runs the equivalent of `Apply All` whenever an asset is imported, moved, or deleted. Can be disabled in Project Settings. |
+| `Tools/AddressTeller/Apply All` | Manually applies rules to the entire project. |
+| `Tools/AddressTeller/Validate` | Outputs conflicts, missing groups, and other issues to the Console without writing any changes. |
+| `Tools/AddressTeller/Apply with Validate` | Runs Validate first and aborts Apply if any issues are found. |
+| `Assets/AddressTeller/Explain` (right-click menu in the Project window) | Evaluates all rules against the selected asset and displays the results in a confirmation window. Shows matched rules, unmatched rules (with their `Where` description), and rule exceptions. Rules using `Match` helpers display auto-generated descriptions (e.g., `InFolder(Assets/Characters) AND OfType<GameObject>`), making behavior verification more efficient than raw lambdas. |
+| `Tools/AddressTeller/Clear All Addresses & Labels...` | Removes all Addressable entries (addresses, group assignments, and labels) in the project. Requires saving a dedicated snapshot (`SnapshotFolder/Clear`, excluded from rotation) before execution, followed by a confirmation dialog. Intended as a pragmatic tool for initial setup of a pre-release package. Deleted entries are logged individually (Warning) to the Console and can be restored via Snapshot Restore. |
 
-## CI 連携
+## CI Integration
 
-`-executeMethod` で以下を実行できます。
+The following methods can be invoked via `-executeMethod`:
 
 - `AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI`
-- `AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI`（`ApplyWithValidateCLI` は先に Validate を行い、問題があれば Apply を中止します）
-- `AddressTeller.Editor.AddressTellerMenu.CheckCLI`（Apply を行わない dry-run。読み取り専用で差分・問題を検出します）
-- `AddressTeller.Editor.AddressTellerMenu.ClearCLI`（全 Addressable エントリ、または `-addressTellerClearScope managed` で AddressTeller 管理下のグループのエントリのみを削除します。実行には `-addressTellerConfirmClear` の指定が必須です）
+- `AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI` (runs Validate first and aborts Apply if any issues are found)
+- `AddressTeller.Editor.AddressTellerMenu.CheckCLI` (dry-run without Apply — detects drift and issues in read-only mode)
+- `AddressTeller.Editor.AddressTellerMenu.ClearCLI` (removes all Addressable entries, or only entries in AddressTeller-managed groups with `-addressTellerClearScope managed`; requires `-addressTellerConfirmClear`)
 
-`-addressTellerReport <path>` / `-addressTellerReportFormat json|junit` を指定すると、`CheckCLI` は dry-run、`ApplyAllCLI` / `ApplyWithValidateCLI` は Apply 実行前の差分（dry-run）から構造化レポートをファイル出力します。`-addressTellerReportFormat` を省略した場合、拡張子が `.xml` なら `junit`、それ以外は `json` として扱われます。
+Specifying `-addressTellerReport <path>` / `-addressTellerReportFormat json|junit` outputs a structured report file: `CheckCLI` reports its dry-run results; `ApplyAllCLI` / `ApplyWithValidateCLI` report the pre-apply diff (dry-run). If `-addressTellerReportFormat` is omitted, the format is `junit` when the extension is `.xml`, otherwise `json`.
 
-exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
+Exit codes (`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI`):
 
-| exit code | 意味 |
+| Exit code | Meaning |
 |---|---|
-| 0 | 差分なし・問題なし |
-| 1 | ドリフトあり（差分あり、Validation エラーなし） |
-| 2 | Validation エラーあり |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・レポート書き込み失敗） |
+| 0 | No drift, no issues |
+| 1 | Drift detected (changes present, no Validation errors) |
+| 2 | Validation errors present |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, or report write failure) |
 
-`ClearCLI` の exit code:
+`ClearCLI` exit codes:
 
-| exit code | 意味 |
+| Exit code | Meaning |
 |---|---|
-| 0 | クリア完了 |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・スナップショット保存失敗） |
-| 4 | `-addressTellerConfirmClear` が指定されていないため実行を拒否（意図的な拒否） |
+| 0 | Clear completed |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, or snapshot save failure) |
+| 4 | Rejected because `-addressTellerConfirmClear` was not specified (intentional rejection) |
 
-### 論理バンドル分布サマリ
+### Logical Bundle Distribution Summary
 
-`json` 形式のレポートには `bundleDistribution` セクションが含まれます。これは dry-run の Predict 結果（アセット→グループ/ラベル）と各グループの BundleMode（PackTogether/PackSeparately/PackTogetherByLabel）から算出した、ビルド前の論理バンドル単位の個数・分布の概算です。「ルール設計が意図せず巨大バンドル1個や数百分割を生んでいないか」を検知するための目安であり、**実 Addressables ビルドのバンドル数を一致させることを保証しません**。
+The `json` report includes a `bundleDistribution` section. This is an estimate of logical bundle units computed from the dry-run Predict results (asset → group/labels) and each group's BundleMode (PackTogether/PackSeparately/PackTogetherByLabel). It is intended as a quick check for unintended extreme distributions (e.g., one huge bundle or hundreds of tiny ones), and **does not guarantee accuracy against an actual Addressables build**.
 
-近似の既知差異として以下は反映されません。
+Known approximation differences:
 
-- PackTogether のシーン別バンドル分離
-- PackSeparately のフォルダ単位まとめ
-- PackTogetherByLabel における Addressables 本体のラベル連結方式との差異（本サマリはラベル集合を昇順ソート＋区切り文字で連結した正規化キーで分割しています）
+- PackTogether's scene-level bundle splitting
+- PackSeparately's per-folder grouping
+- PackTogetherByLabel label combination differences (this summary uses sorted label sets joined with a separator as a normalization key)
 
-`BundledAssetGroupSchema` が付与されていないグループは BundleMode が判定できないため `Unknown` として扱われ、バンドル数の集計（`totalLogicalBundleCount`）には含まれません（`unknownGroupCount` で別集計されます）。
+Groups without `BundledAssetGroupSchema` cannot have their BundleMode determined and are treated as `Unknown`; they are excluded from `totalLogicalBundleCount` and counted separately in `unknownGroupCount`.
 
 ## Project Settings
 
-`Project Settings > AddressTeller` に以下の項目があります。
+Under `Project Settings > AddressTeller`:
 
-- **インポート時に自動適用する**（既定: ON）— オフにすると `AssetPostprocessor` による自動適用を行いません。手動メニューには影響しません。
-- **Postprocessor の実行順序**（`PostprocessOrder`、既定: 1000）— `AssetPostprocessor.GetPostprocessOrder()` に渡す値です。値が小さいほど他の `AssetPostprocessor` より先に実行されます。既定値は後段寄りの大きな値で、他パッケージの Postprocessor がアセットを生成・変更してから AddressTeller が評価することを期待します。
-- **マッチしなくなったエントリを削除する**（`CleanupStaleEntries`、既定: ON）— `Apply All` 実行時、どのルールにもマッチしなくなったアセットを、AddressTeller が管理するグループ（いずれかのルールが参照しているグループ）から削除します。削除はエントリ単位（`RemoveAssetEntry`）のため、アドレスと（Addressablesの）ラベルの両方が失われます。AddressTeller が管理していないグループに手動で登録したエントリには触れません。**一方、管理グループ内に手動で登録したエントリは、対応するルールがなければ削除対象になります**（資産単位で「現在どのルールにもマッチするか」のみを判定するため）。この挙動の理由は [設計上の決定事項: 削除は資産単位の所有権で判定する](design-decisions.md#削除は資産単位の所有権で判定する) および [設計上の決定事項: 存在しないグループは作らない（既定）](design-decisions.md#存在しないグループは作らない既定) を参照してください。
-- **スナップショット保存先フォルダ**（後述）
+- **Auto-apply on import** (default: ON) — When off, `AssetPostprocessor` auto-apply is disabled. Manual menu operations are unaffected.
+- **Postprocessor execution order** (`PostprocessOrder`, default: 1000) — Passed to `AssetPostprocessor.GetPostprocessOrder()`. Lower values run before other `AssetPostprocessor`s. The high default puts AddressTeller after other packages' postprocessors, so assets generated or modified by those run first.
+- **Remove unmatched entries** (`CleanupStaleEntries`, default: ON) — During `Apply All`, removes assets from AddressTeller-managed groups (groups referenced by at least one rule) that no longer match any rule. Deletion is per-entry (`RemoveAssetEntry`), removing both the address and Addressables labels. Entries in groups AddressTeller does not manage are never touched. **However, manually registered entries inside a managed group will be deleted if no rule matches them** (only per-asset matching is checked). See [Design Decisions: Deletions Are Determined by Per-Asset Ownership](design-decisions.md#deletions-are-determined-by-per-asset-ownership) and [Design Decisions: Missing Groups Are an Error](design-decisions.md#missing-groups-are-an-error-default).
+- **Snapshot folder** (see below)
 
-これらの設定値は `ProjectSettings/AddressTellerSettings.asset` に保存されます。プロジェクト単位の設定としてバージョン管理に含めることができ、チームメンバー間で共有されます。
+These settings are saved to `ProjectSettings/AddressTellerSettings.asset`, which can be version-controlled and shared across team members.
 
-登録されているルールクラス（`AddressRuleBase` 継承クラス）の一覧と、`Order` 値も同じ画面で確認できます。各ルールクラスの横には有効/無効を切り替えるトグルがあり、デバッグ・動作確認時に特定のルールだけを無効化することができます。無効化したルールは `Apply All` / `Validate` / `Apply with Validate` / `Explain` / スナップショットの dry-run 予測の評価対象から除外されます。
+The same screen shows the list of registered rule classes (`AddressRuleBase` subclasses) and their `Order` values. Each class has an enable/disable toggle for temporarily disabling specific rules during debugging or verification. Disabled rules are excluded from `Apply All` / `Validate` / `Apply with Validate` / `Explain` / snapshot dry-run predictions.
 
-ただし資産削除時のエントリ削除追従（`CleanupStaleEntries` 等）は、ルールの有効/無効に関わらず全ルールを対象に行われます。これは、無効化中のルールであっても過去にそのルールが管理していたエントリを正しく追跡し、オーファンエントリが残り続けないようにするための設計です。
+Note: stale-entry cleanup on asset deletion (`CleanupStaleEntries`, etc.) always considers all rules regardless of the enabled/disabled toggle. This ensures that entries previously managed by a now-disabled rule are still correctly tracked so orphaned entries do not accumulate.
 
-## スナップショット
+## Snapshots
 
-`Tools/AddressTeller/Snapshot/` 以下のメニューで、現在の Addressables 状態（グループ・アドレス・ラベル）を JSON として保存・復元・比較できます。
+Via the `Tools/AddressTeller/Snapshot/` menu, you can save, restore, and compare the current Addressables state (groups, addresses, labels) as JSON.
 
-- **Save Snapshot**: 現在の状態を JSON ファイルに保存します。
-- **Restore Snapshot (Additive)**: スナップショットの内容を書き戻します。スナップショットにないラベルは残ります。
-- **Restore Snapshot (Exact)**: スナップショットの内容に書き戻し、スナップショットにないラベルは剥がして完全一致させます。
-- **Compare with Current State / Compare Two Snapshots**: 追加・削除・変更を Console に出力します。
+- **Save Snapshot**: Saves the current state to a JSON file.
+- **Restore Snapshot (Additive)**: Writes the snapshot contents back. Labels not in the snapshot are left as-is.
+- **Restore Snapshot (Exact)**: Writes the snapshot contents back and strips any labels not in the snapshot to achieve an exact match.
+- **Compare with Current State / Compare Two Snapshots**: Outputs additions, deletions, and changes to the Console.
 
-保存先フォルダは Project Settings で変更できます（既定値: プロジェクトルート直下の `AddressTellerSnapshots/`、Assets 外）。
+The save folder can be changed in Project Settings (default: `AddressTellerSnapshots/` in the project root, outside Assets).
 
-### 自動セーフティスナップショット
+### Auto Safety Snapshot
 
-`Tools/AddressTeller/Apply All` および `Tools/AddressTeller/Apply with Validate` メニュー実行時、事前に現在の状態を自動でスナップショットとして保存し、ローテーション管理します。`CleanupStaleEntries` によるエントリ削除などの変更を安全に戻せるよう、`Tools/AddressTeller/Undo Last Apply` メニューで最新の自動スナップショットから Exact モードで復元できます。
+When `Tools/AddressTeller/Apply All` or `Tools/AddressTeller/Apply with Validate` is run from the menu, the current state is automatically saved as a snapshot and managed with rotation. `Tools/AddressTeller/Undo Last Apply` restores from the latest auto-snapshot in Exact mode, allowing safe recovery from changes like `CleanupStaleEntries` deletions.
 
-Project Settings で以下を設定できます：
+Configurable in Project Settings:
 
-- **Apply実行前に自動スナップショットを保存する**（既定: ON）— オフにするとメニュー実行時の自動保存を行いません。
-- **自動スナップショットの保持件数**（既定: 10、最小: 1）— 指定件数を超える古い自動スナップショットは自動削除されます。
+- **Save auto-snapshot before Apply** (default: ON) — When off, no auto-save occurs on menu execution.
+- **Auto-snapshot retention count** (default: 10, minimum: 1) — Auto-snapshots older than the specified count are automatically deleted.
 
-自動スナップショット機能は `Tools/AddressTeller/Apply All` および `Tools/AddressTeller/Apply with Validate` メニューのみ対象です。インポート時の自動適用・CLI（`ApplyAllCLI`/`ApplyWithValidateCLI`）には適用されません。
+The auto-snapshot feature applies only to the `Tools/AddressTeller/Apply All` and `Tools/AddressTeller/Apply with Validate` menu items. It does not apply to import-time auto-apply or CLI (`ApplyAllCLI`/`ApplyWithValidateCLI`).
 
-## サンプル
+## Samples
 
-Package Manager の Samples タブから以下をインポートできます（`Samples~/` 配下）。
+The following samples can be imported from the Package Manager's Samples tab (`Samples~/`):
 
-- **Basic Rules** — 最小構成のルール定義例。
-- **Folder-based Rules** — フォルダ階層をそのままアドレス・ラベルに反映する例。
-- **Type-based Rules** — アセットの型ごとにグループ・ラベルを振り分ける例。
+- **Basic Rules** — Minimal rule definition example.
+- **Folder-based Rules** — Example that maps folder hierarchy directly to addresses and labels.
+- **Type-based Rules** — Example that routes assets to groups and labels by asset type.

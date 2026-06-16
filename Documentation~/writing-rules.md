@@ -1,37 +1,39 @@
-# ルールの書き方
+[日本語](./writing-rules.ja.md)
+
+# Writing Rules
 
 ## AddressRuleBase
 
 ```csharp
 public abstract class AddressRuleBase
 {
-    public virtual int Order => 0;          // 評価順序。小さいほど先に評価される
+    public virtual int Order => 0;          // Evaluation order — lower values are evaluated first
     public abstract void Configure(IAddressRuleBuilder rules);
 }
 ```
 
-`AddressRuleBase` を継承したクラスはアセンブリから自動収集されます（中央登録は不要）。`Editor` フォルダ配下に置いてください。
+Classes that inherit `AddressRuleBase` are collected automatically from assemblies — no central registration required. Place them under an `Editor` folder.
 
 ## Group / Where / Address / Label
 
 ```csharp
-rules.Group("グループ名")
-    .Where(ctx => /* bool */)                 // 1グループにつき1回のみ。複数条件は && でまとめる
-    .Address(ctx => /* string */)             // または .Address("固定文字列")
-    .Label(ctx => /* string */)               // 複数回呼べる。.Label("固定文字列") も可
-    .Label("もう一つのラベル");
+rules.Group("GroupName")
+    .Where(ctx => /* bool */)                 // One call per group only. Combine multiple conditions with &&
+    .Address(ctx => /* string */)             // Or .Address("fixed string")
+    .Label(ctx => /* string */)               // Can be called multiple times. .Label("fixed string") also works
+    .Label("another label");
 ```
 
-- `Where(predicate)` / `Where(predicate, description)` は **1グループにつき1回のみ**呼び出せます。2回目を呼ぶと `InvalidOperationException`。
-  `description` を指定すると、衝突時のエラーメッセージにその説明文が使われます。
-- `Address()` を呼ばなければ、そのグループルールはアドレスを発行しません（ラベル付与だけのルールとして使えます）。
-- `Label()` は**何度でも**呼び出せます。マッチした全ルールのラベルが蓄積されます。
-- 同じ `Configure()` 内で `Group()` を複数回呼び、複数のルールエントリを定義できます。
+- `Where(predicate)` / `Where(predicate, description)` can be called **only once per group**. A second call throws `InvalidOperationException`.
+  Providing a `description` includes it in conflict error messages.
+- If `Address()` is not called, the group rule emits no address (useful for label-only rules).
+- `Label()` can be called **any number of times**. Labels accumulate from all matching rules.
+- `Group()` can be called multiple times within the same `Configure()` to define multiple rule entries.
 
 ## GroupDefault
 
-`Group("名前")` の代わりに `GroupDefault()` を使うと、Addressables の DefaultGroup にアドレス・ラベルを付与できます。
-`Where`/`Address`/`Label` は `Group()` と同様にチェーンできます。
+Use `GroupDefault()` instead of `Group("name")` to assign addresses and labels to the Addressables DefaultGroup.
+`Where`/`Address`/`Label` chain exactly as with `Group()`.
 
 ```csharp
 rules.GroupDefault()
@@ -39,16 +41,16 @@ rules.GroupDefault()
     .Address(ctx => ctx.FileNameWithoutExtension);
 ```
 
-- DefaultGroup は評価時に `AddressableAssetSettings.DefaultGroup` から解決されるため、**DefaultGroup をリネームしても追従**します（グループ名をコードに書く必要がありません）。
-- `Group("実名")` と `GroupDefault()` が同一の実グループを指している場合も、通常のグループルールと同様に競合検出の対象になります。
+- DefaultGroup is resolved from `AddressableAssetSettings.DefaultGroup` at evaluation time, so **it follows DefaultGroup renames automatically** (no need to hard-code the group name).
+- If `Group("actual name")` and `GroupDefault()` resolve to the same physical group, conflict detection still applies as usual.
 
-## Match / Naming ヘルパー
+## Match / Naming Helpers
 
-条件述語とアドレス生成の定型パターンをヘルパークラスで簡潔に記述できます。
+Helper classes let you express common condition predicates and address generation patterns concisely.
 
-### Match 静的クラス
+### Match Static Class
 
-頻出の条件を組み立てる機能。自動生成される説明は Explain ウィンドウで確認でき、ルール検証時のエラーメッセージにも反映されます。
+Builds common conditions. Auto-generated descriptions appear in the Explain window and in rule validation error messages.
 
 ```csharp
 using AddressTeller;
@@ -60,16 +62,16 @@ rules.Group("Characters")
     .Label("character");
 ```
 
-主なメソッド:
-- `Match.InFolder(string path)` — 指定フォルダ配下のアセットにマッチ
-- `Match.OfType<T>()` — 指定の型（GameObject, Sprite など）にマッチ
-- `Match.Glob(string pattern)` — ワイルドカード（`*.prefab` など）で照合
-- `Match.All()` — 常に真（条件なしルール）
-- `condition.And(otherCondition)` — 条件を AND 合成
+Key methods:
+- `Match.InFolder(string path)` — matches assets under the specified folder
+- `Match.OfType<T>()` — matches assets of the specified type (GameObject, Sprite, etc.)
+- `Match.Glob(string pattern)` — matches by wildcard pattern (e.g., `*.prefab`)
+- `Match.All()` — always true (unconditional rule)
+- `condition.And(otherCondition)` — combines conditions with AND
 
-### Naming 静的クラス
+### Naming Static Class
 
-アドレス値を生成する頻出パターン。パス正規化の細部を気にせずに記述できます。
+Common patterns for generating address values. Handles path normalization details so you don't have to.
 
 ```csharp
 .Address(Naming.FileNameWithoutExtension())
@@ -77,34 +79,34 @@ rules.Group("Characters")
 .Address(Naming.RelativePath("Assets/Game"))
 ```
 
-主なメソッド:
-- `Naming.FileName()` — 拡張子付きファイル名
-- `Naming.FileNameWithoutExtension()` — 拡張子なしファイル名
-- `Naming.ParentFolderName()` — 親フォルダ名
-- `Naming.RelativePath(string root)` — 指定フォルダ起点の相対パス
+Key methods:
+- `Naming.FileName()` — file name with extension
+- `Naming.FileNameWithoutExtension()` — file name without extension
+- `Naming.ParentFolderName()` — parent folder name
+- `Naming.RelativePath(string root)` — relative path from the specified folder
 
 ## AssetContext
 
-ルールに渡されるアセット1件分の情報です。
+Per-asset information passed to each rule.
 
-| プロパティ | 説明 | 例 |
+| Property | Description | Example |
 |---|---|---|
-| `Guid` | アセットの GUID | |
-| `Path` | `Assets/` 起点のパス（`/` 区切りに正規化済み） | `"Assets/Game/Characters/Player.prefab"` |
-| `Type` | アセットの型 | `typeof(GameObject)` |
-| `FileNameWithoutExtension` | 拡張子なしファイル名 | `"Player"` |
-| `FileName` | 拡張子ありファイル名 | `"Player.prefab"` |
-| `Directory` | ディレクトリパス | `"Assets/Game/Characters"` |
-| `Extension` | ファイル拡張子 | `".prefab"` |
-| `IsInFolder(string)` | フォルダ配下判定メソッド | `ctx.IsInFolder("Assets/Game")` → `true` |
-| `PathSegments` | パスを `/` で分割した配列 | `["Assets", "Game", "Characters", "Player.prefab"]` |
-| `RelativePathFrom(string root)` | 指定フォルダ起点の相対パス | `ctx.RelativePathFrom("Assets/Game")` → `"Characters/Player.prefab"` |
+| `Guid` | Asset GUID | |
+| `Path` | Path from `Assets/` (normalized to `/` separators) | `"Assets/Game/Characters/Player.prefab"` |
+| `Type` | Asset type | `typeof(GameObject)` |
+| `FileNameWithoutExtension` | File name without extension | `"Player"` |
+| `FileName` | File name with extension | `"Player.prefab"` |
+| `Directory` | Directory path | `"Assets/Game/Characters"` |
+| `Extension` | File extension | `".prefab"` |
+| `IsInFolder(string)` | Returns true if the asset is under the specified folder | `ctx.IsInFolder("Assets/Game")` → `true` |
+| `PathSegments` | Path split by `/` | `["Assets", "Game", "Characters", "Player.prefab"]` |
+| `RelativePathFrom(string root)` | Relative path from the specified folder | `ctx.RelativePathFrom("Assets/Game")` → `"Characters/Player.prefab"` |
 
-## 評価ルールと挙動
+## Evaluation Rules and Behavior
 
-- **評価順序**: 全ルールを `Order` の昇順で評価します。同じ `Order` 値を持つルールクラスが複数ある場合、`Apply All` / `Validate` 実行時に警告が出ます。
-- **アドレスの競合**: マッチしたルールのうち `Address()` を指定したものが2件以上あると **競合エラー**になり、そのアセットへの書き込みは行われません（Apply・Validate 共通）。1件だけマッチした場合にそのアドレスが採用されます。なぜこの挙動にしているかは [設計上の決定事項: アドレスは競合時にエラーにする](design-decisions.md#アドレスは競合時にエラーにする) を参照してください。
-- **ラベルの蓄積**: `Label()` はモードに関わらず、マッチした全ルールから蓄積されます（複数ラベルが同時に付与されます）。理由は [設計上の決定事項: ラベルは全ルールから蓄積する](design-decisions.md#ラベルは全ルールから蓄積する) を参照してください。
-- **マッチするルールが0件の場合**: そのアセットは対象外としてスキップされます。`CleanupStaleEntries`（[適用と運用](operations.md) を参照）が有効な場合のみ、AddressTeller が管理するグループに残った既存エントリが削除されます。
-- **グループが存在しない場合**: `GroupNotFound` エラーになります。グループの自動作成は行いません。事前に Addressable Groups ウィンドウで作成してください。詳しくは [設計上の決定事項: 存在しないグループは作らない（既定）](design-decisions.md#存在しないグループは作らない既定) を参照してください。
-- **ルール内で例外が発生した場合**: そのルールだけが `RuleError` として個別に報告され、他のルール・他のアセットの処理は継続されます。
+- **Evaluation order**: All rules are evaluated in ascending `Order`. A warning is issued during `Apply All` / `Validate` when multiple rule classes share the same `Order` value.
+- **Address conflicts**: If two or more matching rules call `Address()`, a **conflict error** occurs and no write is performed for that asset (applies to both Apply and Validate). Only a single matching rule's address is accepted. See [Design Decisions: Address Conflicts Cause an Error](design-decisions.md#address-conflicts-cause-an-error) for the rationale.
+- **Label accumulation**: `Label()` accumulates from all matching rules regardless of mode (multiple labels are assigned simultaneously). See [Design Decisions: Labels Accumulate from All Rules](design-decisions.md#labels-accumulate-from-all-rules).
+- **No matching rule**: The asset is skipped. If `CleanupStaleEntries` is enabled (see [Apply & Operations](operations.md)), any existing entries in AddressTeller-managed groups are removed.
+- **Group not found**: Results in a `GroupNotFound` error. Groups are not created automatically — create them first in the Addressable Groups window. See [Design Decisions: Missing Groups Are an Error](design-decisions.md#missing-groups-are-an-error-default).
+- **Exception inside a rule**: Only that rule is reported as `RuleError`; processing continues for other rules and other assets.

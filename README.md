@@ -1,22 +1,24 @@
+[日本語](./README.ja.md)
+
 # AddressTeller
 
-Unity Addressables のアドレス・ラベルを **C# コードで** 自動付与するツール。
-ScriptableObject / UI ではなく、コードファーストでルールを定義します。
+A tool that automatically assigns addresses and labels for Unity Addressables **in C# code**.
+Rules are defined code-first, not through ScriptableObjects or Inspector UI.
 
-## 要件
+## Requirements
 
-- Unity 6000.0 以降
-- com.unity.addressables 2.8.1 以降
+- Unity 6000.0 or later
+- com.unity.addressables 2.8.1 or later
 
-## インストール
+## Installation
 
-Package Manager の `Add package from git URL...` で次を指定します。
+In the Package Manager, use `Add package from git URL...` and enter:
 
 ```
 https://github.com/natsume-777/AddressTeller.git
 ```
 
-または `Packages/manifest.json` に直接追記します。
+Or add it directly to `Packages/manifest.json`:
 
 ```json
 {
@@ -26,10 +28,10 @@ https://github.com/natsume-777/AddressTeller.git
 }
 ```
 
-## クイックスタート
+## Quick Start
 
-`AddressRuleBase` を継承したクラスを `Editor` フォルダ配下に置くと、リフレクションで自動的に収集されます。
-`Configure()` 内で `Group().Where().Address().Label()` をチェーンしてルールを記述します。
+Create a class that inherits `AddressRuleBase` and place it under an `Editor` folder — it will be collected automatically via reflection.
+Define rules by chaining `Group().Where().Address().Label()` inside `Configure()`.
 
 ```csharp
 using AddressTeller;
@@ -50,30 +52,30 @@ public sealed class GameAddressRules : AddressRuleBase
 }
 ```
 
-`Tools/AddressTeller/Apply All` を実行すると、対象アセットにアドレスとラベルが設定されます。
-`Characters` グループは事前に Addressable Groups ウィンドウで作成しておく必要があります（存在しないグループ名はエラーになります）。
-Addressables の DefaultGroup に付与したい場合は `Group("名前")` の代わりに `GroupDefault()` を使えます（DefaultGroup のリネームに追従します）。詳しくは [ルールの書き方](Documentation~/writing-rules.md#groupdefault) を参照してください。
+Run `Tools/AddressTeller/Apply All` to assign addresses and labels to matching assets.
+The `Characters` group must be created in the Addressable Groups window beforehand (a missing group name is treated as an error).
+To assign to the Addressables DefaultGroup, use `GroupDefault()` instead of `Group("name")` — it follows DefaultGroup renames automatically. See [Writing Rules](Documentation~/writing-rules.md#groupdefault) for details.
 
-## ドキュメント
+## Documentation
 
-- [ルールの書き方](Documentation~/writing-rules.md) — `AddressRuleBase` の書き方、`Match`/`Naming` ヘルパー、`AssetContext`、評価ルールの詳細
-- [適用と運用](Documentation~/operations.md) — 適用方法、CI 連携、Project Settings、スナップショット、サンプル
-- [設計上の決定事項](Documentation~/design-decisions.md) — アドレス・ラベル・グループの扱いをこう決めた理由
-- [アーキテクチャ](Documentation~/architecture.md) — レイヤ構成・フォルダ別の責務・ルール評価の流れ
-- [コントリビュート](CONTRIBUTING.md)
+- [Writing Rules](Documentation~/writing-rules.md) — `AddressRuleBase` authoring, `Match`/`Naming` helpers, `AssetContext`, evaluation behavior
+- [Apply & Operations](Documentation~/operations.md) — apply methods, CI integration, Project Settings, snapshots, samples
+- [Design Decisions](Documentation~/design-decisions.md) — why addresses, labels, and groups behave the way they do
+- [Architecture](Documentation~/architecture.md) — layer structure, folder responsibilities, rule evaluation flow
+- [Contributing](CONTRIBUTING.md)
 
-## 背景
+## Background
 
-アドレス・ラベルの設計はエンジニアが担うことが多い。にもかかわらず、ScriptableObject + Inspector UI でルールを定義する方式は「UI で表現できることが表現の上限」になりやすく、グループを GUID で参照する保存形式はリネームや削除で壊れ、差分も読みにくい。
+Address and label design is typically an engineer's responsibility, yet rule-definition approaches based on ScriptableObject + Inspector UI cap expressiveness at "what the UI can represent." Group references stored as GUIDs break on rename or deletion and produce noisy diffs.
 
-AddressTeller はルール定義を C# コードに寄せることで次を狙う。
+AddressTeller moves rule definitions into C# code to provide:
 
-- **表現力の上限がない** — パス解析・外部データ読み込み・任意の C# ロジックが書ける
-- **差分が綺麗** — `.asset` を持たず、コードだけ管理すればよい
-- **IDE 支援が効く** — 補完・リファクタリング・ユニットテストが普通の C# として使える
+- **Unlimited expressiveness** — path parsing, external data loading, any C# logic
+- **Clean diffs** — no `.asset` files to manage, just code
+- **Full IDE support** — autocomplete, refactoring, and unit tests as ordinary C#
 
-データ駆動にしたい場合も、読み込み方式をコード側で自由に選べる。
+Data-driven configurations are also supported by choosing the loading strategy freely in code.
 
-## ライセンス
+## License
 
 [MIT](LICENSE)

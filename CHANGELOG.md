@@ -4,6 +4,14 @@
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) に従います。
 `0.x` 系のため、SemVer 上は破壊的変更もマイナーバージョン内で扱います。
 
+## [Unreleased]
+
+### Documentation
+
+- Added English versions of README.md and all Documentation~ files. The original Japanese content is preserved as `.ja.md` files (e.g., `README.ja.md`, `architecture.ja.md`). Each file includes a language switch link at the top.
+
+---
+
 ## [0.3.0] - 2026-06-14
 
 ### Added
