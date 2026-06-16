@@ -186,7 +186,7 @@ namespace AddressTeller.Editor.Tests
         {
             var missing = Path.Combine(AutoFolder, "AddressTellerSnapshot_does_not_exist.json");
 
-            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning, new System.Text.RegularExpressions.Regex("読み込みに失敗"));
+            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning, new System.Text.RegularExpressions.Regex("Failed to load"));
             var snapshot = AddressTellerAutoSnapshotService.LoadAuto(missing);
 
             Assert.IsNull(snapshot);

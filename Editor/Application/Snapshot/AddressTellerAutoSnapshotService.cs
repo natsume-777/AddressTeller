@@ -38,7 +38,7 @@ namespace AddressTeller.Editor
         {
             if (settings == null)
             {
-                Debug.LogError("[AddressTeller] AutoSnapshot: AddressableAssetSettings が null です。");
+                Debug.LogError("[AddressTeller] AutoSnapshot: AddressableAssetSettings is null.");
                 return null;
             }
 
@@ -57,7 +57,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError($"[AddressTeller] AutoSnapshot: 自動スナップショットの保存に失敗しました: {e}");
+                Debug.LogError($"[AddressTeller] AutoSnapshot: Failed to save auto snapshot: {e}");
                 return null;
             }
         }
@@ -97,12 +97,12 @@ namespace AddressTeller.Editor
                 }
                 catch (Exception e)
                 {
-                    Debug.LogWarning($"[AddressTeller] AutoSnapshot: 古いスナップショットの削除に失敗しました: {file} ({e.Message})");
+                    Debug.LogWarning($"[AddressTeller] AutoSnapshot: Failed to delete old snapshot: {file} ({e.Message})");
                 }
             }
 
             if (toDelete.Count > 0)
-                Debug.Log($"[AddressTeller] AutoSnapshot: 保持件数 {retention} 件を超える古い自動スナップショットを {toDelete.Count} 件削除しました。");
+                Debug.Log($"[AddressTeller] AutoSnapshot: Deleted {toDelete.Count} old auto snapshot(s) exceeding the retention limit of {retention}.");
         }
 
         /// <summary>最新の自動スナップショットの絶対パスを返す。存在しなければ null。</summary>

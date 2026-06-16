@@ -60,8 +60,8 @@ namespace AddressTeller.Editor
         {
             if (!isRuleFiltered) return null;
 
-            return "ルールを絞り込んでいるため、他ルール管理下のエントリ削除予測は表示されません。" +
-                   "全体の最終結果は Apply All / Validate で確認してください。";
+            return "Rule filtering is active; entry removal predictions for entries under other rules are not shown. " +
+                   "Use Apply All / Validate to see the final result across all rules.";
         }
     }
 }

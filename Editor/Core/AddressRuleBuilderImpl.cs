@@ -114,8 +114,8 @@ namespace AddressTeller
             {
                 if (_whereSet)
                     throw new InvalidOperationException(
-                        $"Group(\"{_groupName}\") の Where() は1回しか呼び出せません。" +
-                        "複数の条件は1つのラムダ式に && でまとめてください。");
+                        $"Where() can be called only once on Group(\"{_groupName}\"). " +
+                        "Combine multiple conditions into a single lambda using &&.");
             }
 
             public IAddressRuleGroupBuilder Address(Func<AssetContext, string> selector)
@@ -192,8 +192,8 @@ namespace AddressTeller
             {
                 if (_whereSet)
                     throw new InvalidOperationException(
-                        "AnyGroup() の Where() は1回しか呼び出せません。" +
-                        "複数の条件は1つのラムダ式に && でまとめてください。");
+                        "Where() can be called only once on AnyGroup(). " +
+                        "Combine multiple conditions into a single lambda using &&.");
             }
 
             public ILabelRuleBuilder Label(Func<AssetContext, string> selector)

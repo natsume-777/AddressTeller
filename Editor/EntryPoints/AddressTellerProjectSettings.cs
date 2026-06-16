@@ -130,26 +130,26 @@ namespace AddressTeller.Editor
         {
             var overviewCache = GetRuleOverviewCache();
 
-            EditorGUILayout.LabelField("適用・検証の挙動", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Apply / Validate Behavior", EditorStyles.boldLabel);
 
             EditorGUI.BeginChangeCheck();
-            var postprocessEnabled = EditorGUILayout.ToggleLeft("インポート時に自動適用する", AddressTellerSettings.PostprocessEnabled);
-            DrawDescription("アセットのインポート・移動・削除のたびに ApplyAll を実行します。");
+            var postprocessEnabled = EditorGUILayout.ToggleLeft("Auto-apply on import", AddressTellerSettings.PostprocessEnabled);
+            DrawDescription("Runs ApplyAll whenever assets are imported, moved, or deleted.");
 
             EditorGUILayout.Space(4);
 
-            var postprocessOrder = EditorGUILayout.IntField("Postprocessor の実行順序", AddressTellerSettings.PostprocessOrder);
-            DrawDescription("AssetPostprocessor.GetPostprocessOrder() に渡される値です。値が小さいほど他の Postprocessor より先に実行されます。既定値は 1000（後段寄り）です。");
+            var postprocessOrder = EditorGUILayout.IntField("Postprocessor order", AddressTellerSettings.PostprocessOrder);
+            DrawDescription("Value passed to AssetPostprocessor.GetPostprocessOrder(). Lower values run before other postprocessors. Default is 1000 (runs later).");
 
             EditorGUILayout.Space(4);
 
-            var cleanupStaleEntries = EditorGUILayout.ToggleLeft("マッチしなくなったエントリを削除する", AddressTellerSettings.CleanupStaleEntries);
-            DrawDescription("どのルールにもマッチしなくなったアセットを、AddressTeller が管理するグループから自動的に削除します。エントリ自体が削除されるため、アドレスと（Addressablesの）ラベルの両方が失われます。");
+            var cleanupStaleEntries = EditorGUILayout.ToggleLeft("Remove unmatched entries", AddressTellerSettings.CleanupStaleEntries);
+            DrawDescription("Automatically removes assets that no longer match any rule from groups managed by AddressTeller. The entry itself is deleted, so both the address and labels (in Addressables) are lost.");
 
             EditorGUILayout.Space(4);
 
-            var autoCreateMissingGroups = EditorGUILayout.ToggleLeft("存在しないグループを自動作成する", AddressTellerSettings.AutoCreateMissingGroups);
-            DrawDescription("ルールが参照するグループが存在しない場合、Apply 実行時に DefaultGroup のスキーマ構成を複製して自動作成します。Validate/Predict では作成予定として表示するのみで、実際の作成は行いません。");
+            var autoCreateMissingGroups = EditorGUILayout.ToggleLeft("Auto-create missing groups", AddressTellerSettings.AutoCreateMissingGroups);
+            DrawDescription("When a group referenced by a rule does not exist, Apply will create it by duplicating the DefaultGroup schema. Validate/Predict only displays it as a pending creation and does not actually create the group.");
 
             if (EditorGUI.EndChangeCheck())
             {
@@ -162,27 +162,27 @@ namespace AddressTeller.Editor
             EditorGUILayout.Space(4);
 
             var managedGroups = CollectManagedGroups(overviewCache);
-            s_managedGroupsFoldout = EditorGUILayout.Foldout(s_managedGroupsFoldout, $"管理対象グループ ({managedGroups.Count}件)", true);
+            s_managedGroupsFoldout = EditorGUILayout.Foldout(s_managedGroupsFoldout, $"Managed Groups ({managedGroups.Count})", true);
             if (s_managedGroupsFoldout)
             {
                 EditorGUI.indentLevel++;
                 if (managedGroups.Count == 0)
-                    EditorGUILayout.LabelField("(有効なルールが参照しているグループはありません)", EditorStyles.wordWrappedMiniLabel);
+                    EditorGUILayout.LabelField("(No groups are referenced by enabled rules)", EditorStyles.wordWrappedMiniLabel);
                 else
                     foreach (var groupName in managedGroups)
                         EditorGUILayout.LabelField(groupName, EditorStyles.wordWrappedMiniLabel);
                 EditorGUI.indentLevel--;
             }
-            DrawDescription("有効なルールがいずれかの Group() で参照しているグループです。マッチしなくなったエントリを削除する／存在しないグループを自動作成する の対象になります。これらのグループに手動で登録したエントリは、対応するルールがなければ削除対象になります。");
+            DrawDescription("Groups referenced by at least one enabled rule via Group(). These are the targets of \"Remove unmatched entries\" and \"Auto-create missing groups\". Entries manually registered in these groups will be removed if no rule matches them.");
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("登録されているルール", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Registered Rules", EditorStyles.boldLabel);
 
             foreach (var duplicate in overviewCache.DuplicateOrders)
             {
                 var ruleNames = string.Join(", ", duplicate.RuleClassNames);
                 EditorGUILayout.HelpBox(
-                    $"Order={duplicate.Order} が重複: {ruleNames}。評価順序を確認してください",
+                    $"Order={duplicate.Order} is duplicated: {ruleNames}. Verify the evaluation order.",
                     MessageType.Warning);
             }
 
@@ -197,8 +197,8 @@ namespace AddressTeller.Editor
             if (overviewRules.Count == 0)
             {
                 EditorGUILayout.HelpBox(
-                    "AddressRuleBase を継承したクラスが見つかりません。\n" +
-                    "AddressRuleBase を継承し、Configure() でアドレス／ラベルのルールを定義してください。",
+                    "No class inheriting AddressRuleBase was found.\n" +
+                    "Inherit AddressRuleBase and define address/label rules in Configure().",
                     MessageType.Info);
             }
 
@@ -229,13 +229,13 @@ namespace AddressTeller.Editor
                 var script = FindScriptForType(type);
                 using (new EditorGUI.DisabledScope(script == null))
                 {
-                    if (GUILayout.Button("選択", GUILayout.Width(60)))
+                    if (GUILayout.Button("Select", GUILayout.Width(60)))
                         Selection.activeObject = script;
                 }
 
                 using (new EditorGUI.DisabledScope(addressablesSettings == null))
                 {
-                    if (GUILayout.Button("このルールだけ Validate/Apply", GUILayout.Width(180)))
+                    if (GUILayout.Button("Validate/Apply this rule only", GUILayout.Width(180)))
                         AddressTellerScopedPreview.RunRulePreview(addressablesSettings, ruleInstancesByType[type]);
                 }
 
@@ -246,47 +246,47 @@ namespace AddressTeller.Editor
             }
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("運用アクション", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Operations", EditorStyles.boldLabel);
 
             if (addressablesSettings == null)
-                EditorGUILayout.HelpBox("AddressableAssetSettings が見つかりません。Addressables を初期化してください。", MessageType.Warning);
+                EditorGUILayout.HelpBox("AddressableAssetSettings not found. Please initialize Addressables.", MessageType.Warning);
 
             using (new EditorGUI.DisabledScope(addressablesSettings == null))
             {
                 EditorGUILayout.BeginHorizontal();
-                if (GUILayout.Button("Validate 実行"))
+                if (GUILayout.Button("Run Validate"))
                     AddressTellerMenu.Validate();
-                if (GUILayout.Button("プレビュー（Validate付き）"))
+                if (GUILayout.Button("Preview (with Validate)"))
                     AddressTellerMenu.ApplyWithValidate();
-                if (GUILayout.Button("Apply 実行"))
+                if (GUILayout.Button("Run Apply"))
                     AddressTellerMenu.ApplyAll();
                 EditorGUILayout.EndHorizontal();
             }
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("スナップショット", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Snapshot", EditorStyles.boldLabel);
 
             EditorGUI.BeginChangeCheck();
-            var snapshotFolder = EditorGUILayout.TextField("保存先フォルダ", AddressTellerSettings.SnapshotFolder);
+            var snapshotFolder = EditorGUILayout.TextField("Snapshot folder", AddressTellerSettings.SnapshotFolder);
             if (EditorGUI.EndChangeCheck())
                 AddressTellerSettings.SnapshotFolder = snapshotFolder;
 
-            DrawDescription("プロジェクトルート（Assets の親ディレクトリ）からの相対パス。既定値は \"AddressTellerSnapshots\"（Assets 外、Unity にインポートされない）。");
+            DrawDescription("Relative path from the project root (parent directory of Assets). Default is \"AddressTellerSnapshots\" (outside Assets, not imported by Unity).");
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("フォルダを選択...", GUILayout.Width(120)))
+            if (GUILayout.Button("Browse...", GUILayout.Width(120)))
                 PickSnapshotFolder();
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(4);
 
             EditorGUI.BeginChangeCheck();
-            var autoSnapshotBeforeApplyAll = EditorGUILayout.ToggleLeft("Apply実行前に自動スナップショットを保存する", AddressTellerSettings.AutoSnapshotBeforeApplyAll);
-            DrawDescription("対象は Apply All / Apply with Validate メニューのみです。import時の自動適用やCLIでの実行は対象外です。");
+            var autoSnapshotBeforeApplyAll = EditorGUILayout.ToggleLeft("Auto-snapshot before Apply", AddressTellerSettings.AutoSnapshotBeforeApplyAll);
+            DrawDescription("Applies only to the Apply All / Apply with Validate menu actions. Auto-apply on import and CLI execution are not covered.");
 
-            var autoSnapshotRetention = EditorGUILayout.IntField("自動スナップショットの保持件数", AddressTellerSettings.AutoSnapshotRetention);
-            DrawDescription("これを超える古い自動スナップショットは自動的に削除されます。最小値は1件です。");
+            var autoSnapshotRetention = EditorGUILayout.IntField("Auto-snapshot retention count", AddressTellerSettings.AutoSnapshotRetention);
+            DrawDescription("Auto snapshots exceeding this count are automatically deleted. Minimum is 1.");
 
             if (EditorGUI.EndChangeCheck())
             {
@@ -325,21 +325,21 @@ namespace AddressTeller.Editor
 
             if (overview.ConfigureError != null)
             {
-                EditorGUILayout.HelpBox($"Configure() の実行中に例外が発生しました: {overview.ConfigureError}", MessageType.Error);
+                EditorGUILayout.HelpBox($"An exception occurred during Configure(): {overview.ConfigureError}", MessageType.Error);
             }
             else if (overview.Entries.Count == 0)
             {
-                EditorGUILayout.LabelField("(Group() が呼ばれていません)", EditorStyles.wordWrappedMiniLabel);
+                EditorGUILayout.LabelField("(Group() was not called)", EditorStyles.wordWrappedMiniLabel);
             }
             else
             {
                 foreach (var entry in overview.Entries)
                 {
-                    var where = entry.Description ?? $"(条件 #{entry.RuleIndex})";
-                    var address = entry.HasAddress ? "動的" : "なし";
+                    var where = entry.Description ?? $"(condition #{entry.RuleIndex})";
+                    var address = entry.HasAddress ? "dynamic" : "none";
                     var groupName = AddressRuleBuilderImpl.DisplayGroupName(entry.GroupName);
                     EditorGUILayout.LabelField(
-                        $"Group: \"{groupName}\"  Where: \"{where}\"  Address: {address}  Labels: {entry.LabelCount}個",
+                        $"Group: \"{groupName}\"  Where: \"{where}\"  Address: {address}  Labels: {entry.LabelCount}",
                         EditorStyles.wordWrappedMiniLabel);
                 }
             }
@@ -351,7 +351,7 @@ namespace AddressTeller.Editor
         private static void PickSnapshotFolder()
         {
             var current = AddressTellerSettings.GetSnapshotFolderAbsolutePath();
-            var selected = EditorUtility.OpenFolderPanel("スナップショット保存先フォルダ", current, "");
+            var selected = EditorUtility.OpenFolderPanel("Snapshot Folder", current, "");
             if (string.IsNullOrEmpty(selected)) return;
 
             var projectRoot = Path.GetDirectoryName(Application.dataPath);

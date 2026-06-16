@@ -30,7 +30,7 @@ namespace AddressTeller.Editor.Tests
 
             var (text, color) = AddressTellerExplainWindow.DescribeConclusion(validation, resolution);
 
-            StringAssert.Contains("1件のルールがエラー", text);
+            StringAssert.Contains("1 rule error", text);
             StringAssert.Contains("SomeRule", text);
             Assert.AreEqual(Color.red, color);
         }
@@ -43,7 +43,7 @@ namespace AddressTeller.Editor.Tests
 
             var (text, color) = AddressTellerExplainWindow.DescribeConclusion(validation, resolution);
 
-            StringAssert.Contains("マッチするルールなし", text);
+            StringAssert.Contains("No matching rule", text);
             Assert.AreEqual(Color.gray, color);
         }
 

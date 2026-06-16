@@ -37,7 +37,7 @@ namespace AddressTeller.Editor
         {
             if (settings == null)
             {
-                error = "AddressableAssetSettings が null です。";
+                error = "AddressableAssetSettings is null.";
                 return null;
             }
 
@@ -55,7 +55,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception e)
             {
-                error = $"Clear 専用スナップショットの保存に失敗しました: {e}";
+                error = $"Failed to save the Clear snapshot: {e}";
                 return null;
             }
         }

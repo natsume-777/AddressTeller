@@ -26,13 +26,13 @@ namespace AddressTeller.Editor
         /// 選択アセット（フォルダ含む）に有効な全ルールを適用した場合の dry-run プレビューを表示する。
         /// 即時 Apply は行わない（ResultWindow から手動で Apply All / Validate を実行する）。
         /// </summary>
-        [MenuItem("Assets/AddressTeller/Preview (Apply予測)")]
+        [MenuItem("Assets/AddressTeller/Preview (Apply Preview)")]
         public static void Preview()
         {
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                UnityEngine.Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。Addressables を初期化してください。");
+                UnityEngine.Debug.LogError("[AddressTeller] AddressableAssetSettings not found. Please initialize Addressables.");
                 return;
             }
 
@@ -40,7 +40,7 @@ namespace AddressTeller.Editor
             AddressTellerScopedPreview.RunAssetPreview(settings, paths);
         }
 
-        [MenuItem("Assets/AddressTeller/Preview (Apply予測)", true)]
+        [MenuItem("Assets/AddressTeller/Preview (Apply Preview)", true)]
         public static bool PreviewValidate()
         {
             var guids = Selection.assetGUIDs;

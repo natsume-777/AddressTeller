@@ -46,7 +46,7 @@ namespace AddressTeller.Editor
 
             var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
 
-            var scopeLabel = paths.Count == 1 ? $"Asset: {paths[0]}" : $"Assets: {paths.Count} 件";
+            var scopeLabel = paths.Count == 1 ? $"Asset: {paths[0]}" : $"Assets: {paths.Count}";
             var title = AddressTellerScopeBuilder.BuildScopeTitle("AddressTeller Preview", scopeLabel);
 
             AddressTellerResultWindow.Show(dryRun, title, settings);
@@ -75,7 +75,7 @@ namespace AddressTeller.Editor
             var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
 
             var title = AddressTellerScopeBuilder.BuildScopeTitle(
-                "AddressTeller Preview", $"Group: {group.Name}（現メンバー起点）");
+                "AddressTeller Preview", $"Group: {group.Name} (current members)");
 
             AddressTellerResultWindow.Show(dryRun, title, settings);
         }

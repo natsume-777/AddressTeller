@@ -254,7 +254,7 @@ namespace AddressTeller.Editor.Tests
             {
                 File.WriteAllText(blockingFile, "blocking");
 
-                LogAssert.Expect(LogType.Error, new Regex("レポートの書き込みに失敗しました"));
+                LogAssert.Expect(LogType.Error, new Regex("Failed to write report"));
                 var ok = AddressTellerReportWriter.WriteToFile(path, report, "json");
 
                 Assert.IsFalse(ok);

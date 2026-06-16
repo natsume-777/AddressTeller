@@ -106,7 +106,7 @@ namespace AddressTeller.Editor
                     content = ToJUnitXml(report);
                     break;
                 default:
-                    throw new ArgumentException($"未知のレポート形式です: {format}", nameof(format));
+                    throw new ArgumentException($"Unknown report format: {format}", nameof(format));
             }
 
             try
@@ -120,7 +120,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError($"AddressTeller: レポートの書き込みに失敗しました ({path}): {e.Message}");
+                Debug.LogError($"AddressTeller: Failed to write report ({path}): {e.Message}");
                 return false;
             }
         }

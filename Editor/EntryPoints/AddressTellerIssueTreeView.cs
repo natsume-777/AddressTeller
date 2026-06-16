@@ -47,21 +47,21 @@ namespace AddressTeller.Editor
             {
                 new MultiColumnHeaderState.Column
                 {
-                    headerContent = new GUIContent("ステータス"),
+                    headerContent = new GUIContent("Status"),
                     width = 140,
                     minWidth = 100,
                     autoResize = false,
                 },
                 new MultiColumnHeaderState.Column
                 {
-                    headerContent = new GUIContent("アセット"),
+                    headerContent = new GUIContent("Asset"),
                     width = 320,
                     minWidth = 120,
                     autoResize = true,
                 },
                 new MultiColumnHeaderState.Column
                 {
-                    headerContent = new GUIContent("詳細"),
+                    headerContent = new GUIContent("Details"),
                     width = 360,
                     minWidth = 150,
                     autoResize = true,
@@ -112,7 +112,7 @@ namespace AddressTeller.Editor
             }
 
             root.children = flat.Count == 0
-                ? new List<TreeViewItem<int>> { new TreeViewItem<int>(int.MaxValue, 0, "(問題なし)") }
+                ? new List<TreeViewItem<int>> { new TreeViewItem<int>(int.MaxValue, 0, "(no issues)") }
                 : flat;
 
             SetupParentsAndChildrenFromDepths(root, root.children);

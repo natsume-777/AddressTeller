@@ -101,14 +101,14 @@ namespace AddressTeller.Editor
             EditorGUILayout.EndHorizontal();
 
             if (_compareMode)
-                EditorGUILayout.HelpBox("比較する2件目のスナップショットを一覧から選択してください。", MessageType.Info);
+                EditorGUILayout.HelpBox("Select a second snapshot from the list to compare.", MessageType.Info);
         }
 
         private void DrawList()
         {
             if (_items.Count == 0)
             {
-                EditorGUILayout.HelpBox("スナップショットが見つかりません。", MessageType.Info);
+                EditorGUILayout.HelpBox("No snapshots found.", MessageType.Info);
                 return;
             }
 
@@ -120,7 +120,7 @@ namespace AddressTeller.Editor
                 var isSelected = item.Path == _selectedPath;
 
                 var label = item.LoadError != null
-                    ? $"{item.FileName}  -  読み込み失敗: {item.LoadError}"
+                    ? $"{item.FileName}  -  Load failed: {item.LoadError}"
                     : $"{item.FileName}    " +
                       $"{(string.IsNullOrEmpty(item.CapturedAtIso) ? "(unknown)" : item.CapturedAtIso)}    " +
                       $"{item.Comment}    schema={item.SchemaVersion}    entries={item.EntryCount}";
@@ -195,7 +195,7 @@ namespace AddressTeller.Editor
         {
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
-                EditorUtility.DisplayDialog("AddressTeller", "AddressableAssetSettings が見つかりません。Addressables を初期化してください。", "OK");
+                EditorUtility.DisplayDialog("AddressTeller", "AddressableAssetSettings not found. Please initialize Addressables.", "OK");
 
             return settings;
         }
@@ -209,12 +209,12 @@ namespace AddressTeller.Editor
             if (settings == null) return;
 
             var message = mode == SnapshotRestoreMode.Exact
-                ? $"'{item.FileName}' の状態に復元します。\n\n" +
-                  "Exact モードのため、スナップショット保存後に付与されたラベルは剥がされます。この操作は元に戻せません。"
-                : $"'{item.FileName}' の状態に復元します（Additive）。\n\n" +
-                  "スナップショットに記録された Address/Group/Label が書き込まれます。スナップショット作成後に付与されたラベルは保持されます。";
+                ? $"Restore state from '{item.FileName}'.\n\n" +
+                  "Exact mode: labels added after the snapshot was taken will be removed. This operation cannot be undone."
+                : $"Restore state from '{item.FileName}' (Additive).\n\n" +
+                  "The Address/Group/Label values recorded in the snapshot will be written. Labels added after the snapshot was taken are preserved.";
 
-            if (!EditorUtility.DisplayDialog($"Restore Snapshot ({mode})", message, "復元する", "キャンセル"))
+            if (!EditorUtility.DisplayDialog($"Restore Snapshot ({mode})", message, "Restore", "Cancel"))
                 return;
 
             if (!AddressTellerSnapshotService.LoadFromFile(item.Path, out var snapshot, out var error))
@@ -227,11 +227,11 @@ namespace AddressTeller.Editor
             foreach (var issue in issues)
                 Debug.LogWarning($"[AddressTeller] {issue}");
 
-            Debug.Log($"[AddressTeller] スナップショットを復元しました（{mode}）: {item.FileName}（{snapshot.Entries.Count} 件、問題 {issues.Count} 件）");
+            Debug.Log($"[AddressTeller] Snapshot restored ({mode}): {item.FileName} ({snapshot.Entries.Count} entries, {issues.Count} issue(s))");
 
-            var summary = $"'{item.FileName}' から {snapshot.Entries.Count} 件を復元しました。";
+            var summary = $"Restored {snapshot.Entries.Count} entry/entries from '{item.FileName}'.";
             if (issues.Count > 0)
-                summary += $"\n\n問題 {issues.Count} 件（詳細はConsoleを確認してください）:\n" + string.Join("\n", issues);
+                summary += $"\n\n{issues.Count} issue(s) (see Console for details):\n" + string.Join("\n", issues);
 
             EditorUtility.DisplayDialog("Restore Snapshot", summary, "OK");
         }

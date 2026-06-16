@@ -16,7 +16,7 @@ namespace AddressTeller.Editor
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。Addressables を初期化してください。");
+                Debug.LogError("[AddressTeller] AddressableAssetSettings not found. Please initialize Addressables.");
                 return;
             }
 
@@ -34,7 +34,7 @@ namespace AddressTeller.Editor
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。Addressables を初期化してください。");
+                Debug.LogError("[AddressTeller] AddressableAssetSettings not found. Please initialize Addressables.");
                 return;
             }
 
@@ -45,7 +45,7 @@ namespace AddressTeller.Editor
 
             if (groups.Count == 0)
             {
-                Debug.LogError("[AddressTeller] グループが存在しません。");
+                Debug.LogError("[AddressTeller] No groups exist.");
                 return;
             }
 
@@ -77,7 +77,7 @@ namespace AddressTeller.Editor
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。Addressables を初期化してください。");
+                Debug.LogError("[AddressTeller] AddressableAssetSettings not found. Please initialize Addressables.");
                 return;
             }
 
@@ -88,12 +88,12 @@ namespace AddressTeller.Editor
                 .Where(g => g != null && managedGroups.Contains(g.Name))
                 .Sum(g => g.entries.Count);
 
-            var message = $"管理対象グループの Addressable エントリ {entryCount} 件（アドレス・グループ割り当て・ラベル）を削除します。\n"
-                + $"対象: Managed\n\n"
-                + "実行前に SnapshotFolder/Clear/ 以下へスナップショットを保存します。\n"
-                + "この操作はそのスナップショットから Restore で復元できます。よろしいですか？";
+            var message = $"This will remove {entryCount} Addressable entry/entries (address, group assignment, and labels) from managed groups.\n"
+                + "Scope: Managed\n\n"
+                + "A snapshot will be saved to SnapshotFolder/Clear/ before the operation.\n"
+                + "You can restore the previous state by using Restore on that snapshot. Proceed?";
 
-            if (!EditorUtility.DisplayDialog("AddressTeller - Clear All Addresses & Labels", message, "クリアする", "キャンセル"))
+            if (!EditorUtility.DisplayDialog("AddressTeller - Clear All Addresses & Labels", message, "Clear", "Cancel"))
                 return;
 
             var snapshotPath = AddressTellerClearSnapshotService.CaptureAndSave(settings, out var snapshotError);
@@ -101,7 +101,7 @@ namespace AddressTeller.Editor
             {
                 EditorUtility.DisplayDialog(
                     "AddressTeller - Clear All Addresses & Labels",
-                    $"クリア前のスナップショット保存に失敗したため中止しました。\n\n{snapshotError}",
+                    $"Aborted: failed to save snapshot before clear.\n\n{snapshotError}",
                     "OK");
                 Debug.LogError($"[AddressTeller] Clear All: {snapshotError}");
                 return;
@@ -111,7 +111,7 @@ namespace AddressTeller.Editor
             foreach (var entry in cleared)
                 Debug.LogWarning($"[AddressTeller] Cleared entry: guid={entry.Guid}, group='{entry.GroupName}', address='{entry.Address}', labels=[{string.Join(", ", entry.Labels)}]");
 
-            Debug.Log($"[AddressTeller] Clear All 完了: {cleared.Count} 件のエントリを削除しました（scope=Managed）。スナップショット: {snapshotPath}");
+            Debug.Log($"[AddressTeller] Clear All completed: {cleared.Count} entry/entries removed (scope=Managed). Snapshot: {snapshotPath}");
         }
 
         /// <summary>
@@ -126,14 +126,14 @@ namespace AddressTeller.Editor
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
-                Debug.LogError($"[AddressTeller] 引数の解析に失敗しました: {parseError}");
+                Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
                 EditorApplication.Exit(3);
                 return;
             }
 
             if (!cliArgs.ConfirmClear)
             {
-                Debug.LogError($"[AddressTeller] Clear All の実行には -addressTellerConfirmClear の指定が必要です（意図的な拒否）。");
+                Debug.LogError($"[AddressTeller] Clear All requires -addressTellerConfirmClear to be specified (intentional rejection).");
                 EditorApplication.Exit(4);
                 return;
             }
@@ -141,7 +141,7 @@ namespace AddressTeller.Editor
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。");
+                Debug.LogError("[AddressTeller] AddressableAssetSettings not found.");
                 EditorApplication.Exit(3);
                 return;
             }
@@ -165,7 +165,7 @@ namespace AddressTeller.Editor
             foreach (var entry in cleared)
                 Debug.LogWarning($"[AddressTeller] Cleared entry: guid={entry.Guid}, group='{entry.GroupName}', address='{entry.Address}', labels=[{string.Join(", ", entry.Labels)}]");
 
-            Debug.Log($"[AddressTeller] Clear All 完了: {cleared.Count} 件のエントリを削除しました（scope={cliArgs.ClearScope}）。スナップショット: {snapshotPath}");
+            Debug.Log($"[AddressTeller] Clear All completed: {cleared.Count} entry/entries removed (scope={cliArgs.ClearScope}). Snapshot: {snapshotPath}");
 
             EditorApplication.Exit(0);
         }
@@ -176,21 +176,21 @@ namespace AddressTeller.Editor
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。Addressables を初期化してください。");
+                Debug.LogError("[AddressTeller] AddressableAssetSettings not found. Please initialize Addressables.");
                 return;
             }
 
             var issues = AddressTellerService.ValidateAll(settings);
             if (issues.Count == 0)
             {
-                Debug.Log("[AddressTeller] Validate 完了: 問題なし。");
+                Debug.Log("[AddressTeller] Validate completed: no issues.");
                 return;
             }
 
             foreach (var issue in issues)
                 Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
 
-            Debug.LogError($"[AddressTeller] Validate 完了: {issues.Count} 件の問題が見つかりました。");
+            Debug.LogError($"[AddressTeller] Validate completed: {issues.Count} issue(s) found.");
         }
 
         /// <summary>
@@ -206,7 +206,7 @@ namespace AddressTeller.Editor
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
-                Debug.LogError($"[AddressTeller] 引数の解析に失敗しました: {parseError}");
+                Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
                 EditorApplication.Exit(3);
                 return;
             }
@@ -214,7 +214,7 @@ namespace AddressTeller.Editor
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。");
+                Debug.LogError("[AddressTeller] AddressableAssetSettings not found.");
                 EditorApplication.Exit(3);
                 return;
             }
@@ -244,7 +244,7 @@ namespace AddressTeller.Editor
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。Addressables を初期化してください。");
+                Debug.LogError("[AddressTeller] AddressableAssetSettings not found. Please initialize Addressables.");
                 return;
             }
 
@@ -264,7 +264,7 @@ namespace AddressTeller.Editor
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
-                Debug.LogError($"[AddressTeller] 引数の解析に失敗しました: {parseError}");
+                Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
                 EditorApplication.Exit(3);
                 return;
             }
@@ -272,7 +272,7 @@ namespace AddressTeller.Editor
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。");
+                Debug.LogError("[AddressTeller] AddressableAssetSettings not found.");
                 EditorApplication.Exit(3);
                 return;
             }
@@ -293,7 +293,7 @@ namespace AddressTeller.Editor
                 foreach (var issue in validateIssues)
                     Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
 
-                Debug.LogError($"[AddressTeller] Validate で {validateIssues.Count(i => !i.IsOk)} 件の問題が見つかったため、Apply を中止しました。");
+                Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => !i.IsOk)} issue(s).");
 
                 // Apply を行わないため、現在の状態のままの dry-run をレポート化する。
                 var paths = AssetDatabase.GetAllAssetPaths();
@@ -325,7 +325,7 @@ namespace AddressTeller.Editor
         {
             if (!RuleCollector.TryCollectEnabledRules(RuleCollector.CollectRules(), AddressTellerSettings.DisabledRuleClassNames, cliArgs.DisableRuleFullNames, out rules, out var unknown))
             {
-                error = $"-addressTellerDisableRules に未知のルールクラスが指定されています: {string.Join(", ", unknown)}";
+                error = $"-addressTellerDisableRules contains unknown rule class name(s): {string.Join(", ", unknown)}";
                 return false;
             }
 
@@ -369,7 +369,7 @@ namespace AddressTeller.Editor
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
-                Debug.LogError($"[AddressTeller] 引数の解析に失敗しました: {parseError}");
+                Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
                 EditorApplication.Exit(3);
                 return;
             }
@@ -377,7 +377,7 @@ namespace AddressTeller.Editor
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
-                Debug.LogError("[AddressTeller] AddressableAssetSettings が見つかりません。");
+                Debug.LogError("[AddressTeller] AddressableAssetSettings not found.");
                 EditorApplication.Exit(3);
                 return;
             }
@@ -392,7 +392,7 @@ namespace AddressTeller.Editor
             var paths = AssetDatabase.GetAllAssetPaths();
             var result = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
 
-            Debug.Log($"[AddressTeller] Check 完了: 差分 追加{result.Diff.Added.Count}件 / 削除{result.Diff.Removed.Count}件 / 変更{result.Diff.Changed.Count}件、問題 {result.Issues.Count}件。");
+            Debug.Log($"[AddressTeller] Check completed: Added={result.Diff.Added.Count} / Removed={result.Diff.Removed.Count} / Changed={result.Diff.Changed.Count}, Issues={result.Issues.Count}.");
             foreach (var issue in result.Issues)
                 Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
 

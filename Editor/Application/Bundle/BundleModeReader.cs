@@ -32,7 +32,7 @@ namespace AddressTeller.Editor
                 default:
                     // 将来 Addressables 側に新しい BundlePackingMode が追加された場合に、
                     // 例外を投げず Unknown に倒しつつ見落とさないよう警告を出す。
-                    Debug.LogWarning($"[AddressTeller] グループ '{group.Name}' の BundleMode '{schema.BundleMode}' は未対応のため Unknown として扱います。");
+                    Debug.LogWarning($"[AddressTeller] BundleMode '{schema.BundleMode}' for group '{group.Name}' is not supported and will be treated as Unknown.");
                     return BundleModeKind.Unknown;
             }
         }

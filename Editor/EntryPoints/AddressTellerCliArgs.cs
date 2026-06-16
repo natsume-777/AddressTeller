@@ -69,7 +69,7 @@ namespace AddressTeller.Editor
                     case ReportPathFlag:
                         if (i + 1 >= args.Length)
                         {
-                            error = $"{ReportPathFlag} に値が指定されていません。";
+                            error = $"No value specified for {ReportPathFlag}.";
                             return false;
                         }
                         reportPath = args[++i];
@@ -78,13 +78,13 @@ namespace AddressTeller.Editor
                     case ReportFormatFlag:
                         if (i + 1 >= args.Length)
                         {
-                            error = $"{ReportFormatFlag} に値が指定されていません。";
+                            error = $"No value specified for {ReportFormatFlag}.";
                             return false;
                         }
                         reportFormat = args[++i];
                         if (reportFormat != "json" && reportFormat != "junit")
                         {
-                            error = $"{ReportFormatFlag} の値が不正です（'json' または 'junit' を指定してください）: {reportFormat}";
+                            error = $"Invalid value for {ReportFormatFlag} (must be 'json' or 'junit'): {reportFormat}";
                             return false;
                         }
                         break;
@@ -92,7 +92,7 @@ namespace AddressTeller.Editor
                     case DisableRulesFlag:
                         if (i + 1 >= args.Length)
                         {
-                            error = $"{DisableRulesFlag} に値が指定されていません。";
+                            error = $"No value specified for {DisableRulesFlag}.";
                             return false;
                         }
                         disableRuleFullNames = args[++i]
@@ -109,7 +109,7 @@ namespace AddressTeller.Editor
                     case ClearScopeFlag:
                         if (i + 1 >= args.Length)
                         {
-                            error = $"{ClearScopeFlag} に値が指定されていません。";
+                            error = $"No value specified for {ClearScopeFlag}.";
                             return false;
                         }
                         var clearScopeValue = args[++i];
@@ -122,7 +122,7 @@ namespace AddressTeller.Editor
                                 clearScope = ClearScope.Managed;
                                 break;
                             default:
-                                error = $"{ClearScopeFlag} の値が不正です（'all' または 'managed' を指定してください）: {clearScopeValue}";
+                                error = $"Invalid value for {ClearScopeFlag} (must be 'all' or 'managed'): {clearScopeValue}";
                                 return false;
                         }
                         break;

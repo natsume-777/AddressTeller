@@ -54,7 +54,7 @@ namespace AddressTeller.Editor
         {
             if (settings == null) throw new ArgumentNullException(nameof(settings));
             if (scope == ClearScope.Managed && managedGroups == null)
-                throw new ArgumentNullException(nameof(managedGroups), "ClearScope.Managed の場合、managedGroups を指定してください。");
+                throw new ArgumentNullException(nameof(managedGroups), "managedGroups must be provided when scope is ClearScope.Managed.");
 
             var targets = new List<(string Guid, string Address, string GroupName, IReadOnlyList<string> Labels)>();
 

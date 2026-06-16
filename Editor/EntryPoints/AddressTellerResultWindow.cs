@@ -173,7 +173,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[AddressTeller] 論理バンドル分布サマリの算出に失敗したため、Distribution タブは表示しません: {ex.Message}");
+                Debug.LogWarning($"[AddressTeller] Failed to calculate logical bundle distribution summary; the Distribution tab will not be shown: {ex.Message}");
                 _distribution = null;
                 _distributionSummary = null;
                 _showDistributionTab = false;
@@ -254,15 +254,15 @@ namespace AddressTeller.Editor
 
             if (_diffRows.Count == 0)
             {
-                EditorGUILayout.HelpBox("差分はありません。", MessageType.Info);
+                EditorGUILayout.HelpBox("No changes detected.", MessageType.Info);
                 DrawGroupsToCreateSummary();
                 DrawApplyButton();
                 return;
             }
 
-            var summary = $"追加 {_diffRows.Count(r => r.Kind == DiffRowKind.Added)} 件 / " +
-                           $"削除 {_diffRows.Count(r => r.Kind == DiffRowKind.Removed)} 件 / " +
-                           $"変更 {_diffRows.Count(r => r.Kind == DiffRowKind.Changed)} 件";
+            var summary = $"Added: {_diffRows.Count(r => r.Kind == DiffRowKind.Added)} / " +
+                           $"Removed: {_diffRows.Count(r => r.Kind == DiffRowKind.Removed)} / " +
+                           $"Changed: {_diffRows.Count(r => r.Kind == DiffRowKind.Changed)}";
             EditorGUILayout.LabelField(summary, EditorStyles.miniLabel);
             DrawGroupsToCreateSummary();
 
@@ -278,7 +278,7 @@ namespace AddressTeller.Editor
             if (_groupsToCreate.Count == 0) return;
 
             EditorGUILayout.LabelField(
-                $"新規作成されるグループ: {_groupsToCreate.Count} 件 ({string.Join(", ", _groupsToCreate)})",
+                $"Groups to be created: {_groupsToCreate.Count} ({string.Join(", ", _groupsToCreate)})",
                 EditorStyles.miniLabel);
         }
 
@@ -293,7 +293,7 @@ namespace AddressTeller.Editor
             if (_onApply == null) return;
 
             EditorGUILayout.Space(2);
-            if (GUILayout.Button("この内容で Apply"))
+            if (GUILayout.Button("Apply with this content"))
             {
                 var apply = _onApply;
                 Close();
@@ -309,7 +309,7 @@ namespace AddressTeller.Editor
 
             if (_allIssueRows.Count == 0)
             {
-                EditorGUILayout.HelpBox("問題はありません。", MessageType.Info);
+                EditorGUILayout.HelpBox("No issues found.", MessageType.Info);
                 return;
             }
 
@@ -321,7 +321,7 @@ namespace AddressTeller.Editor
         private void DrawStatusFilterToolbar()
         {
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("表示:", GUILayout.Width(40));
+            EditorGUILayout.LabelField("Show:", GUILayout.Width(40));
 
             EditorGUI.BeginChangeCheck();
 
@@ -342,18 +342,18 @@ namespace AddressTeller.Editor
         {
             if (_distribution == null || _distributionSummary == null)
             {
-                EditorGUILayout.HelpBox("分布情報なし。", MessageType.Info);
+                EditorGUILayout.HelpBox("No distribution data.", MessageType.Info);
                 return;
             }
 
-            EditorGUILayout.LabelField($"論理バンドル数: {_distributionSummary.TotalLogicalBundleCount}");
-            EditorGUILayout.LabelField($"BundleMode 未判定のグループ数: {_distributionSummary.UnknownGroupCount}");
+            EditorGUILayout.LabelField($"Logical bundle count: {_distributionSummary.TotalLogicalBundleCount}");
+            EditorGUILayout.LabelField($"Groups with unknown BundleMode: {_distributionSummary.UnknownGroupCount}");
 
             var largest = _distributionSummary.LargestBundle;
             if (largest != null)
             {
                 EditorGUILayout.LabelField(
-                    $"最大集約バンドル: {largest.GroupName} / {largest.SplitKey} ({largest.AssetCount} アセット)");
+                    $"Largest consolidated bundle: {largest.GroupName} / {largest.SplitKey} ({largest.AssetCount} assets)");
             }
 
             EditorGUILayout.Space(2);

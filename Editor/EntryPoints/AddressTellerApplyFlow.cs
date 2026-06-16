@@ -29,7 +29,7 @@ namespace AddressTeller.Editor
                     foreach (var issue in validateIssues)
                         Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
 
-                    Debug.LogError($"[AddressTeller] Validate で {validateIssues.Count(i => !i.IsOk)} 件の問題が見つかったため、Apply を中止しました。");
+                    Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => !i.IsOk)} issue(s).");
                     AddressTellerResultWindow.Show(validateIssues, title);
                     return;
                 }
@@ -44,17 +44,17 @@ namespace AddressTeller.Editor
 
             if (dryRun.Diff.IsEmpty && dryRun.Issues.Count == 0)
             {
-                Debug.Log("[AddressTeller] 変更はありません。");
+                Debug.Log("[AddressTeller] No changes detected.");
                 return;
             }
 
-            var message = $"追加 {dryRun.Diff.Added.Count} 件 / 変更 {dryRun.Diff.Changed.Count} 件";
+            var message = $"Added: {dryRun.Diff.Added.Count} / Changed: {dryRun.Diff.Changed.Count}";
             if (dryRun.Diff.Removed.Count > 0)
-                message += $" / ⚠ 削除 {dryRun.Diff.Removed.Count} 件";
+                message += $" / ⚠ Removed: {dryRun.Diff.Removed.Count}";
             if (dryRun.Issues.Count > 0)
-                message += $" / 問題 {dryRun.Issues.Count} 件";
+                message += $" / Issues: {dryRun.Issues.Count}";
 
-            var result = EditorUtility.DisplayDialogComplex(title, message, "実行", "キャンセル", "詳細を見る");
+            var result = EditorUtility.DisplayDialogComplex(title, message, "Apply", "Cancel", "Details");
 
             switch (result)
             {
@@ -80,14 +80,14 @@ namespace AddressTeller.Editor
             var issues = AddressTellerService.ApplyAll(paths, settings);
             if (issues.Count == 0)
             {
-                Debug.Log("[AddressTeller] ApplyAll が完了しました。");
+                Debug.Log("[AddressTeller] ApplyAll completed.");
                 return;
             }
 
             foreach (var issue in issues)
                 Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
 
-            Debug.LogError($"[AddressTeller] ApplyAll 完了: {issues.Count} 件の問題が見つかりました。");
+            Debug.LogError($"[AddressTeller] ApplyAll completed with {issues.Count} issue(s).");
         }
     }
 }

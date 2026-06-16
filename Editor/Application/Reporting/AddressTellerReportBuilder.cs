@@ -18,8 +18,8 @@ namespace AddressTeller.Editor
         /// この分布が Predict 結果と BundleMode から算出した論理推定であり、実ビルドのバンドル数を保証しないことを明記する。
         /// </summary>
         public const string BundleDistributionDisclaimer =
-            "この分布は Predict 結果と各グループの BundleMode から算出した論理推定であり、実 Addressables ビルドのバンドル数を保証しない。" +
-            "近似の既知差異: PackTogether のシーン別バンドル分離・PackSeparately のフォルダ単位まとめ・PackTogetherByLabel のラベル連結方式の違いは反映しない。";
+            "This distribution is a logical estimate calculated from Predict results and each group's BundleMode; it does not guarantee the actual bundle count produced by an Addressables build." +
+            " Known approximation differences: per-scene bundle splitting for PackTogether, folder-level grouping for PackSeparately, and label concatenation behavior for PackTogetherByLabel are not reflected.";
 
         /// <summary>
         /// <see cref="DryRunResult"/> を <see cref="AddressTellerReport"/> に変換する。
@@ -115,7 +115,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception ex)
             {
-                UnityEngine.Debug.LogWarning($"[AddressTeller] 論理バンドル分布サマリの算出に失敗したため、レポートからは省略します: {ex.Message}");
+                UnityEngine.Debug.LogWarning($"[AddressTeller] Failed to calculate logical bundle distribution summary; it will be omitted from the report: {ex.Message}");
             }
 
             return report;

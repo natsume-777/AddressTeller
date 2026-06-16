@@ -76,7 +76,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AddressTeller] パッケージバージョンの取得に失敗しました: {e.Message}");
+                Debug.LogWarning($"[AddressTeller] Failed to retrieve package version: {e.Message}");
                 return "";
             }
         }
@@ -96,7 +96,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception e)
             {
-                error = $"スナップショットの読み込みに失敗しました: {path} ({e.Message})";
+                error = $"Failed to load snapshot: {path} ({e.Message})";
                 return false;
             }
 
@@ -107,19 +107,19 @@ namespace AddressTeller.Editor
             }
             catch (Exception e)
             {
-                error = $"スナップショットの解析に失敗しました: {path} ({e.Message})";
+                error = $"Failed to parse snapshot: {path} ({e.Message})";
                 return false;
             }
 
             if (parsed == null || parsed.Entries == null)
             {
-                error = $"スナップショットの内容が不正です: {path}";
+                error = $"Snapshot content is invalid: {path}";
                 return false;
             }
 
             if (parsed.SchemaVersion > CurrentSchemaVersion)
             {
-                error = $"スナップショットのスキーマバージョン({parsed.SchemaVersion})が未対応です: {path}";
+                error = $"Snapshot schema version ({parsed.SchemaVersion}) is not supported: {path}";
                 return false;
             }
 
@@ -128,13 +128,13 @@ namespace AddressTeller.Editor
             {
                 if (entry == null || string.IsNullOrEmpty(entry.Guid))
                 {
-                    error = $"スナップショットの内容が不正です（GUID が空のエントリがあります）: {path}";
+                    error = $"Snapshot content is invalid (an entry has an empty GUID): {path}";
                     return false;
                 }
 
                 if (!seenGuids.Add(entry.Guid))
                 {
-                    error = $"スナップショットの内容が不正です（GUID '{entry.Guid}' が重複しています）: {path}";
+                    error = $"Snapshot content is invalid (duplicate GUID '{entry.Guid}'): {path}";
                     return false;
                 }
             }

@@ -43,35 +43,35 @@ namespace AddressTeller.Editor
             {
                 new MultiColumnHeaderState.Column
                 {
-                    headerContent = new GUIContent("種別"),
+                    headerContent = new GUIContent("Type"),
                     width = 70,
                     minWidth = 50,
                     autoResize = false,
                 },
                 new MultiColumnHeaderState.Column
                 {
-                    headerContent = new GUIContent("アセット"),
+                    headerContent = new GUIContent("Asset"),
                     width = 320,
                     minWidth = 120,
                     autoResize = true,
                 },
                 new MultiColumnHeaderState.Column
                 {
-                    headerContent = new GUIContent("アドレス"),
+                    headerContent = new GUIContent("Address"),
                     width = 220,
                     minWidth = 100,
                     autoResize = true,
                 },
                 new MultiColumnHeaderState.Column
                 {
-                    headerContent = new GUIContent("グループ"),
+                    headerContent = new GUIContent("Group"),
                     width = 140,
                     minWidth = 80,
                     autoResize = true,
                 },
                 new MultiColumnHeaderState.Column
                 {
-                    headerContent = new GUIContent("ラベル"),
+                    headerContent = new GUIContent("Labels"),
                     width = 160,
                     minWidth = 80,
                     autoResize = true,
@@ -96,7 +96,7 @@ namespace AddressTeller.Editor
                 rows.Add(new TreeViewItem<int>(i, 0, _rows[i].AssetPath));
 
             root.children = rows.Count == 0
-                ? new List<TreeViewItem<int>> { new TreeViewItem<int>(int.MaxValue, 0, "(差分なし)") }
+                ? new List<TreeViewItem<int>> { new TreeViewItem<int>(int.MaxValue, 0, "(no changes)") }
                 : rows;
 
             // 行データが空のとき root.children を空のままにすると TreeView 側で例外になるため、

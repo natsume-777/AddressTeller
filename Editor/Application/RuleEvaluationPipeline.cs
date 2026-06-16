@@ -74,7 +74,7 @@ namespace AddressTeller.Editor
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning($"[AddressTeller] AddressableAssetSettings.DefaultGroup の取得に失敗しました: {ex.Message}。GroupDefault() を使うルールの適用はスキップされます。");
+                    Debug.LogWarning($"[AddressTeller] Failed to retrieve AddressableAssetSettings.DefaultGroup: {ex.Message}. Rules using GroupDefault() will be skipped.");
                 }
 
                 if (defaultGroup != null)
@@ -88,7 +88,7 @@ namespace AddressTeller.Editor
                 else
                 {
                     defaultGroupUnavailable = true;
-                    Debug.LogWarning("[AddressTeller] AddressableAssetSettings.DefaultGroup を取得できませんでした。GroupDefault() を使うルールの適用はスキップされます。");
+                    Debug.LogWarning("[AddressTeller] AddressableAssetSettings.DefaultGroup could not be retrieved. Rules using GroupDefault() will be skipped.");
                 }
             }
 
@@ -110,7 +110,7 @@ namespace AddressTeller.Editor
             foreach (var group in RuleCollector.FindDuplicateOrders(rules))
             {
                 var names = string.Join(", ", group.Select(r => r.GetType().Name));
-                Debug.LogWarning($"[AddressTeller] Order={group.Key} のルールクラスが複数あります（無効化中のルールを含む全ルールが対象）: {names}。評価順序が意図通りか確認してください。");
+                Debug.LogWarning($"[AddressTeller] Multiple rule classes share Order={group.Key} (all rules including disabled ones are considered): {names}. Verify that the evaluation order is intentional.");
             }
         }
 

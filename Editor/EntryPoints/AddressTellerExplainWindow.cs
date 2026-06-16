@@ -52,7 +52,7 @@ namespace AddressTeller.Editor
         {
             if (_explanations.Count == 0)
             {
-                EditorGUILayout.HelpBox("選択中のアセットがありません。", MessageType.Info);
+                EditorGUILayout.HelpBox("No asset is selected.", MessageType.Info);
                 return;
             }
 
@@ -81,7 +81,7 @@ namespace AddressTeller.Editor
 
                 if (explanation.IsExcluded)
                 {
-                    EditorGUILayout.LabelField("このパスはルール評価の対象外です");
+                    EditorGUILayout.LabelField("This path is excluded from rule evaluation.");
                 }
                 else
                 {
@@ -109,7 +109,7 @@ namespace AddressTeller.Editor
 
             var originalColor = GUI.color;
             GUI.color = color;
-            EditorGUILayout.LabelField("結論: " + text, EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Conclusion: " + text, EditorStyles.boldLabel);
             GUI.color = originalColor;
         }
 
@@ -121,31 +121,31 @@ namespace AddressTeller.Editor
             if (resolution.Errors.Count > 0 && validation.Status == ValidationStatus.Skipped)
             {
                 var ruleNames = string.Join(", ", resolution.Errors.Select(e => e.RuleSource));
-                return ($"{resolution.Errors.Count}件のルールがエラー: {ruleNames}", Color.red);
+                return ($"{resolution.Errors.Count} rule error(s): {ruleNames}", Color.red);
             }
 
             switch (validation.Status)
             {
                 case ValidationStatus.Ok:
                     var address = resolution.AddressCandidates.Count > 0 ? resolution.AddressCandidates[0].Address : "(unknown)";
-                    return ($"アドレス \"{address}\" を採用", Color.green);
+                    return ($"Address \"{address}\" assigned", Color.green);
                 case ValidationStatus.Skipped:
-                    return ("マッチするルールなし（対象外）", Color.gray);
+                    return ("No matching rule (excluded)", Color.gray);
                 case ValidationStatus.ConflictingAddress:
-                    return ($"競合: {validation.Message}", Color.red);
+                    return ($"Conflict: {validation.Message}", Color.red);
                 case ValidationStatus.GroupNotFound:
-                    return ($"グループ未検出: {validation.Message}", Color.red);
+                    return ($"Group not found: {validation.Message}", Color.red);
                 case ValidationStatus.InvalidAddress:
-                    return ($"アドレス無効: {validation.Message}", Color.red);
+                    return ($"Invalid address: {validation.Message}", Color.red);
                 case ValidationStatus.RuleError:
-                    return ($"ルールエラー: {validation.Message}", Color.red);
+                    return ($"Rule error: {validation.Message}", Color.red);
                 case ValidationStatus.GroupWillBeCreated:
                     var createdAddress = resolution.AddressCandidates.Count > 0 ? resolution.AddressCandidates[0].Address : "(unknown)";
-                    return ($"アドレス \"{createdAddress}\" を採用（グループは新規作成されます: {validation.Message}）", Color.yellow);
+                    return ($"Address \"{createdAddress}\" assigned (group will be created: {validation.Message})", Color.yellow);
                 case ValidationStatus.GroupCreationFailed:
-                    return ($"グループ作成失敗: {validation.Message}", Color.red);
+                    return ($"Group creation failed: {validation.Message}", Color.red);
                 case ValidationStatus.DefaultGroupUnavailable:
-                    return ($"DefaultGroup 未解決: {validation.Message}", Color.red);
+                    return ($"DefaultGroup unavailable: {validation.Message}", Color.red);
                 default:
                     return (validation.Message ?? string.Empty, GUI.color);
             }

@@ -33,16 +33,16 @@ namespace AddressTeller.Editor
             }
 
             sb.Append('\n');
-            sb.Append("# 論理バンドル数: ").Append(summary.TotalLogicalBundleCount).Append('\n');
-            sb.Append("# BundleMode 未判定のグループ数: ").Append(summary.UnknownGroupCount).Append('\n');
+            sb.Append("# Logical bundle count: ").Append(summary.TotalLogicalBundleCount).Append('\n');
+            sb.Append("# Groups with unknown BundleMode: ").Append(summary.UnknownGroupCount).Append('\n');
 
             var largest = summary.LargestBundle;
             if (largest != null)
             {
-                sb.Append("# 最大集約バンドル: ")
+                sb.Append("# Largest consolidated bundle: ")
                   .Append(largest.GroupName).Append(" / ")
                   .Append(largest.SplitKey).Append(" (")
-                  .Append(largest.AssetCount).Append(" アセット)\n");
+                  .Append(largest.AssetCount).Append(" assets)\n");
             }
 
             // 免責文言は改行を含まないため、そのまま # コメント行として1行で出力できる。
@@ -63,16 +63,16 @@ namespace AddressTeller.Editor
             var sb = new StringBuilder();
             sb.Append("# Bundle Distribution\n\n");
 
-            sb.Append("- 論理バンドル数: ").Append(summary.TotalLogicalBundleCount).Append('\n');
-            sb.Append("- BundleMode 未判定のグループ数: ").Append(summary.UnknownGroupCount).Append('\n');
+            sb.Append("- Logical bundle count: ").Append(summary.TotalLogicalBundleCount).Append('\n');
+            sb.Append("- Groups with unknown BundleMode: ").Append(summary.UnknownGroupCount).Append('\n');
 
             var largest = summary.LargestBundle;
             if (largest != null)
             {
-                sb.Append("- 最大集約バンドル: ")
+                sb.Append("- Largest consolidated bundle: ")
                   .Append(largest.GroupName).Append(" / ")
                   .Append(largest.SplitKey).Append(" (")
-                  .Append(largest.AssetCount).Append(" アセット)\n");
+                  .Append(largest.AssetCount).Append(" assets)\n");
             }
 
             sb.Append('\n');
@@ -113,7 +113,7 @@ namespace AddressTeller.Editor
                     content = ToMarkdown(distribution, summary);
                     break;
                 default:
-                    throw new ArgumentException($"未知の出力形式です: {format}", nameof(format));
+                    throw new ArgumentException($"Unknown output format: {format}", nameof(format));
             }
 
             try
@@ -127,7 +127,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError($"AddressTeller: バンドル分布の書き込みに失敗しました ({path}): {e.Message}");
+                Debug.LogError($"AddressTeller: Failed to write bundle distribution ({path}): {e.Message}");
                 return false;
             }
         }

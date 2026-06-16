@@ -56,9 +56,9 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual("Items,PackSeparately,asset1,1", lines[2]);
             Assert.AreEqual("Localized,PackTogetherByLabel,lang_ja,10", lines[3]);
 
-            StringAssert.Contains("# 論理バンドル数: 3", csv);
-            StringAssert.Contains("# BundleMode 未判定のグループ数: 0", csv);
-            StringAssert.Contains("# 最大集約バンドル: Localized / lang_ja (10 アセット)", csv);
+            StringAssert.Contains("# Logical bundle count: 3", csv);
+            StringAssert.Contains("# Groups with unknown BundleMode: 0", csv);
+            StringAssert.Contains("# Largest consolidated bundle: Localized / lang_ja (10 assets)", csv);
             StringAssert.Contains(AddressTellerReportBuilder.BundleDistributionDisclaimer, csv);
         }
 
@@ -73,9 +73,9 @@ namespace AddressTeller.Editor.Tests
             var lines = csv.Replace("\r\n", "\n").Split('\n');
             Assert.AreEqual("GroupName,Mode,SplitKey,AssetCount", lines[0]);
 
-            StringAssert.Contains("# 論理バンドル数: 0", csv);
-            StringAssert.Contains("# BundleMode 未判定のグループ数: 0", csv);
-            StringAssert.DoesNotContain("最大集約バンドル", csv);
+            StringAssert.Contains("# Logical bundle count: 0", csv);
+            StringAssert.Contains("# Groups with unknown BundleMode: 0", csv);
+            StringAssert.DoesNotContain("Largest consolidated bundle", csv);
             StringAssert.Contains(AddressTellerReportBuilder.BundleDistributionDisclaimer, csv);
         }
 
@@ -99,9 +99,9 @@ namespace AddressTeller.Editor.Tests
         {
             var markdown = BundleDistributionSerializer.ToMarkdown(SimpleDistribution(), SimpleSummary());
 
-            StringAssert.Contains("論理バンドル数: 3", markdown);
-            StringAssert.Contains("BundleMode 未判定のグループ数: 0", markdown);
-            StringAssert.Contains("最大集約バンドル: Localized / lang_ja (10 アセット)", markdown);
+            StringAssert.Contains("Logical bundle count: 3", markdown);
+            StringAssert.Contains("Groups with unknown BundleMode: 0", markdown);
+            StringAssert.Contains("Largest consolidated bundle: Localized / lang_ja (10 assets)", markdown);
 
             StringAssert.Contains("| GroupName | Mode | SplitKey | AssetCount |", markdown);
             StringAssert.Contains("| Characters | PackTogether | all | 3 |", markdown);
@@ -119,8 +119,8 @@ namespace AddressTeller.Editor.Tests
 
             var markdown = BundleDistributionSerializer.ToMarkdown(distribution, summary);
 
-            StringAssert.Contains("論理バンドル数: 0", markdown);
-            StringAssert.DoesNotContain("最大集約バンドル", markdown);
+            StringAssert.Contains("Logical bundle count: 0", markdown);
+            StringAssert.DoesNotContain("Largest consolidated bundle", markdown);
             StringAssert.Contains(AddressTellerReportBuilder.BundleDistributionDisclaimer, markdown);
         }
 
@@ -199,7 +199,7 @@ namespace AddressTeller.Editor.Tests
             {
                 File.WriteAllText(blockingFile, "blocking");
 
-                LogAssert.Expect(LogType.Error, new Regex("バンドル分布の書き込みに失敗しました"));
+                LogAssert.Expect(LogType.Error, new Regex("Failed to write bundle distribution"));
                 var ok = BundleDistributionSerializer.WriteToFile(path, SimpleDistribution(), SimpleSummary(), "csv");
 
                 Assert.IsFalse(ok);
