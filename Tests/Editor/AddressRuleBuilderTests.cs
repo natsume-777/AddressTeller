@@ -165,5 +165,81 @@ namespace AddressTeller.Editor.Tests
 
             Assert.IsNull(builder.Entries[0].Description);
         }
+
+        [Test]
+        public void AnyGroup_ProducesEntryWithNullGroupNameAndNullAddressSelector()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            builder.AnyGroup()
+                .Where(ctx => ctx.Path.Contains("/Characters/"))
+                .Label("characters");
+
+            Assert.AreEqual(1, builder.Entries.Count);
+            var entry = builder.Entries[0];
+            Assert.IsNull(entry.GroupName);
+            Assert.IsNull(entry.AddressSelector);
+            Assert.AreEqual(1, entry.LabelSelectors.Count);
+        }
+
+        [Test]
+        public void AnyGroup_LabelSelector_ReturnsExpectedLabel()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            builder.AnyGroup()
+                .Label(ctx => ctx.FileNameWithoutExtension);
+
+            var entry = builder.Entries[0];
+            Assert.AreEqual("Foo", entry.LabelSelectors[0](MakeCtx("Assets/A/Foo.prefab")));
+        }
+
+        [Test]
+        public void AnyGroup_Where_FiltersCorrectly()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            builder.AnyGroup()
+                .Where(ctx => ctx.Path.Contains("/Characters/"))
+                .Label("characters");
+
+            var entry = builder.Entries[0];
+            Assert.IsTrue(entry.Predicate(MakeCtx("Assets/Characters/Hero.prefab")));
+            Assert.IsFalse(entry.Predicate(MakeCtx("Assets/Items/Sword.prefab")));
+        }
+
+        [Test]
+        public void AnyGroup_Where_CalledTwice_Throws()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            var anyGroup = builder.AnyGroup().Where(ctx => true);
+
+            Assert.Throws<InvalidOperationException>(() => anyGroup.Where(ctx => false));
+        }
+
+        [Test]
+        public void AnyGroup_Where_WithAssetCondition_UsesPredicateAndDescription()
+        {
+            var condition = new AssetCondition(ctx => ctx.Path.Contains("/UI/"), "InUI");
+
+            var builder = new AddressRuleBuilderImpl();
+            builder.AnyGroup()
+                .Where(condition)
+                .Label("ui");
+
+            var entry = builder.Entries[0];
+            Assert.AreEqual("InUI", entry.Description);
+            Assert.IsTrue(entry.Predicate(MakeCtx("Assets/UI/Panel.prefab")));
+            Assert.IsFalse(entry.Predicate(MakeCtx("Assets/Characters/Hero.prefab")));
+        }
+
+        [Test]
+        public void AnyGroup_AccumulatesAlongsideGroupEntries()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            builder.Group("Characters").Address("chars");
+            builder.AnyGroup().Label("shared");
+
+            Assert.AreEqual(2, builder.Entries.Count);
+            Assert.AreEqual("Characters", builder.Entries[0].GroupName);
+            Assert.IsNull(builder.Entries[1].GroupName);
+        }
     }
 }

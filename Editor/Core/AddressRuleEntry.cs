@@ -34,7 +34,8 @@ namespace AddressTeller
             string description = null,
             int ruleIndex = 0)
         {
-            GroupName = groupName ?? throw new ArgumentNullException(nameof(groupName));
+            // groupName は AnyGroup() 由来のラベル専用エントリでは null を許容する。
+            GroupName = groupName;
             Predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
             AddressSelector = addressSelector;
             LabelSelectors = labelSelectors ?? Array.Empty<Func<AssetContext, string>>();

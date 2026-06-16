@@ -92,8 +92,9 @@ namespace AddressTeller.Editor
                 }
             }
 
+            // AnyGroup() 由来のエントリは GroupName が null、未解決のセンチネルも除外する。
             var managedGroups = new HashSet<string>(entries
-                .Where(e => e.GroupName != AddressRuleBuilderImpl.DefaultGroupSentinel)
+                .Where(e => e.GroupName != null && e.GroupName != AddressRuleBuilderImpl.DefaultGroupSentinel)
                 .Select(e => e.GroupName));
             // settings.groups の null 要素を除外する（Capture の if (group == null) continue; と対称にする）。
             var existingGroupNames = new HashSet<string>(settings.groups.Where(g => g != null).Select(g => g.Name));

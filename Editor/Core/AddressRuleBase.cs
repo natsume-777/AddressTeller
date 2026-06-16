@@ -27,6 +27,25 @@ namespace AddressTeller
         /// 追従する。Where / Address / Label は <see cref="Group(string)"/> と同様にチェーンできる。
         /// </summary>
         IAddressRuleGroupBuilder GroupDefault();
+
+        /// <summary>
+        /// グループに属さないラベル専用ルールを追加する。
+        /// アドレスを持つアセットにパスなどの条件でラベルを付与したい場合に使う。
+        /// </summary>
+        ILabelRuleBuilder AnyGroup();
+    }
+
+    /// <summary>
+    /// <see cref="IAddressRuleBuilder.AnyGroup"/> から返されるラベル専用ビルダー。
+    /// Address() は存在せず、Where / Label のみ指定できる。
+    /// </summary>
+    public interface ILabelRuleBuilder
+    {
+        ILabelRuleBuilder Where(Func<AssetContext, bool> predicate);
+        ILabelRuleBuilder Where(Func<AssetContext, bool> predicate, string description);
+        ILabelRuleBuilder Where(AssetCondition condition);
+        ILabelRuleBuilder Label(Func<AssetContext, string> selector);
+        ILabelRuleBuilder Label(string label);
     }
 
     /// <summary>
