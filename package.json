@@ -41,6 +41,11 @@
       "displayName": "Type-based Rules",
       "description": "Assign groups and labels based on asset type (prefab, texture, audio, ScriptableObject).",
       "path": "Samples~/TypeBasedRules"
+    },
+    {
+      "displayName": "Rule Unit Test Helper",
+      "description": "Helper and NUnit sample for unit-testing AddressRuleBase subclasses without a live Addressables project.",
+      "path": "Samples~/RuleUnitTestHelper"
     }
   ]
 }
