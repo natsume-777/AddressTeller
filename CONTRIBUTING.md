@@ -1,14 +1,16 @@
-# コントリビュート
+[日本語](./CONTRIBUTING.ja.md)
 
-AddressTeller への変更を行う前に、設計上の判断やテストの書き方について以下のドキュメントを確認してください。
+# Contributing
 
-## ドキュメント
+Before making changes to AddressTeller, please review the following documents on design decisions and testing guidelines.
 
-- [アーキテクチャ](Documentation~/architecture.md) — レイヤ構成・フォルダ別の責務・ルール評価の流れ
-- [設計上の決定事項](Documentation~/design-decisions.md) — アドレス・ラベル・グループの扱いと公開API/内部実装の境界
-- [テストガイドライン](Documentation~/testing-guidelines.md) — 設計が守る不変条件、テストを書く際の固有ルール
+## Documentation
 
-## テストの実行
+- [Architecture](Documentation~/architecture.md) — layer structure, folder responsibilities, rule evaluation flow
+- [Design Decisions](Documentation~/design-decisions.md) — how addresses, labels, and groups work and the public API / internal implementation boundary
+- [Testing Guidelines](Documentation~/testing-guidelines.md) — design invariants the implementation must uphold, and rules specific to test code
 
-Unity Editor でこのプロジェクトを開き、Test Runner の EditMode を実行してください。
-正常終了時は skip 2・fail 0 になります。
+## Running Tests
+
+Open this project in the Unity Editor and run EditMode tests via the Test Runner.
+A normal run results in skip 2 / fail 0.
