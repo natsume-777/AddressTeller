@@ -14,6 +14,10 @@
 - `CONTRIBUTING.md` を英語版に書き換え、日本語版を `CONTRIBUTING.ja.md` として保存した。
 - `CHANGELOG.md` を英語版に書き換え、日本語版を `CHANGELOG.ja.md` として保存した。
 
+### 検証
+
+- Addressables 2.8.1〜3.1.0 での動作確認済み。コンパイルエラー・警告 0 件、EditMode テスト全件 green（353 pass / 0 fail / 2 skip）。最低要件は 2.8.1 のまま変更なし。
+
 ---
 
 ## [0.3.0] - 2026-06-14

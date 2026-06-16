@@ -14,6 +14,10 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - Converted CONTRIBUTING.md to English; Japanese version saved as CONTRIBUTING.ja.md.
 - Converted CHANGELOG.md to English; Japanese version saved as CHANGELOG.ja.md.
 
+### Verified
+
+- Confirmed compatibility with Addressables 2.8.1 through 3.1.0: no compile errors or warnings, all EditMode tests pass (353 pass / 0 fail / 2 skip). The minimum requirement remains 2.8.1.
+
 ---
 
 ## [0.3.0] - 2026-06-14
