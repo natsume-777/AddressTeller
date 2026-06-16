@@ -4,41 +4,41 @@ using UnityEngine;
 namespace AddressTellerSamples
 {
     /// <summary>
-    /// アドレス／ラベル付与ルールの最小サンプル。
-    /// Package Manager の Samples からインポートして利用する。
+    /// Minimal sample for address/label assignment rules.
+    /// Import via Package Manager > Samples to use.
     ///
-    /// 前提:
-    ///   - Addressable Groups に "MyGroup" という名前のグループが存在すること
-    ///   - Assets/Demo/Characters/ と Assets/Demo/Items/ にアセットを配置すること
+    /// Prerequisites:
+    ///   - An Addressable Group named "MyGroup" must exist.
+    ///   - Assets must be placed under Assets/Demo/Characters/ and Assets/Demo/Items/.
     ///
-    /// 配置に関する注意:
-    ///   AddressRuleBase 等は Editor 専用アセンブリの型なので、
-    ///   このスクリプトは "Editor" という名前のフォルダ配下に置く必要がある。
+    /// Placement note:
+    ///   AddressRuleBase and related types are Editor-only, so this script
+    ///   must be placed inside a folder named "Editor".
     /// </summary>
     public sealed class ExampleRules : AddressRuleBase
     {
-        // 評価順序。複数のルールクラスがある場合、小さい値から先に評価される。
-        // 同じ Order 値を持つクラスが複数あると Apply All / Validate 実行時に警告が出る。
+        // Evaluation order. When multiple rule classes exist, lower values are evaluated first.
+        // Duplicate Order values across classes produce a warning during Apply All / Validate.
         public override int Order => 0;
 
         public override void Configure(IAddressRuleBuilder rules)
         {
-            // 1つの Configure() の中で Group() を複数回呼び、複数のルールエントリを定義できる。
+            // Multiple Group() calls can be made within a single Configure() to define multiple rule entries.
 
-            // Characters/ 以下の Prefab
+            // Prefabs under Characters/
             rules.Group("MyGroup")
-                // Where() は1グループにつき1回のみ呼び出し可能。複数条件は && でまとめる。
+                // Where() can only be called once per group. Combine multiple conditions with &&.
                 .Where(ctx => ctx.Path.StartsWith("Assets/Demo/Characters/")
                            && ctx.Type == typeof(GameObject))
-                // アドレス: ファイル名（拡張子なし）
+                // Address: file name without extension
                 .Address(ctx => ctx.FileNameWithoutExtension)
-                // Label() は何度でも呼び出せる。マッチした全ルールのラベルが蓄積される。
+                // Label() can be called any number of times. Labels from all matching rules accumulate.
                 .Label("character")
                 .Label("humanoid");
 
-            // Items/ 以下の Prefab
-            // Address() を呼ばないグループルールも定義できる（その場合アドレスは発行されず、ラベル付与のみ行われる）。
-            // ここでは Address() を呼んでいるので、アドレスはファイル名（拡張子なし）になる。
+            // Prefabs under Items/
+            // A group rule without Address() is valid — it only assigns labels without issuing an address.
+            // Here Address() is provided, so the address will be the file name without extension.
             rules.Group("MyGroup")
                 .Where(ctx => ctx.Path.StartsWith("Assets/Demo/Items/")
                            && ctx.Type == typeof(GameObject))

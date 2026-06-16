@@ -3,13 +3,13 @@ using AddressTeller;
 namespace AddressTellerSamples
 {
     /// <summary>
-    /// フォルダ階層をそのままアドレス・ラベルに反映するサンプル。
-    /// Package Manager の Samples からインポートして利用する。
+    /// Sample that maps the folder hierarchy directly to addresses and labels.
+    /// Import via Package Manager > Samples to use.
     ///
-    /// 前提:
-    ///   - Addressable Groups に "FolderAssets" という名前のグループが存在すること
-    ///   - Assets/Demo/ 以下のサブフォルダにアセットを配置すること
-    ///     （例: Assets/Demo/Characters/Enemies/Goblin.prefab）
+    /// Prerequisites:
+    ///   - An Addressable Group named "FolderAssets" must exist.
+    ///   - Assets must be placed in subfolders under Assets/Demo/
+    ///     (e.g. Assets/Demo/Characters/Enemies/Goblin.prefab).
     /// </summary>
     public sealed class FolderBasedRules : AddressRuleBase
     {
@@ -19,16 +19,16 @@ namespace AddressTellerSamples
 
         public override void Configure(IAddressRuleBuilder rules)
         {
-            // Assets/Demo/ 以下、サブフォルダに置かれたアセットすべてが対象
+            // Targets all assets placed in subfolders under Assets/Demo/
             rules.Group("FolderAssets")
                 .Where(ctx => ctx.Path.StartsWith(RootPath)
                            && ctx.Path.Substring(RootPath.Length).Contains("/"))
-                // アドレス: "Assets/Demo/" を除いた拡張子なしパス
-                // 例: "Assets/Demo/Characters/Enemies/Goblin.prefab" -> "Characters/Enemies/Goblin"
+                // Address: path without extension, relative to Assets/Demo/
+                // Example: "Assets/Demo/Characters/Enemies/Goblin.prefab" -> "Characters/Enemies/Goblin"
                 .Address(ctx => ctx.Directory.Substring(RootPath.Length - 1).TrimStart('/')
                              + "/" + ctx.FileNameWithoutExtension)
-                // ラベル: Assets/Demo/ 直下のフォルダ名
-                // 例: "Assets/Demo/Characters/Enemies/Goblin.prefab" -> "Characters"
+                // Label: the immediate subfolder name under Assets/Demo/
+                // Example: "Assets/Demo/Characters/Enemies/Goblin.prefab" -> "Characters"
                 .Label(ctx => ctx.Path.Substring(RootPath.Length).Split('/')[0]);
         }
     }

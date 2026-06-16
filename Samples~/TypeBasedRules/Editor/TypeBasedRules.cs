@@ -4,13 +4,12 @@ using UnityEngine;
 namespace AddressTellerSamples
 {
     /// <summary>
-    /// アセットの型ごとにグループ・ラベルを振り分けるサンプル。
-    /// Package Manager の Samples からインポートして利用する。
+    /// Sample that routes assets to different groups and labels based on asset type.
+    /// Import via Package Manager > Samples to use.
     ///
-    /// 前提:
-    ///   - Addressable Groups に "Prefabs" / "Textures" / "Audio" / "Configs" の
-    ///     4つのグループが存在すること
-    ///   - Assets/Demo/ 以下に各種アセットを配置すること
+    /// Prerequisites:
+    ///   - Four Addressable Groups named "Prefabs", "Textures", "Audio", and "Configs" must exist.
+    ///   - Assets must be placed under Assets/Demo/.
     /// </summary>
     public sealed class TypeBasedRules : AddressRuleBase
     {
@@ -20,27 +19,26 @@ namespace AddressTellerSamples
 
         public override void Configure(IAddressRuleBuilder rules)
         {
-            // Prefab（GameObject）-> Prefabs グループ、ラベル "prefab"
+            // Prefab (GameObject) -> Prefabs group, label "prefab"
             rules.Group("Prefabs")
                 .Where(ctx => ctx.Path.StartsWith(RootPath) && ctx.Type == typeof(GameObject))
                 .Address(ctx => ctx.FileNameWithoutExtension)
                 .Label("prefab");
 
-            // テクスチャ -> Textures グループ、ラベル "texture"
+            // Texture -> Textures group, label "texture"
             rules.Group("Textures")
                 .Where(ctx => ctx.Path.StartsWith(RootPath) && ctx.Type == typeof(Texture2D))
                 .Address(ctx => ctx.FileNameWithoutExtension)
                 .Label("texture");
 
-            // オーディオクリップ -> Audio グループ、ラベル "audio"
+            // AudioClip -> Audio group, label "audio"
             rules.Group("Audio")
                 .Where(ctx => ctx.Path.StartsWith(RootPath) && ctx.Type == typeof(AudioClip))
                 .Address(ctx => ctx.FileNameWithoutExtension)
                 .Label("audio");
 
-            // ScriptableObject の派生クラス全般 -> Configs グループ、ラベル "config"
-            // ctx.Type は厳密な型なので、派生クラスもまとめて対象にする場合は
-            // == ではなく IsAssignableFrom で判定する。
+            // Any ScriptableObject subclass -> Configs group, label "config"
+            // ctx.Type is the exact runtime type, so use IsAssignableFrom to include subclasses.
             rules.Group("Configs")
                 .Where(ctx => ctx.Path.StartsWith(RootPath)
                            && typeof(ScriptableObject).IsAssignableFrom(ctx.Type))
