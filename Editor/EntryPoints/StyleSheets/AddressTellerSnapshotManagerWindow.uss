@@ -1,0 +1,24 @@
+/* SnapshotManagerWindow 固有スタイル */
+
+.at-compare-hint {
+    margin-bottom: 4px;
+}
+
+.at-list {
+    flex-grow: 1;
+}
+
+.at-actions-row {
+    flex-direction: row;
+    margin-top: 4px;
+    margin-bottom: 4px;
+    margin-left: 4px;
+    margin-right: 4px;
+}
+
+.at-compare-btn-row {
+    margin-top: 0px;
+    margin-bottom: 4px;
+    margin-left: 4px;
+    margin-right: 4px;
+}

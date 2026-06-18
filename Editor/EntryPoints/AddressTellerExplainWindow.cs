@@ -38,6 +38,14 @@ namespace AddressTeller.Editor
 
         public void CreateGUI()
         {
+            // USS ロード
+            var commonSS = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerCommon.uss");
+            var windowSS = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerExplainWindow.uss");
+            if (commonSS != null) rootVisualElement.styleSheets.Add(commonSS);
+            if (windowSS != null) rootVisualElement.styleSheets.Add(windowSS);
+
             BuildUI(rootVisualElement);
         }
 
@@ -61,20 +69,7 @@ namespace AddressTeller.Editor
         private static VisualElement BuildAssetElement(AssetExplanation explanation)
         {
             var container = new VisualElement();
-            container.style.marginBottom = 4;
-            container.style.borderTopWidth = 1;
-            container.style.borderBottomWidth = 1;
-            container.style.borderLeftWidth = 1;
-            container.style.borderRightWidth = 1;
-            container.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
-            container.style.borderBottomColor = new Color(0.3f, 0.3f, 0.3f);
-            container.style.borderLeftColor = new Color(0.3f, 0.3f, 0.3f);
-            container.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
-            container.style.borderTopLeftRadius = 3;
-            container.style.borderTopRightRadius = 3;
-            container.style.borderBottomLeftRadius = 3;
-            container.style.borderBottomRightRadius = 3;
-            container.style.paddingBottom = 4;
+            container.AddToClassList("at-asset-box");
 
             // アセットアイコン付きの Foldout
             var foldout = new Foldout { text = explanation.AssetPath, value = true };
@@ -94,18 +89,10 @@ namespace AddressTeller.Editor
             }
 
             // 結論行
-            var (text, color) = DescribeConclusion(explanation.Validation, explanation.Explanation.Resolution);
-            var conclusionLabel = new Label("Conclusion: " + text)
-            {
-                style =
-                {
-                    unityFontStyleAndWeight = FontStyle.Bold,
-                    color = color,
-                    marginLeft = 16,
-                    marginTop = 2,
-                    marginBottom = 2,
-                }
-            };
+            var (text, cssClass) = DescribeConclusion(explanation.Validation, explanation.Explanation.Resolution);
+            var conclusionLabel = new Label("Conclusion: " + text);
+            conclusionLabel.AddToClassList("at-conclusion");
+            conclusionLabel.AddToClassList(cssClass);
             foldout.Add(conclusionLabel);
 
             // 詳細行
@@ -132,15 +119,19 @@ namespace AddressTeller.Editor
 
         private static VisualElement BuildMatchedElement(RuleEvaluationDetail detail)
         {
-            var container = new VisualElement { style = { marginLeft = 16, marginTop = 1 } };
+            var container = new VisualElement();
+            container.AddToClassList("at-detail-indent");
 
             var title = string.IsNullOrEmpty(detail.Description)
                 ? $"[Match] {detail.RuleSource}"
                 : $"[Match] {detail.Description}";
 
-            container.Add(new Label(title) { style = { color = Color.green } });
+            var titleLabel = new Label(title);
+            titleLabel.AddToClassList("at-match-label");
+            container.Add(titleLabel);
 
-            var inner = new VisualElement { style = { marginLeft = 16 } };
+            var inner = new VisualElement();
+            inner.AddToClassList("at-detail-indent-inner");
             inner.Add(new Label($"Group: {AddressRuleBuilderImpl.DisplayGroupName(detail.GroupName)}"));
 
             if (!string.IsNullOrEmpty(detail.ProducedAddress))
@@ -159,52 +150,63 @@ namespace AddressTeller.Editor
                 ? $"[No Match] {detail.Description}"
                 : $"[No Match] {detail.RuleSource}";
 
-            return new Label(title) { style = { color = Color.gray, marginLeft = 16, marginTop = 1 } };
+            var label = new Label(title);
+            label.AddToClassList("at-nomatch-label");
+            label.AddToClassList("at-detail-indent");
+            return label;
         }
 
         private static VisualElement BuildErroredElement(RuleEvaluationDetail detail)
         {
-            var container = new VisualElement { style = { marginLeft = 16, marginTop = 1 } };
-            container.Add(new Label($"[Error] {detail.RuleSource}") { style = { color = Color.red } });
-            container.Add(new Label(detail.ErrorMessage ?? string.Empty) { style = { marginLeft = 16 } });
+            var container = new VisualElement();
+            container.AddToClassList("at-detail-indent");
+
+            var errLabel = new Label($"[Error] {detail.RuleSource}");
+            errLabel.AddToClassList("at-error-label");
+            container.Add(errLabel);
+
+            var msgLabel = new Label(detail.ErrorMessage ?? string.Empty);
+            msgLabel.AddToClassList("at-detail-indent-inner");
+            container.Add(msgLabel);
             return container;
         }
 
         // テストから直接呼べるよう internal にしている。
-        internal static (string text, Color color) DescribeConclusion(ValidationResult validation, AddressResolution resolution)
+        // 戻り値の第2要素は USS クラス名（at-conclusion--ok / --error / --warning / --muted）。
+        internal static (string text, string cssClass) DescribeConclusion(ValidationResult validation, AddressResolution resolution)
         {
             // ルールPredicateの例外は、他にマッチするルールが無い場合 Validation.Status が Skipped になり
             // 結論欄だけでは原因（ルール例外）が分からなくなる。Skipped より優先して表示する。
             if (resolution.Errors.Count > 0 && validation.Status == ValidationStatus.Skipped)
             {
                 var ruleNames = string.Join(", ", resolution.Errors.Select(e => e.RuleSource));
-                return ($"{resolution.Errors.Count} rule error(s): {ruleNames}", Color.red);
+                return ($"{resolution.Errors.Count} rule error(s): {ruleNames}", "at-conclusion--error");
             }
 
             switch (validation.Status)
             {
                 case ValidationStatus.Ok:
                     var address = resolution.AddressCandidates.Count > 0 ? resolution.AddressCandidates[0].Address : "(unknown)";
-                    return ($"Address \"{address}\" assigned", Color.green);
+                    return ($"Address \"{address}\" assigned", "at-conclusion--ok");
                 case ValidationStatus.Skipped:
-                    return ("No matching rule (excluded)", Color.gray);
+                    return ("No matching rule (excluded)", "at-conclusion--muted");
                 case ValidationStatus.ConflictingAddress:
-                    return ($"Conflict: {validation.Message}", Color.red);
+                    return ($"Conflict: {validation.Message}", "at-conclusion--error");
                 case ValidationStatus.GroupNotFound:
-                    return ($"Group not found: {validation.Message}", Color.red);
+                    return ($"Group not found: {validation.Message}", "at-conclusion--error");
                 case ValidationStatus.InvalidAddress:
-                    return ($"Invalid address: {validation.Message}", Color.red);
+                    return ($"Invalid address: {validation.Message}", "at-conclusion--error");
                 case ValidationStatus.RuleError:
-                    return ($"Rule error: {validation.Message}", Color.red);
+                    return ($"Rule error: {validation.Message}", "at-conclusion--error");
                 case ValidationStatus.GroupWillBeCreated:
                     var createdAddress = resolution.AddressCandidates.Count > 0 ? resolution.AddressCandidates[0].Address : "(unknown)";
-                    return ($"Address \"{createdAddress}\" assigned (group will be created: {validation.Message})", Color.yellow);
+                    return ($"Address \"{createdAddress}\" assigned (group will be created: {validation.Message})", "at-conclusion--warning");
                 case ValidationStatus.GroupCreationFailed:
-                    return ($"Group creation failed: {validation.Message}", Color.red);
+                    return ($"Group creation failed: {validation.Message}", "at-conclusion--error");
                 case ValidationStatus.DefaultGroupUnavailable:
-                    return ($"DefaultGroup unavailable: {validation.Message}", Color.red);
+                    return ($"DefaultGroup unavailable: {validation.Message}", "at-conclusion--error");
                 default:
-                    return (validation.Message ?? string.Empty, Color.white);
+                    return (validation.Message ?? string.Empty, "at-conclusion--muted");
             }
         }
     }

@@ -178,6 +178,14 @@ namespace AddressTeller.Editor
 
         public void CreateGUI()
         {
+            // USS ロード
+            var commonSS = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerCommon.uss");
+            var windowSS = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerResultWindow.uss");
+            if (commonSS != null) rootVisualElement.styleSheets.Add(commonSS);
+            if (windowSS != null) rootVisualElement.styleSheets.Add(windowSS);
+
             RebuildUI();
         }
 
@@ -193,13 +201,17 @@ namespace AddressTeller.Editor
             root.Add(_noticeBox);
 
             // タブバー
-            _tabBar = new VisualElement { style = { flexDirection = FlexDirection.Row, marginTop = 4, marginBottom = 4 } };
+            _tabBar = new VisualElement();
+            _tabBar.AddToClassList("at-tab-bar");
             root.Add(_tabBar);
 
             // 各タブのコンテンツ領域
-            _diffTabContent = new VisualElement { style = { flexGrow = 1 } };
-            _issueTabContent = new VisualElement { style = { flexGrow = 1 } };
-            _distributionTabContent = new VisualElement { style = { flexGrow = 1 } };
+            _diffTabContent = new VisualElement();
+            _diffTabContent.AddToClassList("at-tab-content");
+            _issueTabContent = new VisualElement();
+            _issueTabContent.AddToClassList("at-tab-content");
+            _distributionTabContent = new VisualElement();
+            _distributionTabContent.AddToClassList("at-tab-content");
             root.Add(_diffTabContent);
             root.Add(_issueTabContent);
             root.Add(_distributionTabContent);
@@ -258,13 +270,16 @@ namespace AddressTeller.Editor
             var summary = $"Added: {_diffRows.Count(r => r.Kind == DiffRowKind.Added)} / " +
                           $"Removed: {_diffRows.Count(r => r.Kind == DiffRowKind.Removed)} / " +
                           $"Changed: {_diffRows.Count(r => r.Kind == DiffRowKind.Changed)}";
-            _diffTabContent.Add(new Label(summary) { style = { marginLeft = 4 } });
+            var summaryLabel = new Label(summary);
+            summaryLabel.AddToClassList("at-summary-label");
+            _diffTabContent.Add(summaryLabel);
 
             if (_groupsToCreate.Count > 0)
             {
-                _diffTabContent.Add(new Label(
-                    $"Groups to be created: {_groupsToCreate.Count} ({string.Join(", ", _groupsToCreate)})")
-                { style = { marginLeft = 4 } });
+                var groupsLabel = new Label(
+                    $"Groups to be created: {_groupsToCreate.Count} ({string.Join(", ", _groupsToCreate)})");
+                groupsLabel.AddToClassList("at-summary-label");
+                _diffTabContent.Add(groupsLabel);
             }
 
             if (_diffRows.Count == 0)
@@ -286,7 +301,8 @@ namespace AddressTeller.Editor
                     var apply = _onApply;
                     Close();
                     apply();
-                }) { text = "Apply with this content", style = { marginTop = 4, marginBottom = 4 } };
+                }) { text = "Apply with this content" };
+                applyBtn.AddToClassList("at-apply-btn");
                 _diffTabContent.Add(applyBtn);
             }
         }
@@ -296,8 +312,11 @@ namespace AddressTeller.Editor
             _issueTabContent.Clear();
 
             // ステータスフィルタ行
-            var filterRow = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, marginBottom = 4 } };
-            filterRow.Add(new Label("Show:") { style = { alignSelf = Align.Center, marginRight = 4 } });
+            var filterRow = new VisualElement();
+            filterRow.AddToClassList("at-filter-row");
+            var filterLabel = new Label("Show:");
+            filterLabel.AddToClassList("at-filter-label");
+            filterRow.Add(filterLabel);
 
             foreach (ValidationStatus status in Enum.GetValues(typeof(ValidationStatus)))
             {
@@ -347,17 +366,20 @@ namespace AddressTeller.Editor
                     $"Largest consolidated bundle: {largest.GroupName} / {largest.SplitKey} ({largest.AssetCount} assets)"));
             }
 
-            _distributionTabContent.Add(new Label(AddressTellerReportBuilder.BundleDistributionDisclaimer)
-                { style = { whiteSpace = WhiteSpace.Normal, marginTop = 4 } });
+            var disclaimerLabel = new Label(AddressTellerReportBuilder.BundleDistributionDisclaimer);
+            disclaimerLabel.AddToClassList("at-detail-label");
+            _distributionTabContent.Add(disclaimerLabel);
 
-            var scroll = new ScrollView { style = { flexGrow = 1, marginTop = 4 } };
+            var scroll = new ScrollView();
+            scroll.AddToClassList("at-distribution-scroll");
             foreach (var bundle in _distribution.Bundles)
             {
                 scroll.Add(new Label($"{bundle.GroupName} / {bundle.Mode} / {bundle.SplitKey} : {bundle.AssetCount}"));
             }
             _distributionTabContent.Add(scroll);
 
-            var btnRow = new VisualElement { style = { flexDirection = FlexDirection.Row, marginTop = 4, marginBottom = 4 } };
+            var btnRow = new VisualElement();
+            btnRow.AddToClassList("at-export-row");
             btnRow.Add(new Button(() => ExportDistribution("csv", "csv")) { text = "Export CSV..." });
             btnRow.Add(new Button(() => ExportDistribution("markdown", "md")) { text = "Export Markdown..." });
             _distributionTabContent.Add(btnRow);

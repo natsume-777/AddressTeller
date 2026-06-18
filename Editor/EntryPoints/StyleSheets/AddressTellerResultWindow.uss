@@ -1,0 +1,44 @@
+/* ResultWindow / DiffTreeView / IssueTreeView 固有スタイル */
+
+.at-tab-bar {
+    flex-direction: row;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+.at-tab-content {
+    flex-grow: 1;
+}
+
+.at-summary-label {
+    margin-left: 4px;
+    margin-bottom: 2px;
+}
+
+.at-apply-btn {
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+.at-filter-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+    align-items: center;
+}
+
+.at-filter-label {
+    margin-right: 4px;
+    align-self: center;
+}
+
+.at-distribution-scroll {
+    flex-grow: 1;
+    margin-top: 4px;
+}
+
+.at-export-row {
+    flex-direction: row;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}

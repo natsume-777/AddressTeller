@@ -53,6 +53,14 @@ namespace AddressTeller.Editor
         {
             var root = rootVisualElement;
 
+            // USS ロード
+            var commonSS = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerCommon.uss");
+            var windowSS = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerSnapshotManagerWindow.uss");
+            if (commonSS != null) root.styleSheets.Add(commonSS);
+            if (windowSS != null) root.styleSheets.Add(windowSS);
+
             // ---- Toolbar ----
             var toolbar = new Toolbar();
 
@@ -83,13 +91,21 @@ namespace AddressTeller.Editor
 
             // Compare モード中の案内（初期は非表示）
             _compareModeHelpBox = new HelpBox("Select a second snapshot from the list to compare.", HelpBoxMessageType.Info);
+            _compareModeHelpBox.AddToClassList("at-compare-hint");
             _compareModeHelpBox.style.display = DisplayStyle.None;
             root.Add(_compareModeHelpBox);
 
             // ---- ListView ----
             _listView = new ListView
             {
-                makeItem = () => new Label { style = { paddingLeft = 4, paddingTop = 2, paddingBottom = 2 } },
+                makeItem = () =>
+                {
+                    var lbl = new Label();
+                    lbl.style.paddingLeft = 4;
+                    lbl.style.paddingTop = 2;
+                    lbl.style.paddingBottom = 2;
+                    return lbl;
+                },
                 bindItem = (element, index) =>
                 {
                     var label = (Label)element;
@@ -109,14 +125,15 @@ namespace AddressTeller.Editor
                     }
                 },
                 selectionType = SelectionType.Single,
-                style = { flexGrow = 1 },
             };
+            _listView.AddToClassList("at-list");
 
             _listView.selectionChanged += OnListSelectionChange;
             root.Add(_listView);
 
             // ---- アクションボタン ----
-            var actionsRow = new VisualElement { style = { flexDirection = FlexDirection.Row, marginTop = 4, marginBottom = 4, marginLeft = 4, marginRight = 4 } };
+            var actionsRow = new VisualElement();
+            actionsRow.AddToClassList("at-actions-row");
 
             _restoreAdditiveBtn = new Button(() => RestoreSelected(SnapshotRestoreMode.Additive)) { text = "Restore (Additive)" };
             _restoreExactBtn = new Button(() => RestoreSelected(SnapshotRestoreMode.Exact)) { text = "Restore (Exact)" };
@@ -130,8 +147,8 @@ namespace AddressTeller.Editor
             _compareWithAnotherBtn = new Button(ToggleCompareMode)
             {
                 text = "Compare with another snapshot...",
-                style = { marginLeft = 4, marginRight = 4, marginBottom = 4 }
             };
+            _compareWithAnotherBtn.AddToClassList("at-compare-btn-row");
             root.Add(_compareWithAnotherBtn);
 
             RebuildList();

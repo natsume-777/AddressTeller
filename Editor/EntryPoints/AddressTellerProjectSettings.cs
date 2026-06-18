@@ -124,15 +124,21 @@ namespace AddressTeller.Editor
 
         private static void BuildUI(string searchContext, VisualElement root)
         {
+            // USS ロード
+            var commonSS = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerCommon.uss");
+            var psSS = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerProjectSettings.uss");
+            if (commonSS != null) root.styleSheets.Add(commonSS);
+            if (psSS != null) root.styleSheets.Add(psSS);
+
             var overviewCache = GetRuleOverviewCache();
 
             var scroll = new ScrollView();
             root.Add(scroll);
 
             var container = new VisualElement();
-            container.style.paddingLeft = 8;
-            container.style.paddingRight = 8;
-            container.style.paddingTop = 4;
+            container.AddToClassList("at-ps-container");
             scroll.Add(container);
 
             // ---- Apply / Validate Behavior ----
@@ -163,12 +169,18 @@ namespace AddressTeller.Editor
             var managedFoldout = new Foldout { text = $"Managed Groups ({managedGroups.Count})", value = false };
             if (managedGroups.Count == 0)
             {
-                managedFoldout.Add(new Label("(No groups are referenced by enabled rules)") { style = { color = new Color(0.6f, 0.6f, 0.6f) } });
+                var emptyLabel = new Label("(No groups are referenced by enabled rules)");
+                emptyLabel.AddToClassList("at-muted");
+                managedFoldout.Add(emptyLabel);
             }
             else
             {
                 foreach (var groupName in managedGroups)
-                    managedFoldout.Add(new Label(groupName));
+                {
+                    var item = new Label(groupName);
+                    item.AddToClassList("at-managed-group-item");
+                    managedFoldout.Add(item);
+                }
             }
             container.Add(managedFoldout);
             container.Add(MakeDescription("Groups referenced by at least one enabled rule via Group(). These are the targets of \"Remove unmatched entries\" and \"Auto-create missing groups\". Entries manually registered in these groups will be removed if no rule matches them."));
@@ -212,7 +224,8 @@ namespace AddressTeller.Editor
             if (addressablesSettings == null)
                 container.Add(new HelpBox("AddressableAssetSettings not found. Please initialize Addressables.", HelpBoxMessageType.Warning));
 
-            var opsRow = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            var opsRow = new VisualElement();
+            opsRow.AddToClassList("at-ops-row");
             var validateBtn = new Button(AddressTellerMenu.Validate) { text = "Run Validate" };
             validateBtn.SetEnabled(addressablesSettings != null);
             var previewBtn = new Button(AddressTellerMenu.ApplyWithValidate) { text = "Preview (with Validate)" };
@@ -233,7 +246,8 @@ namespace AddressTeller.Editor
             container.Add(snapshotField);
             container.Add(MakeDescription("Relative path from the project root (parent directory of Assets). Default is \"AddressTellerSnapshots\" (outside Assets, not imported by Unity)."));
 
-            var browseRow = new VisualElement { style = { flexDirection = FlexDirection.Row, justifyContent = Justify.FlexEnd } };
+            var browseRow = new VisualElement();
+            browseRow.AddToClassList("at-browse-row");
             var browseBtn = new Button(() =>
             {
                 PickSnapshotFolder();
@@ -262,10 +276,13 @@ namespace AddressTeller.Editor
             Dictionary<Type, AddressRuleBase> ruleInstancesByType)
         {
             var wrapper = new VisualElement();
+            wrapper.AddToClassList("at-rule-row");
 
-            var header = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center } };
+            var header = new VisualElement();
+            header.AddToClassList("at-rule-row__header");
 
-            var enabledToggle = new Toggle { value = AddressTellerSettings.IsRuleEnabled(type.FullName), style = { width = 20 } };
+            var enabledToggle = new Toggle { value = AddressTellerSettings.IsRuleEnabled(type.FullName) };
+            enabledToggle.AddToClassList("at-rule-row__toggle");
             enabledToggle.RegisterValueChangedCallback(e => AddressTellerSettings.SetRuleEnabled(type.FullName, e.newValue));
             header.Add(enabledToggle);
 
@@ -284,7 +301,8 @@ namespace AddressTeller.Editor
             header.Add(ruleFoldout);
 
             // Select / Validate-Apply ボタンは右揃え
-            var buttonsRow = new VisualElement { style = { flexDirection = FlexDirection.Row, marginLeft = StyleKeyword.Auto } };
+            var buttonsRow = new VisualElement();
+            buttonsRow.AddToClassList("at-rule-row__buttons");
 
             var script = FindScriptForType(type);
             var selectBtn = new Button(() => Selection.activeObject = script) { text = "Select" };
@@ -324,9 +342,10 @@ namespace AddressTeller.Editor
                 var where = entry.Description ?? $"(condition #{entry.RuleIndex})";
                 var address = entry.HasAddress ? "dynamic" : "none";
                 var groupName = AddressRuleBuilderImpl.DisplayGroupName(entry.GroupName);
-                foldout.Add(new Label(
-                    $"Group: \"{groupName}\"  Where: \"{where}\"  Address: {address}  Labels: {entry.LabelCount}")
-                { style = { whiteSpace = WhiteSpace.Normal } });
+                var entryLabel = new Label(
+                    $"Group: \"{groupName}\"  Where: \"{where}\"  Address: {address}  Labels: {entry.LabelCount}");
+                entryLabel.AddToClassList("at-detail-label");
+                foldout.Add(entryLabel);
             }
         }
 
@@ -343,34 +362,22 @@ namespace AddressTeller.Editor
 
         private static Label MakeSectionLabel(string text)
         {
-            return new Label(text)
-            {
-                style =
-                {
-                    unityFontStyleAndWeight = FontStyle.Bold,
-                    marginTop = 6,
-                    marginBottom = 2,
-                }
-            };
+            var label = new Label(text);
+            label.AddToClassList("at-section-header");
+            return label;
         }
 
         private static Label MakeDescription(string text)
         {
-            return new Label(text)
-            {
-                style =
-                {
-                    color = new Color(0.6f, 0.6f, 0.6f),
-                    whiteSpace = WhiteSpace.Normal,
-                    marginLeft = 16,
-                    marginBottom = 4,
-                }
-            };
+            var label = new Label(text);
+            label.AddToClassList("at-description");
+            return label;
         }
 
         private static VisualElement MakeSpacer()
         {
-            var spacer = new VisualElement { style = { height = 8 } };
+            var spacer = new VisualElement();
+            spacer.AddToClassList("at-spacer");
             return spacer;
         }
 

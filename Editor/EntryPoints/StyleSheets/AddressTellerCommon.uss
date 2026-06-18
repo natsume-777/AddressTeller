@@ -1,0 +1,71 @@
+/* 全ウィンドウ共通クラス */
+
+.at-section-header {
+    -unity-font-style: bold;
+    font-size: 13px;
+    margin-top: 6px;
+    margin-bottom: 2px;
+}
+
+.at-description {
+    font-size: 11px;
+    color: rgba(180, 180, 180, 1);
+    white-space: normal;
+    margin-left: 16px;
+    margin-bottom: 4px;
+}
+
+.at-detail-label {
+    font-size: 11px;
+    white-space: normal;
+}
+
+.at-muted {
+    color: rgba(180, 180, 180, 1);
+}
+
+.at-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.at-row--end {
+    flex-direction: row;
+    justify-content: flex-end;
+}
+
+.at-spacer {
+    height: 8px;
+}
+
+.at-match-label {
+    color: rgb(100, 200, 100);
+}
+
+.at-nomatch-label {
+    color: rgba(180, 180, 180, 1);
+}
+
+.at-error-label {
+    color: rgb(220, 80, 80);
+}
+
+.at-conclusion--ok {
+    color: rgb(100, 200, 100);
+    -unity-font-style: bold;
+}
+
+.at-conclusion--error {
+    color: rgb(220, 80, 80);
+    -unity-font-style: bold;
+}
+
+.at-conclusion--warning {
+    color: rgb(220, 180, 40);
+    -unity-font-style: bold;
+}
+
+.at-conclusion--muted {
+    color: rgba(180, 180, 180, 1);
+    -unity-font-style: bold;
+}
