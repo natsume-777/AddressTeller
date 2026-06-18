@@ -33,7 +33,7 @@ namespace AddressTeller.Editor
 
         public AddressTellerIssueTreeView()
         {
-            onItemsChosen += _ => OnItemChosen();
+            itemsChosen += _ => OnItemChosen();
 
             columns.Add(new Column { name = "status",  title = "Status",  width = 140, minWidth = 100 });
             columns.Add(new Column { name = "asset",   title = "Asset",   width = 320, minWidth = 120, stretchable = true });
@@ -149,7 +149,7 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>flat index に対応する item id を取得する（BaseTreeView の公開メソッドを使う）。</summary>
-        private int GetIdForIndex(int index) => base.GetIdForIndex(index);
+        private new int GetIdForIndex(int index) => base.GetIdForIndex(index);
 
         private void OnItemChosen()
         {

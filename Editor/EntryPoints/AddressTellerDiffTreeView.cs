@@ -15,7 +15,7 @@ namespace AddressTeller.Editor
         public AddressTellerDiffTreeView()
         {
             // 行ダブルクリック（決定）で対象アセットを ping する
-            onItemsChosen += _ => OnItemChosen();
+            itemsChosen += _ => OnItemChosen();
 
             columns.Add(new Column { name = "kind",    title = "Type",    width = 70,  minWidth = 50 });
             columns.Add(new Column { name = "asset",   title = "Asset",   width = 320, minWidth = 120, stretchable = true });

@@ -112,7 +112,7 @@ namespace AddressTeller.Editor
                 style = { flexGrow = 1 },
             };
 
-            _listView.onSelectionChange += OnListSelectionChange;
+            _listView.selectionChanged += OnListSelectionChange;
             root.Add(_listView);
 
             // ---- アクションボタン ----

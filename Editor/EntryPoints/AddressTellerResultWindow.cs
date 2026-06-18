@@ -258,13 +258,13 @@ namespace AddressTeller.Editor
             var summary = $"Added: {_diffRows.Count(r => r.Kind == DiffRowKind.Added)} / " +
                           $"Removed: {_diffRows.Count(r => r.Kind == DiffRowKind.Removed)} / " +
                           $"Changed: {_diffRows.Count(r => r.Kind == DiffRowKind.Changed)}";
-            _diffTabContent.Add(new Label(summary) { style = { fontSize = 10, marginLeft = 4 } });
+            _diffTabContent.Add(new Label(summary) { style = { marginLeft = 4 } });
 
             if (_groupsToCreate.Count > 0)
             {
                 _diffTabContent.Add(new Label(
                     $"Groups to be created: {_groupsToCreate.Count} ({string.Join(", ", _groupsToCreate)})")
-                { style = { fontSize = 10, marginLeft = 4 } });
+                { style = { marginLeft = 4 } });
             }
 
             if (_diffRows.Count == 0)
@@ -348,7 +348,7 @@ namespace AddressTeller.Editor
             }
 
             _distributionTabContent.Add(new Label(AddressTellerReportBuilder.BundleDistributionDisclaimer)
-                { style = { fontSize = 10, whiteSpace = WhiteSpace.Normal, marginTop = 4 } });
+                { style = { whiteSpace = WhiteSpace.Normal, marginTop = 4 } });
 
             var scroll = new ScrollView { style = { flexGrow = 1, marginTop = 4 } };
             foreach (var bundle in _distribution.Bundles)

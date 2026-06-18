@@ -163,12 +163,12 @@ namespace AddressTeller.Editor
             var managedFoldout = new Foldout { text = $"Managed Groups ({managedGroups.Count})", value = false };
             if (managedGroups.Count == 0)
             {
-                managedFoldout.Add(new Label("(No groups are referenced by enabled rules)") { style = { color = new Color(0.6f, 0.6f, 0.6f), fontSize = 10 } });
+                managedFoldout.Add(new Label("(No groups are referenced by enabled rules)") { style = { color = new Color(0.6f, 0.6f, 0.6f) } });
             }
             else
             {
                 foreach (var groupName in managedGroups)
-                    managedFoldout.Add(new Label(groupName) { style = { fontSize = 10 } });
+                    managedFoldout.Add(new Label(groupName));
             }
             container.Add(managedFoldout);
             container.Add(MakeDescription("Groups referenced by at least one enabled rule via Group(). These are the targets of \"Remove unmatched entries\" and \"Auto-create missing groups\". Entries manually registered in these groups will be removed if no rule matches them."));
@@ -315,7 +315,7 @@ namespace AddressTeller.Editor
 
             if (overview.Entries.Count == 0)
             {
-                foldout.Add(new Label("(Group() was not called)") { style = { fontSize = 10 } });
+                foldout.Add(new Label("(Group() was not called)"));
                 return;
             }
 
@@ -326,7 +326,7 @@ namespace AddressTeller.Editor
                 var groupName = AddressRuleBuilderImpl.DisplayGroupName(entry.GroupName);
                 foldout.Add(new Label(
                     $"Group: \"{groupName}\"  Where: \"{where}\"  Address: {address}  Labels: {entry.LabelCount}")
-                { style = { fontSize = 10 } });
+                { style = { whiteSpace = WhiteSpace.Normal } });
             }
         }
 
@@ -360,7 +360,6 @@ namespace AddressTeller.Editor
             {
                 style =
                 {
-                    fontSize = 10,
                     color = new Color(0.6f, 0.6f, 0.6f),
                     whiteSpace = WhiteSpace.Normal,
                     marginLeft = 16,
