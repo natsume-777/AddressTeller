@@ -1,162 +1,98 @@
 using System.Collections.Generic;
-using UnityEditor;
-using UnityEditor.IMGUI.Controls;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace AddressTeller.Editor
 {
     /// <summary>
-    /// <see cref="DiffRow"/> の一覧を表示する TreeView。
-    /// フラット行（depth=0）のみで親子関係は持たない。Removed 行は赤字で表示する。
+    /// <see cref="DiffRow"/> の一覧を表示する MultiColumnTreeView ラッパー。
+    /// フラット行（子なし）のみで親子関係は持たない。Removed 行は赤字で表示する。
     /// </summary>
-    internal sealed class AddressTellerDiffTreeView : TreeView<int>
+    internal sealed class AddressTellerDiffTreeView : MultiColumnTreeView
     {
-        private enum ColumnId
-        {
-            Kind,
-            Asset,
-            Address,
-            Group,
-            Labels,
-        }
-
         private IReadOnlyList<DiffRow> _rows = System.Array.Empty<DiffRow>();
 
-        public AddressTellerDiffTreeView(TreeViewState<int> state, MultiColumnHeader header) : base(state, header)
+        public AddressTellerDiffTreeView()
         {
-            rowHeight = 20f;
-            showAlternatingRowBackgrounds = true;
-            useScrollView = true;
-            Reload();
+            // 行ダブルクリック（決定）で対象アセットを ping する
+            onItemsChosen += _ => OnItemChosen();
+
+            columns.Add(new Column { name = "kind",    title = "Type",    width = 70,  minWidth = 50 });
+            columns.Add(new Column { name = "asset",   title = "Asset",   width = 320, minWidth = 120, stretchable = true });
+            columns.Add(new Column { name = "address", title = "Address", width = 220, minWidth = 100, stretchable = true });
+            columns.Add(new Column { name = "group",   title = "Group",   width = 140, minWidth = 80,  stretchable = true });
+            columns.Add(new Column { name = "labels",  title = "Labels",  width = 160, minWidth = 80,  stretchable = true });
+
+            columns["kind"].makeCell    = MakeCell;
+            columns["asset"].makeCell   = MakeCell;
+            columns["address"].makeCell = MakeCell;
+            columns["group"].makeCell   = MakeCell;
+            columns["labels"].makeCell  = MakeCell;
+
+            columns["kind"].bindCell    = (e, i) => BindCell(e, i, "kind");
+            columns["asset"].bindCell   = (e, i) => BindCell(e, i, "asset");
+            columns["address"].bindCell = (e, i) => BindCell(e, i, "address");
+            columns["group"].bindCell   = (e, i) => BindCell(e, i, "group");
+            columns["labels"].bindCell  = (e, i) => BindCell(e, i, "labels");
+
+            showAlternatingRowBackgrounds = AlternatingRowBackground.ContentOnly;
+            style.flexGrow = 1;
         }
 
         /// <summary>表示する行データを設定し、ツリーを再構築する。</summary>
         public void SetRows(IReadOnlyList<DiffRow> rows)
         {
             _rows = rows ?? System.Array.Empty<DiffRow>();
-            Reload();
-        }
 
-        public static MultiColumnHeaderState CreateHeaderState()
-        {
-            var columns = new[]
-            {
-                new MultiColumnHeaderState.Column
-                {
-                    headerContent = new GUIContent("Type"),
-                    width = 70,
-                    minWidth = 50,
-                    autoResize = false,
-                },
-                new MultiColumnHeaderState.Column
-                {
-                    headerContent = new GUIContent("Asset"),
-                    width = 320,
-                    minWidth = 120,
-                    autoResize = true,
-                },
-                new MultiColumnHeaderState.Column
-                {
-                    headerContent = new GUIContent("Address"),
-                    width = 220,
-                    minWidth = 100,
-                    autoResize = true,
-                },
-                new MultiColumnHeaderState.Column
-                {
-                    headerContent = new GUIContent("Group"),
-                    width = 140,
-                    minWidth = 80,
-                    autoResize = true,
-                },
-                new MultiColumnHeaderState.Column
-                {
-                    headerContent = new GUIContent("Labels"),
-                    width = 160,
-                    minWidth = 80,
-                    autoResize = true,
-                },
-            };
-
-            return new MultiColumnHeaderState(columns);
-        }
-
-        protected override TreeViewItem<int> BuildRoot()
-        {
-            // 行の id は 0 始まりで _rows のインデックスと対応させるため、
-            // 隠しルートの id はそれと衝突しない -1 にする。
-            return new TreeViewItem<int> { id = -1, depth = -1, displayName = "Root" };
-        }
-
-        protected override IList<TreeViewItem<int>> BuildRows(TreeViewItem<int> root)
-        {
-            var rows = new List<TreeViewItem<int>>(_rows.Count);
-
+            // id = _rows インデックスのフラットリストを構築する
+            var rootItems = new List<TreeViewItemData<int>>(_rows.Count);
             for (var i = 0; i < _rows.Count; i++)
-                rows.Add(new TreeViewItem<int>(i, 0, _rows[i].AssetPath));
+                rootItems.Add(new TreeViewItemData<int>(i, i));
 
-            root.children = rows.Count == 0
-                ? new List<TreeViewItem<int>> { new TreeViewItem<int>(int.MaxValue, 0, "(no changes)") }
-                : rows;
-
-            // 行データが空のとき root.children を空のままにすると TreeView 側で例外になるため、
-            // ダミー行を1件入れておく。SelectionChanged/DoubleClick では id 範囲外として無視される。
-            SetupParentsAndChildrenFromDepths(root, root.children);
-            return root.children;
+            SetRootItems(rootItems);
+            Rebuild();
         }
 
-        protected override void RowGUI(RowGUIArgs args)
+        private static VisualElement MakeCell()
         {
-            if (args.item.id < 0 || args.item.id >= _rows.Count)
+            return new Label { style = { paddingLeft = 4, unityTextAlign = TextAnchor.MiddleLeft } };
+        }
+
+        private void BindCell(VisualElement element, int index, string columnName)
+        {
+            var label = (Label)element;
+            // id は SetRootItems で割り当てた _rows インデックスと一致する
+            var id = GetIdForIndex(index);
+            if (id < 0 || id >= _rows.Count)
             {
-                base.RowGUI(args);
+                label.text = string.Empty;
+                label.style.color = StyleKeyword.Null;
                 return;
             }
+            var row = _rows[id];
 
-            var row = _rows[args.item.id];
-            var originalColor = GUI.color;
-
-            if (row.Kind == DiffRowKind.Removed)
-                GUI.color = Color.red;
-
-            for (var i = 0; i < args.GetNumVisibleColumns(); i++)
+            label.text = columnName switch
             {
-                var rect = args.GetCellRect(i);
-                var columnId = (ColumnId)args.GetColumn(i);
-                var text = GetCellText(row, columnId);
-                EditorGUI.LabelField(rect, text);
-            }
+                "kind"    => row.Kind.ToString(),
+                "asset"   => row.AssetPath,
+                "address" => row.Kind == DiffRowKind.Changed
+                    ? $"{row.BeforeAddress} → {row.AfterAddress}"
+                    : (row.Kind == DiffRowKind.Removed ? row.BeforeAddress : row.AfterAddress),
+                "group"   => row.Kind == DiffRowKind.Changed
+                    ? $"{row.BeforeGroup} → {row.AfterGroup}"
+                    : (row.Kind == DiffRowKind.Removed ? row.BeforeGroup : row.AfterGroup),
+                "labels"  => row.LabelsSummary,
+                _         => string.Empty,
+            };
 
-            GUI.color = originalColor;
+            label.style.color = row.Kind == DiffRowKind.Removed ? Color.red : StyleKeyword.Null;
         }
 
-        private static string GetCellText(DiffRow row, ColumnId columnId)
+        private void OnItemChosen()
         {
-            switch (columnId)
-            {
-                case ColumnId.Kind:
-                    return row.Kind.ToString();
-                case ColumnId.Asset:
-                    return row.AssetPath;
-                case ColumnId.Address:
-                    return row.Kind == DiffRowKind.Changed
-                        ? $"{row.BeforeAddress} → {row.AfterAddress}"
-                        : (row.Kind == DiffRowKind.Removed ? row.BeforeAddress : row.AfterAddress);
-                case ColumnId.Group:
-                    return row.Kind == DiffRowKind.Changed
-                        ? $"{row.BeforeGroup} → {row.AfterGroup}"
-                        : (row.Kind == DiffRowKind.Removed ? row.BeforeGroup : row.AfterGroup);
-                case ColumnId.Labels:
-                    return row.LabelsSummary;
-                default:
-                    return string.Empty;
-            }
-        }
-
-        protected override void DoubleClickedItem(int id)
-        {
+            if (selectedIndex < 0) return;
+            var id = GetIdForIndex(selectedIndex);
             if (id < 0 || id >= _rows.Count) return;
-
             AddressTellerResultWindowUtility.PingAsset(_rows[id].AssetPath);
         }
     }

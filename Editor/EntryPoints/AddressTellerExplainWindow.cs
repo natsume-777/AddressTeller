@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace AddressTeller.Editor
 {
@@ -14,11 +15,6 @@ namespace AddressTeller.Editor
     internal sealed class AddressTellerExplainWindow : EditorWindow
     {
         private List<AssetExplanation> _explanations = new();
-
-        // アセットパスごとの Foldout 開閉状態。デフォルトは展開。
-        private readonly Dictionary<string, bool> _foldoutStates = new();
-
-        private Vector2 _scrollPosition;
 
         /// <summary>結果を渡してウィンドウを開く。既存ウィンドウがあれば再利用する。</summary>
         public static void ShowWindow(IReadOnlyList<AssetExplanation> explanations)
@@ -34,83 +30,144 @@ namespace AddressTeller.Editor
         private void SetExplanations(IReadOnlyList<AssetExplanation> explanations)
         {
             _explanations = explanations?.ToList() ?? new List<AssetExplanation>();
-
-            // 複数選択時はデフォルト展開。既存パスの開閉状態は保持する。
-            foreach (var explanation in _explanations)
-            {
-                if (!_foldoutStates.ContainsKey(explanation.AssetPath))
-                    _foldoutStates[explanation.AssetPath] = true;
-            }
-
-            // 今回の結果に存在しないパスの開閉状態は不要なので削除する（単調増加を防ぐ）。
-            var currentPaths = new HashSet<string>(_explanations.Select(e => e.AssetPath));
-            foreach (var staleKey in _foldoutStates.Keys.Where(k => !currentPaths.Contains(k)).ToList())
-                _foldoutStates.Remove(staleKey);
+            // データ更新時は UI を再構築する
+            var root = rootVisualElement;
+            root.Clear();
+            BuildUI(root);
         }
 
-        private void OnGUI()
+        public void CreateGUI()
         {
+            BuildUI(rootVisualElement);
+        }
+
+        private void BuildUI(VisualElement root)
+        {
+            root.Clear();
+
             if (_explanations.Count == 0)
             {
-                EditorGUILayout.HelpBox("No asset is selected.", MessageType.Info);
+                root.Add(new HelpBox("No asset is selected.", HelpBoxMessageType.Info));
                 return;
             }
 
-            _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
+            var scroll = new ScrollView();
+            root.Add(scroll);
 
             foreach (var explanation in _explanations)
-                DrawAsset(explanation);
-
-            EditorGUILayout.EndScrollView();
+                scroll.Add(BuildAssetElement(explanation));
         }
 
-        private void DrawAsset(AssetExplanation explanation)
+        private static VisualElement BuildAssetElement(AssetExplanation explanation)
         {
-            var foldoutKey = explanation.AssetPath;
-            var expanded = _foldoutStates.TryGetValue(foldoutKey, out var v) && v;
+            var container = new VisualElement();
+            container.style.marginBottom = 4;
+            container.style.borderTopWidth = 1;
+            container.style.borderBottomWidth = 1;
+            container.style.borderLeftWidth = 1;
+            container.style.borderRightWidth = 1;
+            container.style.borderTopColor = new Color(0.3f, 0.3f, 0.3f);
+            container.style.borderBottomColor = new Color(0.3f, 0.3f, 0.3f);
+            container.style.borderLeftColor = new Color(0.3f, 0.3f, 0.3f);
+            container.style.borderRightColor = new Color(0.3f, 0.3f, 0.3f);
+            container.style.borderTopLeftRadius = 3;
+            container.style.borderTopRightRadius = 3;
+            container.style.borderBottomLeftRadius = 3;
+            container.style.borderBottomRightRadius = 3;
+            container.style.paddingBottom = 4;
 
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-
-            var header = BuildHeaderContent(explanation);
-            expanded = EditorGUILayout.Foldout(expanded, header, true);
-            _foldoutStates[foldoutKey] = expanded;
-
-            if (expanded)
+            // アセットアイコン付きの Foldout
+            var foldout = new Foldout { text = explanation.AssetPath, value = true };
+            var icon = AssetDatabase.GetCachedIcon(explanation.AssetPath);
+            if (icon != null)
             {
-                EditorGUI.indentLevel++;
+                // Foldout のヘッダにアイコンを添える（UIElements ではカスタム header content で代用）
+                foldout.style.backgroundImage = null; // アイコンは別要素
+            }
+            container.Add(foldout);
 
-                if (explanation.IsExcluded)
-                {
-                    EditorGUILayout.LabelField("This path is excluded from rule evaluation.");
-                }
-                else
-                {
-                    DrawConclusion(explanation.Validation, explanation.Explanation.Resolution);
-                    DrawDetails(explanation.Explanation.Details);
-                }
-
-                EditorGUI.indentLevel--;
+            if (explanation.IsExcluded)
+            {
+                foldout.Add(new Label("This path is excluded from rule evaluation.")
+                    { style = { marginLeft = 16 } });
+                return container;
             }
 
-            EditorGUILayout.EndVertical();
+            // 結論行
+            var (text, color) = DescribeConclusion(explanation.Validation, explanation.Explanation.Resolution);
+            var conclusionLabel = new Label("Conclusion: " + text)
+            {
+                style =
+                {
+                    unityFontStyleAndWeight = FontStyle.Bold,
+                    color = color,
+                    marginLeft = 16,
+                    marginTop = 2,
+                    marginBottom = 2,
+                }
+            };
+            foldout.Add(conclusionLabel);
+
+            // 詳細行
+            foreach (var detail in explanation.Explanation.Details)
+                foldout.Add(BuildDetailElement(detail));
+
+            return container;
         }
 
-        /// <summary>アイコン + パスのヘッダ表示を組み立てる。</summary>
-        private static GUIContent BuildHeaderContent(AssetExplanation explanation)
+        private static VisualElement BuildDetailElement(RuleEvaluationDetail detail)
         {
-            var icon = AssetDatabase.GetCachedIcon(explanation.AssetPath);
-            return new GUIContent(explanation.AssetPath, icon);
+            switch (detail.Outcome)
+            {
+                case RuleMatchOutcome.Matched:
+                    return BuildMatchedElement(detail);
+                case RuleMatchOutcome.NotMatched:
+                    return BuildNotMatchedElement(detail);
+                case RuleMatchOutcome.Errored:
+                    return BuildErroredElement(detail);
+                default:
+                    return new VisualElement();
+            }
         }
 
-        /// <summary>Validation.Status に応じて結論を色分け表示する。</summary>
-        private static void DrawConclusion(ValidationResult validation, AddressResolution resolution)
+        private static VisualElement BuildMatchedElement(RuleEvaluationDetail detail)
         {
-            var (text, color) = DescribeConclusion(validation, resolution);
+            var container = new VisualElement { style = { marginLeft = 16, marginTop = 1 } };
 
-            var originalColor = GUI.color;
-            GUI.color = color;
-            EditorGUILayout.LabelField("Conclusion: " + text, EditorStyles.boldLabel);
-            GUI.color = originalColor;
+            var title = string.IsNullOrEmpty(detail.Description)
+                ? $"[Match] {detail.RuleSource}"
+                : $"[Match] {detail.Description}";
+
+            container.Add(new Label(title) { style = { color = Color.green } });
+
+            var inner = new VisualElement { style = { marginLeft = 16 } };
+            inner.Add(new Label($"Group: {AddressRuleBuilderImpl.DisplayGroupName(detail.GroupName)}"));
+
+            if (!string.IsNullOrEmpty(detail.ProducedAddress))
+                inner.Add(new Label($"Address: {detail.ProducedAddress}"));
+
+            if (detail.ProducedLabels.Count > 0)
+                inner.Add(new Label($"Labels: {string.Join(", ", detail.ProducedLabels)}"));
+
+            container.Add(inner);
+            return container;
+        }
+
+        private static VisualElement BuildNotMatchedElement(RuleEvaluationDetail detail)
+        {
+            var title = !string.IsNullOrEmpty(detail.Description)
+                ? $"[No Match] {detail.Description}"
+                : $"[No Match] {detail.RuleSource}";
+
+            return new Label(title) { style = { color = Color.gray, marginLeft = 16, marginTop = 1 } };
+        }
+
+        private static VisualElement BuildErroredElement(RuleEvaluationDetail detail)
+        {
+            var container = new VisualElement { style = { marginLeft = 16, marginTop = 1 } };
+            container.Add(new Label($"[Error] {detail.RuleSource}") { style = { color = Color.red } });
+            container.Add(new Label(detail.ErrorMessage ?? string.Empty) { style = { marginLeft = 16 } });
+            return container;
         }
 
         // テストから直接呼べるよう internal にしている。
@@ -147,78 +204,8 @@ namespace AddressTeller.Editor
                 case ValidationStatus.DefaultGroupUnavailable:
                     return ($"DefaultGroup unavailable: {validation.Message}", Color.red);
                 default:
-                    return (validation.Message ?? string.Empty, GUI.color);
+                    return (validation.Message ?? string.Empty, Color.white);
             }
-        }
-
-        private static void DrawDetails(IReadOnlyList<RuleEvaluationDetail> details)
-        {
-            foreach (var detail in details)
-            {
-                switch (detail.Outcome)
-                {
-                    case RuleMatchOutcome.Matched:
-                        DrawMatchedDetail(detail);
-                        break;
-                    case RuleMatchOutcome.NotMatched:
-                        DrawNotMatchedDetail(detail);
-                        break;
-                    case RuleMatchOutcome.Errored:
-                        DrawErroredDetail(detail);
-                        break;
-                }
-            }
-        }
-
-        private static void DrawMatchedDetail(RuleEvaluationDetail detail)
-        {
-            var originalColor = GUI.color;
-            GUI.color = Color.green;
-
-            var title = string.IsNullOrEmpty(detail.Description)
-                ? $"[Match] {detail.RuleSource}"
-                : $"[Match] {detail.Description}";
-            EditorGUILayout.LabelField(title);
-
-            GUI.color = originalColor;
-
-            EditorGUI.indentLevel++;
-            EditorGUILayout.LabelField($"Group: {AddressRuleBuilderImpl.DisplayGroupName(detail.GroupName)}");
-
-            if (!string.IsNullOrEmpty(detail.ProducedAddress))
-                EditorGUILayout.LabelField($"Address: {detail.ProducedAddress}");
-
-            if (detail.ProducedLabels.Count > 0)
-                EditorGUILayout.LabelField($"Labels: {string.Join(", ", detail.ProducedLabels)}");
-
-            EditorGUI.indentLevel--;
-        }
-
-        private static void DrawNotMatchedDetail(RuleEvaluationDetail detail)
-        {
-            var originalColor = GUI.color;
-            GUI.color = Color.gray;
-
-            var title = !string.IsNullOrEmpty(detail.Description)
-                ? $"[No Match] {detail.Description}"
-                : $"[No Match] {detail.RuleSource}";
-            EditorGUILayout.LabelField(title);
-
-            GUI.color = originalColor;
-        }
-
-        private static void DrawErroredDetail(RuleEvaluationDetail detail)
-        {
-            var originalColor = GUI.color;
-            GUI.color = Color.red;
-
-            EditorGUILayout.LabelField($"[Error] {detail.RuleSource}");
-
-            GUI.color = originalColor;
-
-            EditorGUI.indentLevel++;
-            EditorGUILayout.LabelField(detail.ErrorMessage ?? string.Empty);
-            EditorGUI.indentLevel--;
         }
     }
 }
