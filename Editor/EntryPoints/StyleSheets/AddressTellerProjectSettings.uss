@@ -1,0 +1,39 @@
+/* ProjectSettings ウィンドウ固有スタイル */
+
+.at-ps-container {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.at-rule-row {
+    margin-top: 2px;
+}
+
+.at-rule-row__header {
+    flex-direction: row;
+    align-items: center;
+}
+
+.at-rule-row__toggle {
+    width: 20px;
+}
+
+.at-rule-row__buttons {
+    flex-direction: row;
+    margin-left: auto;
+}
+
+.at-managed-group-item {
+    font-size: 11px;
+}
+
+.at-ops-row {
+    flex-direction: row;
+}
+
+.at-browse-row {
+    flex-direction: row;
+    justify-content: flex-end;
+}

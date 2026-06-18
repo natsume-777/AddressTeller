@@ -28,11 +28,11 @@ namespace AddressTeller.Editor.Tests
                 new RuleEvaluationError("SomeRule", "boom"),
             });
 
-            var (text, color) = AddressTellerExplainWindow.DescribeConclusion(validation, resolution);
+            var (text, cssClass) = AddressTellerExplainWindow.DescribeConclusion(validation, resolution);
 
             StringAssert.Contains("1 rule error", text);
             StringAssert.Contains("SomeRule", text);
-            Assert.AreEqual(Color.red, color);
+            Assert.AreEqual("at-conclusion--error", cssClass);
         }
 
         [Test]
@@ -41,10 +41,10 @@ namespace AddressTeller.Editor.Tests
             var validation = new ValidationResult(Ctx(), ValidationStatus.Skipped, null);
             var resolution = Resolution();
 
-            var (text, color) = AddressTellerExplainWindow.DescribeConclusion(validation, resolution);
+            var (text, cssClass) = AddressTellerExplainWindow.DescribeConclusion(validation, resolution);
 
             StringAssert.Contains("No matching rule", text);
-            Assert.AreEqual(Color.gray, color);
+            Assert.AreEqual("at-conclusion--muted", cssClass);
         }
 
         [Test]
@@ -59,10 +59,10 @@ namespace AddressTeller.Editor.Tests
                 new RuleEvaluationError("SomeRule", "boom"),
             });
 
-            var (text, color) = AddressTellerExplainWindow.DescribeConclusion(validation, resolution);
+            var (text, cssClass) = AddressTellerExplainWindow.DescribeConclusion(validation, resolution);
 
             StringAssert.Contains("addr", text);
-            Assert.AreEqual(Color.green, color);
+            Assert.AreEqual("at-conclusion--ok", cssClass);
         }
     }
 }

@@ -4,7 +4,9 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
+using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace AddressTeller.Editor
 {
@@ -13,7 +15,7 @@ namespace AddressTeller.Editor
     /// </summary>
     internal sealed class AddressTellerSnapshotManagerWindow : EditorWindow
     {
-        // Collect/LoadFromFile はファイル I/O を伴うため、OnGUI では呼ばない。
+        // Collect/LoadFromFile はファイル I/O を伴うため、CreateGUI/Refresh 以外では呼ばない。
         // Open時・Refresh押下時・トグル変更時・検索キーワード変更時のみ再構築してここにキャッシュする。
         private List<SnapshotFileInfo> _items = new();
 
@@ -22,14 +24,17 @@ namespace AddressTeller.Editor
 
         // 選択は index ではなく Path で保持する。Refresh で一覧の並びが変わっても選択対象がズレないようにするため。
         private string _selectedPath;
-        private Vector2 _scroll;
 
         // 「2件目選択モード」：trueの間は一覧クリックで比較対象を選び、Diffを表示してモードを終了する。
         private bool _compareMode;
 
-        // 行描画用スタイル。OnGUI 毎回 new しないようキャッシュする。
-        private GUIStyle _normalRowStyle;
-        private GUIStyle _errorRowStyle;
+        // UI 要素への参照（Refresh 時に更新するため保持）
+        private ListView _listView;
+        private HelpBox _compareModeHelpBox;
+        private Button _restoreAdditiveBtn;
+        private Button _restoreExactBtn;
+        private Button _compareWithCurrentBtn;
+        private Button _compareWithAnotherBtn;
 
         [MenuItem("Tools/AddressTeller/Snapshot/Manage Snapshots...")]
         public static void Open()
@@ -44,6 +49,112 @@ namespace AddressTeller.Editor
 
         private void OnEnable() => Refresh();
 
+        public void CreateGUI()
+        {
+            var root = rootVisualElement;
+
+            // USS ロード
+            var commonSS = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerCommon.uss");
+            var windowSS = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerSnapshotManagerWindow.uss");
+            if (commonSS != null) root.styleSheets.Add(commonSS);
+            if (windowSS != null) root.styleSheets.Add(windowSS);
+
+            // ---- Toolbar ----
+            var toolbar = new Toolbar();
+
+            var refreshBtn = new ToolbarButton(Refresh) { text = "Refresh" };
+            toolbar.Add(refreshBtn);
+
+            var showAutoToggle = new ToolbarToggle { text = "Show auto snapshots", value = _showAuto };
+            showAutoToggle.RegisterValueChangedCallback(e =>
+            {
+                _showAuto = e.newValue;
+                Refresh();
+            });
+            toolbar.Add(showAutoToggle);
+
+            // ツールバー右端に検索フィールド
+            var spacer = new ToolbarSpacer { style = { flexGrow = 1 } };
+            toolbar.Add(spacer);
+
+            var searchField = new ToolbarSearchField { value = _searchKeyword, style = { width = 200 } };
+            searchField.RegisterValueChangedCallback(e =>
+            {
+                _searchKeyword = e.newValue;
+                Refresh();
+            });
+            toolbar.Add(searchField);
+
+            root.Add(toolbar);
+
+            // Compare モード中の案内（初期は非表示）
+            _compareModeHelpBox = new HelpBox("Select a second snapshot from the list to compare.", HelpBoxMessageType.Info);
+            _compareModeHelpBox.AddToClassList("at-compare-hint");
+            _compareModeHelpBox.style.display = DisplayStyle.None;
+            root.Add(_compareModeHelpBox);
+
+            // ---- ListView ----
+            _listView = new ListView
+            {
+                makeItem = () =>
+                {
+                    var lbl = new Label();
+                    lbl.style.paddingLeft = 4;
+                    lbl.style.paddingTop = 2;
+                    lbl.style.paddingBottom = 2;
+                    return lbl;
+                },
+                bindItem = (element, index) =>
+                {
+                    var label = (Label)element;
+                    var item = _items[index];
+                    if (item.LoadError != null)
+                    {
+                        label.text = $"{item.FileName}  -  Load failed: {item.LoadError}";
+                        label.style.color = Color.red;
+                    }
+                    else
+                    {
+                        label.text =
+                            $"{item.FileName}    " +
+                            $"{(string.IsNullOrEmpty(item.CapturedAtIso) ? "(unknown)" : item.CapturedAtIso)}    " +
+                            $"{item.Comment}    schema={item.SchemaVersion}    entries={item.EntryCount}";
+                        label.style.color = StyleKeyword.Null; // デフォルト色に戻す
+                    }
+                },
+                selectionType = SelectionType.Single,
+            };
+            _listView.AddToClassList("at-list");
+
+            _listView.selectionChanged += OnListSelectionChange;
+            root.Add(_listView);
+
+            // ---- アクションボタン ----
+            var actionsRow = new VisualElement();
+            actionsRow.AddToClassList("at-actions-row");
+
+            _restoreAdditiveBtn = new Button(() => RestoreSelected(SnapshotRestoreMode.Additive)) { text = "Restore (Additive)" };
+            _restoreExactBtn = new Button(() => RestoreSelected(SnapshotRestoreMode.Exact)) { text = "Restore (Exact)" };
+            _compareWithCurrentBtn = new Button(CompareWithCurrent) { text = "Compare with Current" };
+
+            actionsRow.Add(_restoreAdditiveBtn);
+            actionsRow.Add(_restoreExactBtn);
+            actionsRow.Add(_compareWithCurrentBtn);
+            root.Add(actionsRow);
+
+            _compareWithAnotherBtn = new Button(ToggleCompareMode)
+            {
+                text = "Compare with another snapshot...",
+            };
+            _compareWithAnotherBtn.AddToClassList("at-compare-btn-row");
+            root.Add(_compareWithAnotherBtn);
+
+            RebuildList();
+            UpdateActionButtons();
+        }
+
         /// <summary>SnapshotFolder を再列挙し、現在のフィルタ条件で一覧をキャッシュし直す。</summary>
         private void Refresh()
         {
@@ -54,6 +165,63 @@ namespace AddressTeller.Editor
 
             if (_selectedPath != null && !_items.Any(i => i.Path == _selectedPath))
                 _selectedPath = null;
+
+            RebuildList();
+            UpdateActionButtons();
+        }
+
+        /// <summary>_items の内容を ListView に反映する。</summary>
+        private void RebuildList()
+        {
+            if (_listView == null) return;
+
+            _listView.itemsSource = _items;
+            _listView.Rebuild();
+
+            // 選択状態を復元する
+            var selectedIndex = _selectedPath == null ? -1 : _items.FindIndex(i => i.Path == _selectedPath);
+            if (selectedIndex >= 0)
+            {
+                _listView.SetSelectionWithoutNotify(new[] { selectedIndex });
+            }
+            else
+            {
+                _listView.ClearSelection();
+                _selectedPath = null;
+            }
+        }
+
+        private void OnListSelectionChange(IEnumerable<object> selection)
+        {
+            var selected = selection.FirstOrDefault() as SnapshotFileInfo;
+            if (selected == null) return;
+
+            // ロードエラーのある行は選択不可
+            if (selected.LoadError != null)
+            {
+                _listView.ClearSelection();
+                return;
+            }
+
+            if (_compareMode)
+            {
+                // 同じスナップショットを2件目として選択した場合はキャンセル
+                if (selected.Path == _selectedPath)
+                {
+                    SetCompareMode(false);
+                    return;
+                }
+
+                var first = _items.FirstOrDefault(i => i.Path == _selectedPath);
+                if (first != null)
+                    CompareSelectedWith(first, selected);
+
+                SetCompareMode(false);
+                return;
+            }
+
+            _selectedPath = selected.Path;
+            UpdateActionButtons();
         }
 
         private int SelectedIndex => _selectedPath == null ? -1 : _items.FindIndex(i => i.Path == _selectedPath);
@@ -67,128 +235,32 @@ namespace AddressTeller.Editor
             }
         }
 
-        private void OnGUI()
+        private void UpdateActionButtons()
         {
-            _normalRowStyle ??= new GUIStyle(EditorStyles.label);
-            _errorRowStyle ??= new GUIStyle(EditorStyles.label) { normal = { textColor = Color.red } };
+            if (_restoreAdditiveBtn == null) return;
 
-            DrawToolbar();
-            EditorGUILayout.Space(2);
-            DrawList();
-            EditorGUILayout.Space(2);
-            DrawActions();
+            var hasSelection = SelectedIndex >= 0;
+            var notComparing = !_compareMode;
+
+            _restoreAdditiveBtn.SetEnabled(hasSelection && notComparing);
+            _restoreExactBtn.SetEnabled(hasSelection && notComparing);
+            _compareWithCurrentBtn.SetEnabled(hasSelection && notComparing);
+            _compareWithAnotherBtn.SetEnabled(hasSelection || _compareMode);
+            _compareWithAnotherBtn.text = _compareMode ? "Cancel compare" : "Compare with another snapshot...";
+
+            if (_compareModeHelpBox != null)
+                _compareModeHelpBox.style.display = _compareMode ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
-        private void DrawToolbar()
+        private void ToggleCompareMode()
         {
-            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-
-            if (GUILayout.Button("Refresh", EditorStyles.toolbarButton, GUILayout.Width(60)))
-                Refresh();
-
-            EditorGUI.BeginChangeCheck();
-            _showAuto = GUILayout.Toggle(_showAuto, "Show auto snapshots", EditorStyles.toolbarButton);
-            if (EditorGUI.EndChangeCheck())
-                Refresh();
-
-            GUILayout.FlexibleSpace();
-
-            EditorGUI.BeginChangeCheck();
-            _searchKeyword = EditorGUILayout.TextField(_searchKeyword, EditorStyles.toolbarSearchField, GUILayout.Width(200));
-            if (EditorGUI.EndChangeCheck())
-                Refresh();
-
-            EditorGUILayout.EndHorizontal();
-
-            if (_compareMode)
-                EditorGUILayout.HelpBox("Select a second snapshot from the list to compare.", MessageType.Info);
+            SetCompareMode(!_compareMode);
         }
 
-        private void DrawList()
+        private void SetCompareMode(bool value)
         {
-            if (_items.Count == 0)
-            {
-                EditorGUILayout.HelpBox("No snapshots found.", MessageType.Info);
-                return;
-            }
-
-            _scroll = EditorGUILayout.BeginScrollView(_scroll);
-
-            for (var i = 0; i < _items.Count; i++)
-            {
-                var item = _items[i];
-                var isSelected = item.Path == _selectedPath;
-
-                var label = item.LoadError != null
-                    ? $"{item.FileName}  -  Load failed: {item.LoadError}"
-                    : $"{item.FileName}    " +
-                      $"{(string.IsNullOrEmpty(item.CapturedAtIso) ? "(unknown)" : item.CapturedAtIso)}    " +
-                      $"{item.Comment}    schema={item.SchemaVersion}    entries={item.EntryCount}";
-
-                var style = item.LoadError != null ? _errorRowStyle : _normalRowStyle;
-
-                var rect = GUILayoutUtility.GetRect(0, 100000, EditorGUIUtility.singleLineHeight, EditorGUIUtility.singleLineHeight);
-
-                if (isSelected)
-                    EditorGUI.DrawRect(rect, new Color(0.24f, 0.37f, 0.59f, 0.5f));
-
-                EditorGUI.LabelField(rect, label, style);
-
-                if (item.LoadError == null && Event.current.type == EventType.MouseDown && rect.Contains(Event.current.mousePosition))
-                {
-                    OnRowClicked(i);
-                    Event.current.Use();
-                }
-            }
-
-            EditorGUILayout.EndScrollView();
-        }
-
-        /// <summary>一覧行クリック時の処理。通常選択と「2件目選択モード」での比較実行を振り分ける。</summary>
-        private void OnRowClicked(int index)
-        {
-            if (_compareMode)
-            {
-                var first = SelectedItem;
-                if (first == null || _items[index].Path == first.Path)
-                {
-                    _compareMode = false;
-                    return;
-                }
-
-                CompareSelectedWith(first, _items[index]);
-                _compareMode = false;
-                return;
-            }
-
-            _selectedPath = _items[index].Path;
-            Repaint();
-        }
-
-        private void DrawActions()
-        {
-            using (new EditorGUI.DisabledScope(SelectedIndex < 0 || _compareMode))
-            {
-                EditorGUILayout.BeginHorizontal();
-
-                if (GUILayout.Button("Restore (Additive)"))
-                    RestoreSelected(SnapshotRestoreMode.Additive);
-
-                if (GUILayout.Button("Restore (Exact)"))
-                    RestoreSelected(SnapshotRestoreMode.Exact);
-
-                if (GUILayout.Button("Compare with Current"))
-                    CompareWithCurrent();
-
-                EditorGUILayout.EndHorizontal();
-            }
-
-            var compareLabel = _compareMode ? "Cancel compare" : "Compare with another snapshot...";
-            using (new EditorGUI.DisabledScope(SelectedIndex < 0 && !_compareMode))
-            {
-                if (GUILayout.Button(compareLabel))
-                    _compareMode = !_compareMode;
-            }
+            _compareMode = value;
+            UpdateActionButtons();
         }
 
         private AddressableAssetSettings GetSettingsOrLogError()

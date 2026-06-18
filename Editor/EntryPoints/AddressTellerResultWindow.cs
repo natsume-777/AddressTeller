@@ -3,16 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets.Settings;
-using UnityEditor.IMGUI.Controls;
+using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace AddressTeller.Editor
 {
     /// <summary>
     /// dry-run の差分（<see cref="DryRunResult"/>）や Apply/Validate の問題点
-    /// （<see cref="ValidationResult"/>）を TreeView で表示する結果ウィンドウ。
-    /// Step 12-c の確認ダイアログから「詳細を見る」として開かれることを想定するが、
-    /// このステップでは単体のウィンドウとして完成させる（既存メニューへの組み込みは別ステップ）。
+    /// （<see cref="ValidationResult"/>）を MultiColumnTreeView で表示する結果ウィンドウ。
     /// </summary>
     internal sealed class AddressTellerResultWindow : EditorWindow
     {
@@ -23,45 +22,41 @@ namespace AddressTeller.Editor
             Distribution,
         }
 
-        private static readonly string[] TabLabelsWithDistribution = { "Diff", "Issues", "Distribution" };
-        private static readonly string[] TabLabelsWithoutDistribution = { "Diff", "Issues" };
-
-        [SerializeField] private TreeViewState<int> _diffTreeViewState;
-        [SerializeField] private TreeViewState<int> _issueTreeViewState;
-        [SerializeField] private MultiColumnHeaderState _diffHeaderState;
-        [SerializeField] private MultiColumnHeaderState _issueHeaderState;
-
-        private AddressTellerDiffTreeView _diffTreeView;
-        private AddressTellerIssueTreeView _issueTreeView;
-
-        // _showDiffTab/_showDistributionTab は非シリアライズのため、ドメインリロード後は
-        // false にリセットされ、タブ構成が Issues のみに縮退する（_diffRows 等の非シリアライズ
-        // フィールドも空になるため、リロード後の再表示は元々想定していない割り切り）。
+        // _showDiffTab/_showDistributionTab はドメインリロード後にリセットされ、
+        // タブ構成が Issues のみに縮退する（_diffRows 等の非シリアライズフィールドも空になるため、
+        // リロード後の再表示は元々想定していない割り切り）。
         private Tab _currentTab;
         private bool _showDiffTab;
         private bool _showDistributionTab;
 
-        // Apply実行用のコールバック。ドメインリロードを跨ぐとデリゲートは復元できないため非シリアライズとし、
+        // Apply実行用のコールバック。ドメインリロードを跨ぐとデリゲートは復元できないため、
         // リロード後は null（＝ボタン非表示）になることを許容する割り切り。
         private Action _onApply;
 
-        // Show() 時に一度だけ構築し、OnGUI では再構築しない（GUIDToAssetPath 等の重い変換を避けるため）。
+        // Show() 時に一度だけ構築し、UI 更新では再構築しない（GUIDToAssetPath 等の重い変換を避けるため）。
         private List<DiffRow> _diffRows = new();
         private List<IssueRow> _allIssueRows = new();
         private IReadOnlyList<string> _groupsToCreate = Array.Empty<string>();
 
-        // Distribution タブの集計結果。Show() 時に一度だけ算出し、OnGUI では再計算しない。
+        // Distribution タブの集計結果。Show() 時に一度だけ算出する。
         // 算出失敗・対象外（After が null 等）の場合は null（タブ自体を非表示にする）。
         private BundleDistribution _distribution;
         private DistributionSummary _distributionSummary;
-        private Vector2 _distributionScroll;
 
         // Issues タブのステータス別フィルタ。キーは Enum.GetValues(typeof(ValidationStatus)) の全件、初期値は true（全件表示）。
         private readonly Dictionary<ValidationStatus, bool> _statusFilter = new();
 
-        // タブ描画より前に HelpBox として表示する任意の注意文。スコープ付きプレビューでの
-        // 「ルール絞り込み中は削除予測が縮小される」等の案内に使う。
+        // タブ描画より前に HelpBox として表示する任意の注意文。スコープ付きプレビューでの案内に使う。
         private string _notice;
+
+        // UI 要素への参照（データ更新時に再バインドするため保持）
+        private AddressTellerDiffTreeView _diffTreeView;
+        private AddressTellerIssueTreeView _issueTreeView;
+        private VisualElement _diffTabContent;
+        private VisualElement _issueTabContent;
+        private VisualElement _distributionTabContent;
+        private VisualElement _tabBar;
+        private HelpBox _noticeBox;
 
         /// <summary>Diff/Issues の2タブでウィンドウを開く。dry-run の結果表示用。</summary>
         /// <param name="settings">
@@ -73,12 +68,13 @@ namespace AddressTeller.Editor
             var window = GetOrCreateWindow(title);
             window._showDiffTab = true;
             window._currentTab = Tab.Diff;
-            window._onApply = null; // ウィンドウ再利用時に前回の onApply が残らないようにクリア
+            window._onApply = null;
             window._groupsToCreate = dryRun.GroupsToCreate;
             window._notice = notice;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
             window.SetDistribution(dryRun, settings);
+            window.RebuildUI();
             window.Show();
             window.Focus();
         }
@@ -97,10 +93,11 @@ namespace AddressTeller.Editor
             window._currentTab = Tab.Diff;
             window._onApply = onApply;
             window._groupsToCreate = dryRun.GroupsToCreate;
-            window._notice = null; // ウィンドウ再利用時に前回の notice が残らないようにクリア
+            window._notice = null;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
             window.SetDistribution(dryRun, settings);
+            window.RebuildUI();
             window.Show();
             window.Focus();
         }
@@ -111,12 +108,13 @@ namespace AddressTeller.Editor
             var window = GetOrCreateWindow(title);
             window._showDiffTab = false;
             window._currentTab = Tab.Issues;
-            window._onApply = null; // ウィンドウ再利用時に前回の onApply が残らないようにクリア
+            window._onApply = null;
             window._groupsToCreate = Array.Empty<string>();
-            window._notice = null; // ウィンドウ再利用時に前回の notice が残らないようにクリア
+            window._notice = null;
             window.SetDiffRows(new List<DiffRow>());
             window.SetIssueRows(issues);
             window.SetDistribution(default, null);
+            window.RebuildUI();
             window.Show();
             window.Focus();
         }
@@ -136,25 +134,19 @@ namespace AddressTeller.Editor
         private void SetDiffRows(List<DiffRow> rows)
         {
             _diffRows = rows ?? new List<DiffRow>();
-            EnsureDiffTreeView();
-            _diffTreeView.SetRows(_diffRows);
         }
 
         private void SetIssueRows(IReadOnlyList<ValidationResult> issues)
         {
             _allIssueRows = AddressTellerResultWindowRows.BuildIssueRows(issues ?? Array.Empty<ValidationResult>());
 
-            // フィルタの初期状態は全ステータス表示。
             _statusFilter.Clear();
             foreach (ValidationStatus status in Enum.GetValues(typeof(ValidationStatus)))
                 _statusFilter[status] = true;
-
-            EnsureIssueTreeView();
-            ApplyIssueFilter();
         }
 
         /// <summary>
-        /// 論理バンドル分布サマリを算出し、フィールドにキャッシュする。OnGUI では再計算しない。
+        /// 論理バンドル分布サマリを算出し、フィールドにキャッシュする。
         /// settings が null、または dryRun.After が null の場合、Distribution タブは表示しない。
         /// </summary>
         private void SetDistribution(DryRunResult dryRun, AddressableAssetSettings settings)
@@ -174,214 +166,226 @@ namespace AddressTeller.Editor
             catch (Exception ex)
             {
                 Debug.LogWarning($"[AddressTeller] Failed to calculate logical bundle distribution summary; the Distribution tab will not be shown: {ex.Message}");
-                _distribution = null;
-                _distributionSummary = null;
-                _showDistributionTab = false;
             }
         }
 
-        private void EnsureDiffTreeView()
-        {
-            if (_diffTreeView != null) return;
-
-            _diffTreeViewState ??= new TreeViewState<int>();
-            _diffHeaderState ??= AddressTellerDiffTreeView.CreateHeaderState();
-
-            var header = new MultiColumnHeader(_diffHeaderState);
-            header.ResizeToFit();
-            _diffTreeView = new AddressTellerDiffTreeView(_diffTreeViewState, header);
-        }
-
-        private void EnsureIssueTreeView()
-        {
-            if (_issueTreeView != null) return;
-
-            _issueTreeViewState ??= new TreeViewState<int>();
-            _issueHeaderState ??= AddressTellerIssueTreeView.CreateHeaderState();
-
-            var header = new MultiColumnHeader(_issueHeaderState);
-            header.ResizeToFit();
-            _issueTreeView = new AddressTellerIssueTreeView(_issueTreeViewState, header);
-        }
-
-        /// <summary>現在のステータスフィルタに基づき、表示行を再構築する。フィルタ変更時のみ呼ぶ。</summary>
+        /// <summary>現在のステータスフィルタに基づき、Issue ツリービューを再バインドする。フィルタ変更時のみ呼ぶ。</summary>
         private void ApplyIssueFilter()
         {
             var filtered = _allIssueRows.Where(r => _statusFilter.TryGetValue(r.Status, out var enabled) && enabled).ToList();
-            EnsureIssueTreeView();
-            _issueTreeView.SetRows(filtered);
+            _issueTreeView?.SetRows(filtered);
         }
 
-        private void OnGUI()
+        public void CreateGUI()
         {
-            if (!string.IsNullOrEmpty(_notice))
-                EditorGUILayout.HelpBox(_notice, MessageType.Info);
+            // USS ロード
+            var commonSS = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerCommon.uss");
+            var windowSS = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.natsume777.addressteller/Editor/EntryPoints/StyleSheets/AddressTellerResultWindow.uss");
+            if (commonSS != null) rootVisualElement.styleSheets.Add(commonSS);
+            if (windowSS != null) rootVisualElement.styleSheets.Add(windowSS);
 
+            RebuildUI();
+        }
+
+        /// <summary>Show() 呼び出し時・初回 CreateGUI 時に rootVisualElement を再構築する。</summary>
+        private void RebuildUI()
+        {
+            var root = rootVisualElement;
+            root.Clear();
+
+            // 注意文
+            _noticeBox = new HelpBox(_notice ?? string.Empty, HelpBoxMessageType.Info);
+            _noticeBox.style.display = string.IsNullOrEmpty(_notice) ? DisplayStyle.None : DisplayStyle.Flex;
+            root.Add(_noticeBox);
+
+            // タブバー
+            _tabBar = new VisualElement();
+            _tabBar.AddToClassList("at-tab-bar");
+            root.Add(_tabBar);
+
+            // 各タブのコンテンツ領域
+            _diffTabContent = new VisualElement();
+            _diffTabContent.AddToClassList("at-tab-content");
+            _issueTabContent = new VisualElement();
+            _issueTabContent.AddToClassList("at-tab-content");
+            _distributionTabContent = new VisualElement();
+            _distributionTabContent.AddToClassList("at-tab-content");
+            root.Add(_diffTabContent);
+            root.Add(_issueTabContent);
+            root.Add(_distributionTabContent);
+
+            // Diff タブの内容
+            BuildDiffTabContent();
+
+            // Issues タブの内容
+            BuildIssueTabContent();
+
+            // Distribution タブの内容
+            BuildDistributionTabContent();
+
+            // タブボタンを並べる
             if (_showDiffTab)
             {
-                var labels = _showDistributionTab ? TabLabelsWithDistribution : TabLabelsWithoutDistribution;
-
-                EditorGUILayout.Space(2);
-                _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, labels);
-                EditorGUILayout.Space(2);
-
-                // Distribution タブが非表示のときに Tab.Distribution が選択されたままになるのを防ぐ。
-                if (_currentTab == Tab.Distribution && !_showDistributionTab)
-                    _currentTab = Tab.Diff;
+                AddTabButton("Diff", Tab.Diff);
+                AddTabButton("Issues", Tab.Issues);
+                if (_showDistributionTab)
+                    AddTabButton("Distribution", Tab.Distribution);
             }
             else
             {
+                // Diff タブなし：Issues タブのみ（ボタン不要、タブバー自体を非表示）
+                _tabBar.style.display = DisplayStyle.None;
                 _currentTab = Tab.Issues;
             }
 
-            switch (_currentTab)
-            {
-                case Tab.Diff:
-                    DrawDiffTab();
-                    break;
-                case Tab.Issues:
-                    DrawIssuesTab();
-                    break;
-                case Tab.Distribution:
-                    DrawDistributionTab();
-                    break;
-            }
+            SwitchTab(_currentTab);
         }
 
-        private void DrawDiffTab()
+        private void AddTabButton(string label, Tab tab)
         {
-            EnsureDiffTreeView();
+            var btn = new Button(() => SwitchTab(tab)) { text = label, name = $"tab-{tab}" };
+            btn.style.marginRight = 2;
+            _tabBar.Add(btn);
+        }
+
+        private void SwitchTab(Tab tab)
+        {
+            _currentTab = tab;
+
+            _diffTabContent.style.display = tab == Tab.Diff ? DisplayStyle.Flex : DisplayStyle.None;
+            _issueTabContent.style.display = tab == Tab.Issues ? DisplayStyle.Flex : DisplayStyle.None;
+            _distributionTabContent.style.display = tab == Tab.Distribution ? DisplayStyle.Flex : DisplayStyle.None;
+
+            // アクティブタブのボタンを太字にする（簡易ハイライト）
+            foreach (var btn in _tabBar.Children().OfType<Button>())
+                btn.style.unityFontStyleAndWeight = btn.name == $"tab-{tab}" ? FontStyle.Bold : FontStyle.Normal;
+        }
+
+        private void BuildDiffTabContent()
+        {
+            _diffTabContent.Clear();
+
+            var summary = $"Added: {_diffRows.Count(r => r.Kind == DiffRowKind.Added)} / " +
+                          $"Removed: {_diffRows.Count(r => r.Kind == DiffRowKind.Removed)} / " +
+                          $"Changed: {_diffRows.Count(r => r.Kind == DiffRowKind.Changed)}";
+            var summaryLabel = new Label(summary);
+            summaryLabel.AddToClassList("at-summary-label");
+            _diffTabContent.Add(summaryLabel);
+
+            if (_groupsToCreate.Count > 0)
+            {
+                var groupsLabel = new Label(
+                    $"Groups to be created: {_groupsToCreate.Count} ({string.Join(", ", _groupsToCreate)})");
+                groupsLabel.AddToClassList("at-summary-label");
+                _diffTabContent.Add(groupsLabel);
+            }
 
             if (_diffRows.Count == 0)
             {
-                EditorGUILayout.HelpBox("No changes detected.", MessageType.Info);
-                DrawGroupsToCreateSummary();
-                DrawApplyButton();
-                return;
+                _diffTabContent.Add(new HelpBox("No changes detected.", HelpBoxMessageType.Info));
             }
-
-            var summary = $"Added: {_diffRows.Count(r => r.Kind == DiffRowKind.Added)} / " +
-                           $"Removed: {_diffRows.Count(r => r.Kind == DiffRowKind.Removed)} / " +
-                           $"Changed: {_diffRows.Count(r => r.Kind == DiffRowKind.Changed)}";
-            EditorGUILayout.LabelField(summary, EditorStyles.miniLabel);
-            DrawGroupsToCreateSummary();
-
-            var rect = GUILayoutUtility.GetRect(0, 100000, 0, 100000);
-            _diffTreeView.OnGUI(rect);
-
-            DrawApplyButton();
-        }
-
-        /// <summary>AutoCreateMissingGroups が有効で新規作成予定のグループがある場合、その件数と名前を表示する。</summary>
-        private void DrawGroupsToCreateSummary()
-        {
-            if (_groupsToCreate.Count == 0) return;
-
-            EditorGUILayout.LabelField(
-                $"Groups to be created: {_groupsToCreate.Count} ({string.Join(", ", _groupsToCreate)})",
-                EditorStyles.miniLabel);
-        }
-
-        /// <summary>
-        /// 確認ダイアログ経由で開かれた場合のみ「この内容で Apply」ボタンを表示する。
-        /// 押下時に実行される Apply は、このウィンドウを開いた時点（dry-run計算時）の
-        /// 対象パス・ルールに基づく。ウィンドウを開いてからアセットやルールが変化した場合、
-        /// 表示中の差分と実際の Apply 結果がずれる可能性があるが、意図的な割り切りとする（M-1）。
-        /// </summary>
-        private void DrawApplyButton()
-        {
-            if (_onApply == null) return;
-
-            EditorGUILayout.Space(2);
-            if (GUILayout.Button("Apply with this content"))
+            else
             {
-                var apply = _onApply;
-                Close();
-                apply();
+                _diffTreeView = new AddressTellerDiffTreeView();
+                _diffTreeView.SetRows(_diffRows);
+                _diffTabContent.Add(_diffTreeView);
             }
-        }
 
-        private void DrawIssuesTab()
-        {
-            EnsureIssueTreeView();
-
-            DrawStatusFilterToolbar();
-
-            if (_allIssueRows.Count == 0)
+            // 確認ダイアログ経由で開かれた場合のみ Apply ボタンを表示する
+            if (_onApply != null)
             {
-                EditorGUILayout.HelpBox("No issues found.", MessageType.Info);
-                return;
+                var applyBtn = new Button(() =>
+                {
+                    var apply = _onApply;
+                    Close();
+                    apply();
+                }) { text = "Apply with this content" };
+                applyBtn.AddToClassList("at-apply-btn");
+                _diffTabContent.Add(applyBtn);
             }
-
-            var rect = GUILayoutUtility.GetRect(0, 100000, 0, 100000);
-            _issueTreeView.OnGUI(rect);
         }
 
-        /// <summary>ステータスごとの表示トグルを描画する。トグル変更時のみフィルタを再適用する。</summary>
-        private void DrawStatusFilterToolbar()
+        private void BuildIssueTabContent()
         {
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Show:", GUILayout.Width(40));
+            _issueTabContent.Clear();
 
-            EditorGUI.BeginChangeCheck();
+            // ステータスフィルタ行
+            var filterRow = new VisualElement();
+            filterRow.AddToClassList("at-filter-row");
+            var filterLabel = new Label("Show:");
+            filterLabel.AddToClassList("at-filter-label");
+            filterRow.Add(filterLabel);
 
             foreach (ValidationStatus status in Enum.GetValues(typeof(ValidationStatus)))
             {
-                var current = _statusFilter.TryGetValue(status, out var enabled) && enabled;
-                _statusFilter[status] = GUILayout.Toggle(current, status.ToString(), EditorStyles.toolbarButton);
+                var s = status; // クロージャ用
+                var toggle = new ToolbarToggle
+                {
+                    text = status.ToString(),
+                    value = _statusFilter.TryGetValue(status, out var enabled) && enabled,
+                };
+                toggle.RegisterValueChangedCallback(e =>
+                {
+                    _statusFilter[s] = e.newValue;
+                    ApplyIssueFilter();
+                });
+                filterRow.Add(toggle);
             }
+            _issueTabContent.Add(filterRow);
 
-            if (EditorGUI.EndChangeCheck())
-                ApplyIssueFilter();
-
-            EditorGUILayout.EndHorizontal();
-        }
-
-        /// <summary>論理バンドル分布サマリを表示する。算出済みの値（SetDistribution でキャッシュ済み）のみ参照する。</summary>
-        private void DrawDistributionTab()
-        {
-            if (_distribution == null || _distributionSummary == null)
+            if (_allIssueRows.Count == 0)
             {
-                EditorGUILayout.HelpBox("No distribution data.", MessageType.Info);
+                _issueTabContent.Add(new HelpBox("No issues found.", HelpBoxMessageType.Info));
                 return;
             }
 
-            EditorGUILayout.LabelField($"Logical bundle count: {_distributionSummary.TotalLogicalBundleCount}");
-            EditorGUILayout.LabelField($"Groups with unknown BundleMode: {_distributionSummary.UnknownGroupCount}");
+            _issueTreeView = new AddressTellerIssueTreeView();
+            ApplyIssueFilter();
+            _issueTabContent.Add(_issueTreeView);
+        }
+
+        private void BuildDistributionTabContent()
+        {
+            _distributionTabContent.Clear();
+
+            if (_distribution == null || _distributionSummary == null)
+            {
+                _distributionTabContent.Add(new HelpBox("No distribution data.", HelpBoxMessageType.Info));
+                return;
+            }
+
+            _distributionTabContent.Add(new Label($"Logical bundle count: {_distributionSummary.TotalLogicalBundleCount}"));
+            _distributionTabContent.Add(new Label($"Groups with unknown BundleMode: {_distributionSummary.UnknownGroupCount}"));
 
             var largest = _distributionSummary.LargestBundle;
             if (largest != null)
             {
-                EditorGUILayout.LabelField(
-                    $"Largest consolidated bundle: {largest.GroupName} / {largest.SplitKey} ({largest.AssetCount} assets)");
+                _distributionTabContent.Add(new Label(
+                    $"Largest consolidated bundle: {largest.GroupName} / {largest.SplitKey} ({largest.AssetCount} assets)"));
             }
 
-            EditorGUILayout.Space(2);
-            EditorGUILayout.LabelField(AddressTellerReportBuilder.BundleDistributionDisclaimer, EditorStyles.miniLabel, GUILayout.MaxWidth(position.width - 10));
+            var disclaimerLabel = new Label(AddressTellerReportBuilder.BundleDistributionDisclaimer);
+            disclaimerLabel.AddToClassList("at-detail-label");
+            _distributionTabContent.Add(disclaimerLabel);
 
-            EditorGUILayout.Space(4);
-            _distributionScroll = EditorGUILayout.BeginScrollView(_distributionScroll);
+            var scroll = new ScrollView();
+            scroll.AddToClassList("at-distribution-scroll");
             foreach (var bundle in _distribution.Bundles)
             {
-                EditorGUILayout.LabelField(
-                    $"{bundle.GroupName} / {bundle.Mode} / {bundle.SplitKey} : {bundle.AssetCount}");
+                scroll.Add(new Label($"{bundle.GroupName} / {bundle.Mode} / {bundle.SplitKey} : {bundle.AssetCount}"));
             }
-            EditorGUILayout.EndScrollView();
+            _distributionTabContent.Add(scroll);
 
-            EditorGUILayout.Space(4);
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Export CSV..."))
-                ExportDistribution("csv", "csv");
-            if (GUILayout.Button("Export Markdown..."))
-                ExportDistribution("markdown", "md");
-            EditorGUILayout.EndHorizontal();
+            var btnRow = new VisualElement();
+            btnRow.AddToClassList("at-export-row");
+            btnRow.Add(new Button(() => ExportDistribution("csv", "csv")) { text = "Export CSV..." });
+            btnRow.Add(new Button(() => ExportDistribution("markdown", "md")) { text = "Export Markdown..." });
+            _distributionTabContent.Add(btnRow);
         }
 
-        /// <summary>
-        /// 算出済みの論理バンドル分布を、ユーザーが選択したファイルに書き出す。
-        /// </summary>
-        /// <param name="format">"csv" または "markdown"。<see cref="BundleDistributionSerializer.WriteToFile"/> に渡す。</param>
-        /// <param name="extension">保存ダイアログのデフォルト拡張子。</param>
+        /// <summary>算出済みの論理バンドル分布をユーザーが選択したファイルに書き出す。</summary>
         private void ExportDistribution(string format, string extension)
         {
             var path = EditorUtility.SaveFilePanel("Export Bundle Distribution", string.Empty, $"bundle-distribution.{extension}", extension);
