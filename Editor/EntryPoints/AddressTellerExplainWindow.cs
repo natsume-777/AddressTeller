@@ -190,6 +190,8 @@ namespace AddressTeller.Editor
                     return ($"Address \"{address}\" assigned", "at-conclusion--ok");
                 case ValidationStatus.Skipped:
                     return ("No matching rule (excluded)", "at-conclusion--muted");
+                case ValidationStatus.LabelsOnly:
+                    return ("Labels only (no address rule matched)", "at-conclusion--muted");
                 case ValidationStatus.ConflictingAddress:
                     return ($"Conflict: {validation.Message}", "at-conclusion--error");
                 case ValidationStatus.GroupNotFound:

@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using System;
 using System.Linq;
 using System.Reflection;
 
@@ -10,6 +11,24 @@ namespace AddressTeller.Editor.Tests
         private sealed class LowPriorityRule : AddressRuleBase
         {
             public override int Order => 10;
+            public override void Configure(IAddressRuleBuilder rules) { }
+        }
+
+        // 引数なしコンストラクタが例外を投げるルール型。
+        // Activator.CreateInstance がそのまま例外を伝播しないことを確認するためのスタブ。
+        private sealed class ThrowingConstructorRule : AddressRuleBase
+        {
+            public ThrowingConstructorRule() => throw new InvalidOperationException("constructor boom");
+            public override int Order => 20;
+            public override void Configure(IAddressRuleBuilder rules) { }
+        }
+
+        // AddressRuleBase を継承したオープンジェネリック型。
+        // IsAbstract / GetConstructor のチェックは通過するが、Activator.CreateInstance は
+        // ArgumentException（open generic type には対応していない）を投げる。
+        private sealed class OpenGenericRule<T> : AddressRuleBase
+        {
+            public override int Order => 30;
             public override void Configure(IAddressRuleBuilder rules) { }
         }
 
@@ -65,6 +84,35 @@ namespace AddressTeller.Editor.Tests
             var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
 
             Assert.IsFalse(rules.Any(r => r.GetType() == typeof(AddressRuleBase)));
+        }
+
+        [Test]
+        public void CollectRules_ConstructorThrows_SkipsTypeButCollectsOthers()
+        {
+            // ThrowingConstructorRule のインスタンス化で例外が発生しても、収集全体が中断せず
+            // 他のルール型は引き続き収集されることを確認する。
+            Assert.DoesNotThrow(() => RuleCollector.CollectRules(new[] { ThisAssembly }));
+
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+
+            Assert.IsFalse(rules.Any(r => r is ThrowingConstructorRule));
+            Assert.IsTrue(rules.Any(r => r is LowPriorityRule));
+            Assert.IsTrue(rules.Any(r => r is HighPriorityRule));
+        }
+
+        [Test]
+        public void CollectRules_OpenGenericType_SkippedWithoutThrowing()
+        {
+            // オープンジェネリック型は IsAbstract / GetConstructor のチェックは通過するが
+            // Activator.CreateInstance が ArgumentException を投げる。例外が外へ漏れず、
+            // 該当型のみスキップされ、他のルールは収集されることを確認する。
+            Assert.DoesNotThrow(() => RuleCollector.CollectRules(new[] { ThisAssembly }));
+
+            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+
+            Assert.IsFalse(rules.Any(r =>
+                r.GetType().IsGenericType && r.GetType().GetGenericTypeDefinition() == typeof(OpenGenericRule<>)));
+            Assert.IsTrue(rules.Any(r => r is LowPriorityRule));
         }
 
         [Test]

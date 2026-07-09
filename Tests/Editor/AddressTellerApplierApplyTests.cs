@@ -43,6 +43,9 @@ namespace AddressTeller.Editor.Tests
         private static AddressResolution EmptyResolution(params RuleEvaluationError[] errors) =>
             new AddressResolution(Array.Empty<AddressCandidate>(), new HashSet<string>(), errors);
 
+        private static AddressResolution LabelsOnlyResolution(params string[] labels) =>
+            new AddressResolution(Array.Empty<AddressCandidate>(), new HashSet<string>(labels));
+
         private HashSet<string> ExistingGroupNames() =>
             new HashSet<string> { _managedGroup.Name, _otherGroup.Name };
 
@@ -97,6 +100,54 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(ValidationStatus.Skipped, result.Status);
             Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
+        }
+
+        [Test]
+        public void LabelsOnly_NoExistingEntry_ReturnsLabelsOnlyStatus_CreatesNoEntry()
+        {
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var result = AddressTellerApplier.Apply(Ctx("guid-new"), LabelsOnlyResolution("tag"), _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
+            Assert.IsNull(_settings.FindAssetEntry("guid-new"));
+        }
+
+        [Test]
+        public void LabelsOnly_ExistingEntryInManagedGroup_CleanupEnabled_NotRemoved_LabelsAdded()
+        {
+            // LabelsOnly はラベルのみルールがマッチしているため CleanupStaleEntries が ON でも削除されてはならない。
+            AddressTellerSettings.CleanupStaleEntries = true;
+            var entry = _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            entry.SetAddress("ExistingAddress");
+            entry.SetLabel("existingLabel", true);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
+            var updated = _settings.FindAssetEntry("guid-managed");
+            Assert.IsNotNull(updated);
+            Assert.AreEqual("ExistingAddress", updated.address);
+            CollectionAssert.AreEquivalent(new[] { "existingLabel", "newLabel" }, updated.labels);
+        }
+
+        [Test]
+        public void LabelsOnly_ExistingEntryInUnmanagedGroup_LabelsNotAdded()
+        {
+            // 管理外グループ(ユーザーが手動登録したエントリ等)には、削除と同様にラベル加算も行わない。
+            var entry = _settings.CreateOrMoveEntry("guid-other", _otherGroup);
+            entry.SetAddress("ExistingAddress");
+            entry.SetLabel("existingLabel", true);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var result = AddressTellerApplier.Apply(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
+            var updated = _settings.FindAssetEntry("guid-other");
+            Assert.IsNotNull(updated);
+            Assert.AreEqual("ExistingAddress", updated.address);
+            CollectionAssert.AreEquivalent(new[] { "existingLabel" }, updated.labels);
         }
 
         [Test]

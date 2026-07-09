@@ -293,6 +293,23 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void BuildIssueRows_NullContext_DoesNotThrow_FallsBackToEmptyStrings()
+        {
+            // Context は設計上 nullable。RuleError 等、AssetContext を確定できない場合に null になり得る。
+            var issues = new List<ValidationResult>
+            {
+                new ValidationResult(null, ValidationStatus.RuleError, "rule threw"),
+            };
+
+            List<IssueRow> rows = null;
+            Assert.DoesNotThrow(() => rows = AddressTellerResultWindowRows.BuildIssueRows(issues));
+
+            Assert.AreEqual(1, rows.Count);
+            Assert.AreEqual(string.Empty, rows[0].AssetPath);
+            Assert.AreEqual(string.Empty, rows[0].Guid);
+        }
+
+        [Test]
         public void BuildIssueRows_NonConflictingIssue_HasEmptyConflictingCandidates()
         {
             var ctx = new AssetContext(Guid(AssetAPath), AssetAPath, typeof(GameObject));

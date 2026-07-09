@@ -29,7 +29,8 @@ namespace AddressTeller
             {
                 var segments = ctx.PathSegments;
                 // PathSegments の末尾はファイル名そのものなので、親フォルダ名はその1つ前。
-                // 末尾2要素未満（= Assets/Foo.prefab のようにルート直下）の場合は空文字。
+                // ルート直下（Assets/Foo.prefab のように要素数2）の場合は segments[0]="Assets" が返る
+                // （<summary> の通り）。要素数2未満になるケースは実質存在しないが、フォールバックとして空文字を返す。
                 return segments.Length >= 2 ? segments[segments.Length - 2] : string.Empty;
             };
         }

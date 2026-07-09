@@ -47,6 +47,9 @@ namespace AddressTeller.Editor.Tests
         private static AddressResolution Resolution(IReadOnlyCollection<string> labels, params AddressCandidate[] candidates) =>
             new AddressResolution(candidates, labels);
 
+        private static AddressResolution LabelsOnlyResolution(params string[] labels) =>
+            new AddressResolution(Array.Empty<AddressCandidate>(), new HashSet<string>(labels));
+
         private HashSet<string> ExistingGroupNames() =>
             new HashSet<string> { _managedGroup.Name, _otherGroup.Name };
 
@@ -84,6 +87,54 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(PredictedAction.AddOrUpdate, prediction.Action);
             Assert.AreEqual("NewAddress", prediction.PredictedEntry.Address);
             CollectionAssert.AreEqual(new[] { "existingLabel", "newLabel" }, prediction.PredictedEntry.Labels);
+        }
+
+        [Test]
+        public void LabelsOnly_NoExistingEntry_PredictsNoOp()
+        {
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-new"), LabelsOnlyResolution("tag"), _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
+            Assert.AreEqual(ValidationStatus.LabelsOnly, prediction.Validation.Status);
+            Assert.IsNull(prediction.RemovedFromGroup);
+        }
+
+        [Test]
+        public void LabelsOnly_ExistingEntryInManagedGroup_CleanupEnabled_PredictsAddOrUpdateNotRemove()
+        {
+            // LabelsOnly はラベルのみルールがマッチしているため CleanupStaleEntries が ON でも Remove を予測してはならない。
+            AddressTellerSettings.CleanupStaleEntries = true;
+            var entry = _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            entry.SetAddress("ExistingAddress");
+            entry.SetLabel("existingLabel", true);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-managed"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(PredictedAction.AddOrUpdate, prediction.Action);
+            Assert.AreEqual(ValidationStatus.LabelsOnly, prediction.Validation.Status);
+            Assert.AreEqual("ExistingAddress", prediction.PredictedEntry.Address);
+            Assert.AreEqual(_managedGroup.Name, prediction.PredictedEntry.GroupName);
+            CollectionAssert.AreEqual(new[] { "existingLabel", "newLabel" }, prediction.PredictedEntry.Labels);
+            Assert.IsNull(prediction.RemovedFromGroup);
+        }
+
+        [Test]
+        public void LabelsOnly_ExistingEntryInUnmanagedGroup_PredictsNoOp()
+        {
+            // Apply 側と対称に、管理外グループのエントリはラベル変更も予測しない(NoOp)。
+            var entry = _settings.CreateOrMoveEntry("guid-other", _otherGroup);
+            entry.SetAddress("ExistingAddress");
+            entry.SetLabel("existingLabel", true);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
+            Assert.AreEqual(ValidationStatus.LabelsOnly, prediction.Validation.Status);
+            Assert.IsNull(prediction.RemovedFromGroup);
         }
 
         [Test]

@@ -6,8 +6,13 @@ namespace AddressTeller.Editor
     {
         /// <summary>適用可能。</summary>
         Ok,
-        /// <summary>アドレス候補なし（ルール対象外）。</summary>
+        /// <summary>どのルールにもマッチしなかった（ラベルも含めて何も生成されなかった）。</summary>
         Skipped,
+        /// <summary>
+        /// アドレス候補は無いが、ラベルのみルール（AnyGroup() やアドレス無し Group() ルール）がマッチし
+        /// ラベルを生成した。エントリは stale ではないためクリーンアップ対象外。
+        /// </summary>
+        LabelsOnly,
         /// <summary>2件以上のルールがアドレスを発行した（競合）。</summary>
         ConflictingAddress,
         /// <summary>指定グループが Addressables に存在しない。</summary>
@@ -40,9 +45,10 @@ namespace AddressTeller.Editor
         public IReadOnlyList<AddressCandidate> ConflictingCandidates { get; }
 
         // Skipped はルール対象外という正常系であり、ApplyAll/ValidateAll の issues には積まれない（IsOk = true）。
+        // LabelsOnly はラベルのみルールがマッチした正常系であり、同様に issues には積まれない（IsOk = true）。
         // GroupWillBeCreated は AutoCreateMissingGroups ON 時の作成予定通知であり、Apply をブロックしない（IsOk = true）。
         public bool IsOk => Status == ValidationStatus.Ok || Status == ValidationStatus.Skipped
-            || Status == ValidationStatus.GroupWillBeCreated;
+            || Status == ValidationStatus.LabelsOnly || Status == ValidationStatus.GroupWillBeCreated;
 
         public ValidationResult(AssetContext context, ValidationStatus status, string message,
             IReadOnlyList<AddressCandidate> conflictingCandidates = null)

@@ -147,7 +147,8 @@ namespace AddressTeller.Editor
                         ? issue.Message.Split('\n')[0]
                         : issue.Message;
 
-                    return new IssueRow(issue.Status, issue.Context.Path, issue.Context.Guid, message, candidates);
+                    // Context は設計上 nullable（AddressTellerReportBuilder.BuildReport と同様に防御的にガードする）。
+                    return new IssueRow(issue.Status, issue.Context?.Path ?? string.Empty, issue.Context?.Guid ?? string.Empty, message, candidates);
                 })
                 .OrderBy(r => r.Status)
                 .ThenBy(r => r.AssetPath, StringComparer.Ordinal)

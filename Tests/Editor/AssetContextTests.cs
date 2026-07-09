@@ -122,6 +122,16 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void PathSegments_MultipleAccesses_ReturnSameCachedArrayInstance()
+        {
+            // PathSegments はコンストラクタで1回だけ計算してキャッシュする想定。
+            // 呼び出しのたびに新しい配列が割り当てられていないことを参照の同一性で検証する。
+            var ctx = new AssetContext("abc123", "Assets/Game/Characters/Player.prefab", typeof(GameObject));
+
+            Assert.AreSame(ctx.PathSegments, ctx.PathSegments);
+        }
+
+        [Test]
         public void RelativePathFrom_AssetInSubfolder_ReturnsRelativePath()
         {
             var ctx = new AssetContext("abc123", "Assets/Game/Sub/Player.prefab", typeof(GameObject));

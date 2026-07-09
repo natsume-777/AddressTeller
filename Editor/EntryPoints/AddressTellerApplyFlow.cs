@@ -72,15 +72,50 @@ namespace AddressTeller.Editor
         // 詳細ウィンドウ経由で呼ばれる場合、ここで Validate の再実行は行わない。
         // dry-run 時に validateFirst で検証済みの状態を前提とするが、ウィンドウを開いている間に
         // ルールやアセットが変化していた場合、「問題があれば中止」の契約は保証されない。意図的な割り切り（M-2）。
-        private static void ExecuteApply(AddressableAssetSettings settings, IReadOnlyList<string> paths)
+        // internal（private ではない）: Run() からの通常経路に加え、テストから直接呼び出して
+        // rules=null（リフレクション収集）経路がダミーパスに対して例外なく完了することを確認できるようにする。
+        internal static void ExecuteApply(AddressableAssetSettings settings, IReadOnlyList<string> paths) =>
+            ExecuteApply(settings, paths, null);
+
+        /// <summary>
+        /// <see cref="ExecuteApply(AddressableAssetSettings, IReadOnlyList{string})"/> に評価対象ルールの注入を
+        /// 追加したオーバーロード。rules が null の場合はリフレクションによるルール収集（本来の Run() 経由の挙動）を使う。
+        /// テストからスナップショット・ログ・分岐のみを検証するために、リフレクション収集を経由せず
+        /// 呼び出し側が用意したルール一覧を評価に使えるようにする（<see cref="AddressTellerService"/> の他のオーバーロードと同じ意図）。
+        /// </summary>
+        internal static void ExecuteApply(AddressableAssetSettings settings, IReadOnlyList<string> paths, IReadOnlyList<AddressRuleBase> rules)
         {
             if (AddressTellerSettings.AutoSnapshotBeforeApplyAll)
                 AddressTellerAutoSnapshotService.CaptureAndSave(settings);
 
-            var issues = AddressTellerService.ApplyAll(paths, settings);
+            IReadOnlyList<ValidationResult> issues;
+            bool wasCancelled;
+            // GUI 経由（Menu）のみ EditorProgressReporter でプログレスバーを表示する。
+            // CLI（ApplyAllCLI/ApplyWithValidateCLI）はコンソール表示のみで進捗バーは不要なため対象外
+            // （このクラス自体が CLI 非対応であることはクラス冒頭のコメントの通り）。
+            using (var progress = new EditorProgressReporter("AddressTeller - Apply All"))
+            {
+                issues = rules != null
+                    ? AddressTellerService.ApplyAll(paths, settings, progress, rules)
+                    : AddressTellerService.ApplyAll(paths, settings, progress);
+                wasCancelled = progress.WasCancelled;
+            }
+
+            if (wasCancelled)
+            {
+                // ApplyAll はキャンセル時点までの処理済みアセットへの書き込みを既に完了している（部分適用）。
+                // 巻き戻しは行わないため、その旨を明示してユーザーに伝える。
+                Debug.LogWarning("[AddressTeller] ApplyAll was cancelled by the user. Assets processed before cancellation have already been written (partial apply).");
+                EditorUtility.DisplayDialog(
+                    "AddressTeller - Apply All",
+                    "Apply All was cancelled.\n\nAssets processed before cancellation have already been written (partial apply).",
+                    "OK");
+            }
+
             if (issues.Count == 0)
             {
-                Debug.Log("[AddressTeller] ApplyAll completed.");
+                if (!wasCancelled)
+                    Debug.Log("[AddressTeller] ApplyAll completed.");
                 return;
             }
 

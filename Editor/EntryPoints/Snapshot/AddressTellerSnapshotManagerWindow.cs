@@ -282,7 +282,8 @@ namespace AddressTeller.Editor
 
             var message = mode == SnapshotRestoreMode.Exact
                 ? $"Restore state from '{item.FileName}'.\n\n" +
-                  "Exact mode: labels added after the snapshot was taken will be removed. This operation cannot be undone."
+                  "Exact mode: labels added after the snapshot was taken will be removed. This operation cannot be undone.\n" +
+                  "Entries are not removed; only labels are reconciled."
                 : $"Restore state from '{item.FileName}' (Additive).\n\n" +
                   "The Address/Group/Label values recorded in the snapshot will be written. Labels added after the snapshot was taken are preserved.";
 

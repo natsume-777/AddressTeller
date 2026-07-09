@@ -77,6 +77,7 @@ namespace AddressTeller
             private Func<AssetContext, bool> _predicate = _ => true;
             private bool _whereSet;
             private Func<AssetContext, string> _addressSelector;
+            private bool _addressSet;
             private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
 
             internal AddressRuleGroupBuilder(string groupName, string sourceClass)
@@ -120,15 +121,30 @@ namespace AddressTeller
 
             public IAddressRuleGroupBuilder Address(Func<AssetContext, string> selector)
             {
+                ThrowIfAddressAlreadySet();
                 _addressSelector = selector ?? throw new ArgumentNullException(nameof(selector));
+                _addressSet = true;
                 return this;
             }
 
             public IAddressRuleGroupBuilder Address(string address)
             {
                 if (string.IsNullOrEmpty(address)) throw new ArgumentException("address must not be empty.", nameof(address));
+                ThrowIfAddressAlreadySet();
                 _addressSelector = _ => address;
+                _addressSet = true;
                 return this;
+            }
+
+            // Where() と同様、2回目の Address() 呼び出しを黙って上書きせず例外にする。
+            // 「1ルールにつきアドレスは1件」という曖昧さのない状態を保証し、意図しない上書きに
+            // 気づけるようにするため（design-decisions.md のアドレス衝突方針と同じ考え方）。
+            private void ThrowIfAddressAlreadySet()
+            {
+                if (_addressSet)
+                    throw new InvalidOperationException(
+                        $"Address() can be called only once on Group(\"{_groupName}\"). " +
+                        "Calling it again would silently overwrite the previous address.");
             }
 
             public IAddressRuleGroupBuilder Label(Func<AssetContext, string> selector)

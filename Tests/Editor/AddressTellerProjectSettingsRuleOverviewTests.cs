@@ -49,6 +49,29 @@ namespace AddressTeller.Editor.Tests
             public override void Configure(IAddressRuleBuilder rules) { }
         }
 
+        // AnyGroup() のみを使うルール（GroupName は null になる）。
+        private sealed class AnyGroupOnlyRule : AddressRuleBase
+        {
+            public override int Order => 2;
+
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.AnyGroup().Label("common");
+            }
+        }
+
+        // GroupDefault() と通常の Group() を両方使うルール。
+        private sealed class DefaultGroupAndNamedGroupRule : AddressRuleBase
+        {
+            public override int Order => 3;
+
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.GroupDefault().Address(ctx => ctx.FileNameWithoutExtension);
+                rules.Group("Named").Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
         [Test]
         public void BuildRuleOverviewCache_ExtractsEntryMetadata()
         {
@@ -200,6 +223,37 @@ namespace AddressTeller.Editor.Tests
             var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
 
             CollectionAssert.AreEqual(new[] { "Atlas", "Textures" }, managedGroups);
+        }
+
+        [Test]
+        public void CollectManagedGroups_AnyGroupRule_DoesNotInsertNull()
+        {
+            // AnyGroup() のエントリは GroupName が null になる。RuleEvaluationPipeline.BuildSetup の
+            // managedGroups がこれを除外するのと同じく、CollectManagedGroups の結果にも
+            // null が含まれてはならない（"Managed Groups (N)" の水増し・空行表示を防ぐ）。
+            var rules = new AddressRuleBase[] { new AnyGroupOnlyRule(), new TwoGroupRule() };
+            var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
+
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+
+            Assert.IsFalse(managedGroups.Any(g => g == null));
+            CollectionAssert.AreEqual(new[] { "Atlas", "Textures" }, managedGroups);
+        }
+
+        [Test]
+        public void CollectManagedGroups_GroupDefaultSentinel_ExcludedLikeBuildSetup()
+        {
+            // GroupDefault() は Configure() の生出力ではセンチネル文字列のままであり、
+            // 概要キャッシュの構築過程では実際の DefaultGroup 名へ解決されない
+            // （解決は RuleEvaluationPipeline.BuildSetup がループ実行時に1回だけ行う）。
+            // BuildSetup の managedGroups が未解決センチネルを除外するのと同じ条件で、
+            // CollectManagedGroups も "(Default Group)" のような表示名を含めてはならない。
+            var rules = new AddressRuleBase[] { new DefaultGroupAndNamedGroupRule() };
+            var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
+
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+
+            CollectionAssert.AreEqual(new[] { "Named" }, managedGroups);
         }
     }
 }

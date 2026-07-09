@@ -8,6 +8,28 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `RestoreExactWithRemoval` API を新設。`Undo Last Apply` が確認ダイアログの件数どおりにエントリを削除するようになり、従前のエントリ未削除状態を改正した。
+- ルール収集がコンストラクタ例外またはオープンジェネリック型で中断しなくなり、問題のあるルールはスキップして評価を継続する。
+- 設定フォルダの除外判定がパス区切り文字を含めるようになり、隣接するフォルダ名（例: `AddressableAssetsData_Backup`）の誤除外を防止。
+- クリーンアップがラベルのみルールにマッチするエントリを誤削除しなくなり、`ValidationStatus.LabelsOnly` を新設してラベルのみマッチを正しく追跡。
+- `CollectManagedGroups` が `null` 値と未解決の `GroupDefault()` センチネルを管理対象グループ一覧から除外するように修正。
+- `ApplyAll` が `paths: null` で呼ばれたときの `NullReferenceException` を修正。
+- `AutoCreateMissingGroups` 実行後の同一グループに対する重複警告・処理を修正。
+- 結果ウィンドウで `Context` が `null` のときに発生しうる `NullReferenceException` を修正。
+- スナップショット保存が同一秒内で上書きされる問題を修正し、書き込み失敗時のエラーハンドリングを改善。
+- スナップショットファイル関連ヘルパーの重複とフォルダ境界判定を修正。
+- `SnapshotFolder` パストラバーサル脆弱性を修正し、パスをプロジェクトディレクトリ内に制限するレンジチェックを追加。
+- `Apply All` がプログレスバー表示・キャンセル機能に欠けていた問題を修正し、`EditorProgressReporter` を統合。
+- `Naming` クラスのコメント誤りを修正。
+- `AssetContext.PathSegments` の配列割り当てをキャッシュ化して削減。
+- ラベルのみルールが管理外グループのエントリに所有権判定なしにラベルを書き込んでいた問題を修正し、管理対象グループのみに制限。
+
+### Changed
+
+- **BREAKING**: `IAddressRuleBuilder.Address()` を同一ルール上で2回呼び出すと `InvalidOperationException` を投げるようになり、`Where()` と同様の早期検出を実現。従前は重複アドレス指定が無警告で上書きされていた。
+
 ### Documentation
 
 - README.md および Documentation~ 配下の全ファイルに英語版を追加した。元の日本語版は `.ja.md` ファイル（例: `README.ja.md`、`architecture.ja.md`）として保存し、各ファイル冒頭に言語切替リンクを追記した。

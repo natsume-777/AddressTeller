@@ -32,7 +32,7 @@ namespace AddressTeller
         public string Extension => System.IO.Path.GetExtension(Path).ToLower(CultureInfo.InvariantCulture);
 
         /// <summary>Path を "/" で分割したセグメント配列。空セグメントは除去し、大文字小文字・表記は変換しない。</summary>
-        public string[] PathSegments => Path.Split('/').Where(s => s.Length > 0).ToArray();
+        public string[] PathSegments { get; }
 
         public AssetContext(string guid, string path, Type type)
         {
@@ -42,6 +42,11 @@ namespace AddressTeller
             Guid = guid;
             Path = path.Replace('\\', '/');
             Type = type ?? throw new ArgumentNullException(nameof(type));
+
+            // AssetContext はイミュータブルなので、Naming.ParentFolderName() 等から資産ごと・ルールごとに
+            // 繰り返しアクセスされる PathSegments はコンストラクタで1回だけ計算してキャッシュする
+            // （プロジェクト全体ループ内で毎回 Split/Where/ToArray を割り当てないようにするため）。
+            PathSegments = Path.Split('/').Where(s => s.Length > 0).ToArray();
         }
 
         /// <summary>指定フォルダ配下（再帰的に含む）かどうかを判定する。</summary>

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
@@ -29,8 +31,7 @@ namespace AddressTeller.Editor
 
             var configFolder = settings.ConfigFolder;
             var changed = importedAssets.Concat(deletedAssets).Concat(movedAssets).ToArray();
-            if (changed.Length == 0) return;
-            if (changed.All(p => p.StartsWith(configFolder, System.StringComparison.Ordinal))) return;
+            if (ShouldSkip(configFolder, changed)) return;
 
             s_isApplying = true;
             try
@@ -46,15 +47,44 @@ namespace AddressTeller.Editor
 
                 if (deletedAssets.Length > 0)
                 {
-                    var deletedGuids = deletedAssets
-                        .Select(p => AssetDatabase.AssetPathToGUID(p, AssetPathToGUIDOptions.IncludeRecentlyDeletedAssets))
-                        .Where(guid => !string.IsNullOrEmpty(guid));
+                    var deletedGuids = ResolveDeletedGuids(
+                        deletedAssets,
+                        p => AssetDatabase.AssetPathToGUID(p, AssetPathToGUIDOptions.IncludeRecentlyDeletedAssets));
                     AddressTellerService.RemoveEntriesForDeletedAssets(deletedGuids, settings);
                 }
             }
             finally
             {
                 s_isApplying = false;
+            }
+        }
+
+        /// <summary>
+        /// 変更されたパス群（import/delete/move の全パスをまとめたもの）が ConfigFolder 配下のみ、
+        /// または変更が0件かどうかを判定する。true の場合、OnPostprocessAllAssets は処理をスキップする
+        /// （Addressables 設定ファイル自体の変更のみでは Apply を走らせる必要がないため）。
+        /// </summary>
+        internal static bool ShouldSkip(string configFolder, IReadOnlyList<string> changedPaths)
+        {
+            if (changedPaths.Count == 0) return true;
+
+            // "/" 境界込みで比較する（AssetFilter.ShouldExcludeByPath と同様。隣接フォルダの誤除外を避けるため）。
+            var configFolderPrefix = configFolder.TrimEnd('/') + "/";
+            return changedPaths.All(p => p.StartsWith(configFolderPrefix, StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// 削除されたアセットパス群から、GUID解決に成功したもの（空文字・null でないもの）だけを抽出する。
+        /// pathToGuid は実運用では AssetDatabase.AssetPathToGUID(..., IncludeRecentlyDeletedAssets) を渡すが、
+        /// テストでは差し替え可能にすることで AssetDatabase に依存せずフィルタリングロジックのみを検証できる。
+        /// </summary>
+        internal static IEnumerable<string> ResolveDeletedGuids(IReadOnlyList<string> deletedAssets, Func<string, string> pathToGuid)
+        {
+            foreach (var path in deletedAssets)
+            {
+                var guid = pathToGuid(path);
+                if (!string.IsNullOrEmpty(guid))
+                    yield return guid;
             }
         }
     }

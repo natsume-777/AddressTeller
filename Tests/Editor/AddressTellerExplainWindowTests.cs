@@ -48,6 +48,19 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void LabelsOnly_ConclusionMentionsLabelsOnly()
+        {
+            var validation = new ValidationResult(Ctx(), ValidationStatus.LabelsOnly,
+                "Only label rule(s) matched; no address assigned.");
+            var resolution = Resolution(labels: new[] { "tag" });
+
+            var (text, cssClass) = AddressTellerExplainWindow.DescribeConclusion(validation, resolution);
+
+            StringAssert.Contains("Labels only", text);
+            Assert.AreEqual("at-conclusion--muted", cssClass);
+        }
+
+        [Test]
         public void RuleErrors_ButStatusOk_ConclusionShowsOkNotRuleError()
         {
             // 他のルールがマッチしてアドレスが確定している場合は、Ok 表示を優先する

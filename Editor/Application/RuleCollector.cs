@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using UnityEngine;
 
 namespace AddressTeller.Editor
 {
@@ -57,7 +58,19 @@ namespace AddressTeller.Editor
                     if (!typeof(AddressRuleBase).IsAssignableFrom(type)) continue;
                     if (type.GetConstructor(Type.EmptyTypes) == null) continue;
 
-                    rules.Add((AddressRuleBase)Activator.CreateInstance(type));
+                    // Activator.CreateInstance は、引数なしコンストラクタが例外を投げる場合や
+                    // AddressRuleBase を継承したオープンジェネリック型（GetConstructor までは通過する）
+                    // で ArgumentException 等を投げうる。1件の失敗でルール収集全体
+                    // （以降の全アセットインポート／メニュー／CLI 操作）を止めないよう、
+                    // 型単位で try/catch し、失敗した型はスキップして収集を継続する。
+                    try
+                    {
+                        rules.Add((AddressRuleBase)Activator.CreateInstance(type));
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[AddressTeller] Failed to instantiate rule class '{type.FullName}': {ex.Message}. This rule class will be skipped.");
+                    }
                 }
             }
 

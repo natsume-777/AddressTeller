@@ -13,7 +13,7 @@ namespace AddressTeller.Editor
         /// <summary>スナップショットの Address/Label のみ書き込む。スナップショット作成後に付与されたラベルは保持する。</summary>
         Additive,
 
-        /// <summary>スナップショットにないラベルを剥がし、スナップショットの状態に完全一致させる。</summary>
+        /// <summary>スナップショットにないラベルを剥がす（ラベルの完全一致）。エントリの削除は行わない。</summary>
         Exact,
     }
 
@@ -187,6 +187,30 @@ namespace AddressTeller.Editor
             }
 
             return issues;
+        }
+
+        /// <summary>
+        /// Undo Last Apply 専用の復元処理。<paramref name="guidsToRemove"/> に含まれる GUID のエントリを
+        /// 先に削除してから <see cref="Restore"/> を Exact モードで実行する。
+        /// 汎用の <see cref="Restore"/> はエントリの削除を一切行わないため（意図的な設計。管理外グループへの
+        /// 誤削除を防ぐ）、Undo Last Apply のように「Apply 直前の状態へ戻す」ことが明確な文脈でのみ、
+        /// 呼び出し側が所有権判定（managedGroups）で絞り込んだ GUID を渡してエントリ削除を行う。
+        /// </summary>
+        public static IReadOnlyList<string> RestoreExactWithRemoval(
+            AddressTellerSnapshot snapshot,
+            AddressableAssetSettings settings,
+            IEnumerable<string> guidsToRemove)
+        {
+            foreach (var guid in guidsToRemove)
+            {
+                var entry = settings.FindAssetEntry(guid);
+                if (entry?.parentGroup == null) continue;
+
+                Debug.LogWarning($"[AddressTeller] Removing entry: guid={guid}, group='{entry.parentGroup.Name}', address='{entry.address}' (undo of last apply).");
+                settings.RemoveAssetEntry(guid);
+            }
+
+            return Restore(snapshot, settings, SnapshotRestoreMode.Exact);
         }
 
         /// <summary>

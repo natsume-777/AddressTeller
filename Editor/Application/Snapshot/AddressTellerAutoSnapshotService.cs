@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using UnityEditor;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
@@ -14,9 +13,6 @@ namespace AddressTeller.Editor
     /// </summary>
     internal static class AddressTellerAutoSnapshotService
     {
-        private const string FilePrefix = "AddressTellerSnapshot_";
-        private const string FileExtension = ".json";
-
         /// <summary>SnapshotFolder 配下の自動スナップショット用サブフォルダ名。SnapshotFileCatalog から自動判定にも使う。</summary>
         internal const string AutoFolderName = "Auto";
 
@@ -46,10 +42,10 @@ namespace AddressTeller.Editor
             {
                 var folder = GetAutoSnapshotFolder();
                 var snapshot = AddressTellerSnapshotService.Capture(settings);
-                var path = ResolveUniquePath(folder, DateTime.Now);
+                var path = SnapshotFileHelper.ResolveUniquePath(folder, DateTime.Now);
 
                 File.WriteAllText(path, snapshot.ToJson());
-                RefreshIfInsideAssets(path);
+                SnapshotFileHelper.RefreshIfInsideAssets(path);
 
                 Rotate(AddressTellerSettings.AutoSnapshotRetention);
 
@@ -59,23 +55,6 @@ namespace AddressTeller.Editor
             {
                 Debug.LogError($"[AddressTeller] AutoSnapshot: Failed to save auto snapshot: {e}");
                 return null;
-            }
-        }
-
-        /// <summary>
-        /// 既存の手動 Save Snapshot と同じ命名規則（AddressTellerSnapshot_yyyyMMdd_HHmmss.json）で
-        /// ファイル名を組み立て、同名が既に存在する場合は連番サフィックス _1, _2... で一意化する。
-        /// </summary>
-        private static string ResolveUniquePath(string folder, DateTime timestamp)
-        {
-            var baseName = $"{FilePrefix}{timestamp:yyyyMMdd_HHmmss}";
-            var path = Path.Combine(folder, baseName + FileExtension);
-            if (!File.Exists(path)) return path;
-
-            for (var i = 1; ; i++)
-            {
-                var candidate = Path.Combine(folder, $"{baseName}_{i}{FileExtension}");
-                if (!File.Exists(candidate)) return candidate;
             }
         }
 
@@ -136,18 +115,10 @@ namespace AddressTeller.Editor
             var folder = Path.Combine(AddressTellerSettings.GetSnapshotFolderAbsolutePath(), AutoFolderName);
             if (!Directory.Exists(folder)) return new System.Collections.Generic.List<string>();
 
-            return Directory.GetFiles(folder, $"{FilePrefix}*{FileExtension}")
+            return Directory.GetFiles(folder, $"{SnapshotFileHelper.FilePrefix}*{SnapshotFileHelper.FileExtension}")
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .ThenByDescending(Path.GetFileName, StringComparer.Ordinal)
                 .ToList();
-        }
-
-        /// <summary>Assets 配下に保存した場合のみ AssetDatabase.Refresh() で Project ウィンドウに反映する。</summary>
-        private static void RefreshIfInsideAssets(string absolutePath)
-        {
-            var dataPath = Path.GetFullPath(Application.dataPath);
-            if (absolutePath.StartsWith(dataPath, StringComparison.OrdinalIgnoreCase))
-                AssetDatabase.Refresh();
         }
     }
 }
