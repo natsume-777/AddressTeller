@@ -49,7 +49,9 @@ namespace AddressTeller
 
     /// <summary>
     /// 1アセットに対するルール評価結果。
-    /// AddressCandidates が 2 件以上のとき競合。0 件のときこのアセットは対象外。
+    /// AddressCandidates が 2 件以上のとき競合。0 件でも Labels が1件以上あればラベルのみルールがマッチしている
+    /// （AddressTellerApplier.Validate の LabelsOnly 判定）。AddressCandidates も Labels も 0 件のときのみ、
+    /// このアセットはどのルールにもマッチしていない（対象外）。
     /// Labels は全マッチルールから蓄積される。
     /// </summary>
     internal sealed class AddressResolution

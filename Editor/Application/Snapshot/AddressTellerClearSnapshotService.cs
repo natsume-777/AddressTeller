@@ -1,8 +1,6 @@
 using System;
 using System.IO;
-using UnityEditor;
 using UnityEditor.AddressableAssets.Settings;
-using UnityEngine;
 
 namespace AddressTeller.Editor
 {
@@ -14,9 +12,6 @@ namespace AddressTeller.Editor
     /// </summary>
     internal static class AddressTellerClearSnapshotService
     {
-        private const string FilePrefix = "AddressTellerSnapshot_";
-        private const string FileExtension = ".json";
-
         /// <summary>SnapshotFolder 配下の Clear 専用スナップショット用サブフォルダ名。</summary>
         internal const string ClearFolderName = "Clear";
 
@@ -45,10 +40,10 @@ namespace AddressTeller.Editor
             {
                 var folder = GetClearSnapshotFolder();
                 var snapshot = AddressTellerSnapshotService.Capture(settings, "Before Clear All Addresses & Labels");
-                var path = ResolveUniquePath(folder, DateTime.Now);
+                var path = SnapshotFileHelper.ResolveUniquePath(folder, DateTime.Now);
 
                 File.WriteAllText(path, snapshot.ToJson());
-                RefreshIfInsideAssets(path);
+                SnapshotFileHelper.RefreshIfInsideAssets(path);
 
                 error = null;
                 return path;
@@ -58,31 +53,6 @@ namespace AddressTeller.Editor
                 error = $"Failed to save the Clear snapshot: {e}";
                 return null;
             }
-        }
-
-        /// <summary>
-        /// 既存の手動 Save Snapshot と同じ命名規則（AddressTellerSnapshot_yyyyMMdd_HHmmss.json）で
-        /// ファイル名を組み立て、同名が既に存在する場合は連番サフィックス _1, _2... で一意化する。
-        /// </summary>
-        private static string ResolveUniquePath(string folder, DateTime timestamp)
-        {
-            var baseName = $"{FilePrefix}{timestamp:yyyyMMdd_HHmmss}";
-            var path = Path.Combine(folder, baseName + FileExtension);
-            if (!File.Exists(path)) return path;
-
-            for (var i = 1; ; i++)
-            {
-                var candidate = Path.Combine(folder, $"{baseName}_{i}{FileExtension}");
-                if (!File.Exists(candidate)) return candidate;
-            }
-        }
-
-        /// <summary>Assets 配下に保存した場合のみ AssetDatabase.Refresh() で Project ウィンドウに反映する。</summary>
-        private static void RefreshIfInsideAssets(string absolutePath)
-        {
-            var dataPath = Path.GetFullPath(Application.dataPath);
-            if (absolutePath.StartsWith(dataPath, StringComparison.OrdinalIgnoreCase))
-                AssetDatabase.Refresh();
         }
     }
 }

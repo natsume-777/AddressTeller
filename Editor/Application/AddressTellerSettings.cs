@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
@@ -46,6 +47,12 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
+        /// <see cref="SnapshotFolder"/> の既定値。範囲チェックで相対パスがプロジェクトルート外に
+        /// 解決された場合のフォールバック先としても使う。
+        /// </summary>
+        public const string DefaultSnapshotFolder = "AddressTellerSnapshots";
+
+        /// <summary>
         /// スナップショットの保存先フォルダ。プロジェクトルート（Assets の親ディレクトリ）からの相対パス。
         /// 既定値は "AddressTellerSnapshots"（Assets 外、Unity にインポートされない）。
         /// "Assets/..." を指定すると Project ウィンドウにも表示される。
@@ -62,11 +69,42 @@ namespace AddressTeller.Editor
             }
         }
 
-        /// <summary>SnapshotFolder をプロジェクトルートからの絶対パスに解決する。</summary>
+        /// <summary>
+        /// SnapshotFolder をプロジェクトルートからの絶対パスに解決する。
+        /// SnapshotFolder が相対パスの場合、"../../shared" のような値によるパストラバーサルで
+        /// プロジェクトルート（Application.dataPath の親ディレクトリ）の外に解決されていないかを検証し、
+        /// 範囲外であれば警告ログを出して <see cref="DefaultSnapshotFolder"/> にフォールバックする
+        /// （スナップショットの保存・Rotate() による削除がプロジェクト外で行われるのを防ぐ）。
+        /// SnapshotFolder が絶対パスとして指定された場合は、テスト用の一時フォルダ指定など意図的な
+        /// 外部指定とみなし、範囲チェックの対象外としてそのまま使用する。
+        /// </summary>
         public static string GetSnapshotFolderAbsolutePath()
         {
             var projectRoot = Path.GetDirectoryName(Application.dataPath);
-            return Path.GetFullPath(Path.Combine(projectRoot, SnapshotFolder));
+            var configured = SnapshotFolder;
+
+            if (Path.IsPathRooted(configured))
+                return Path.GetFullPath(configured);
+
+            var resolved = Path.GetFullPath(Path.Combine(projectRoot, configured));
+            if (IsWithinProjectRoot(resolved, projectRoot))
+                return resolved;
+
+            Debug.LogWarning($"[AddressTeller] SnapshotFolder '{configured}' resolves outside the project root ('{resolved}'). Falling back to the default value '{DefaultSnapshotFolder}'.");
+            return Path.GetFullPath(Path.Combine(projectRoot, DefaultSnapshotFolder));
+        }
+
+        /// <summary>
+        /// <paramref name="resolvedPath"/> が <paramref name="projectRoot"/> 自身、またはその配下かどうかを
+        /// "/" 境界込みで判定する（<paramref name="projectRoot"/> の文字列プレフィックスに一致するだけの
+        /// 別フォルダを誤って範囲内と判定しないため）。
+        /// </summary>
+        private static bool IsWithinProjectRoot(string resolvedPath, string projectRoot)
+        {
+            var normalizedRoot = Path.GetFullPath(projectRoot)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return resolvedPath.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase)
+                || resolvedPath.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -196,7 +234,7 @@ namespace AddressTeller.Editor
     {
         [SerializeField] internal bool _cleanupStaleEntries = true;
         [SerializeField] internal bool _postprocessEnabled = true;
-        [SerializeField] internal string _snapshotFolder = "AddressTellerSnapshots";
+        [SerializeField] internal string _snapshotFolder = AddressTellerSettings.DefaultSnapshotFolder;
         [SerializeField] internal bool _autoSnapshotBeforeApplyAll = true;
         [SerializeField] internal int _autoSnapshotRetention = 10;
         [SerializeField] internal bool _autoCreateMissingGroups = false;

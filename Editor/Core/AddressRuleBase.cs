@@ -73,7 +73,16 @@ namespace AddressTeller
         /// </summary>
         IAddressRuleGroupBuilder Where(AssetCondition condition);
 
+        /// <summary>
+        /// 1グループにつき1回のみ呼び出し可能（もう一方の Address() オーバーロードと合わせて1回）。
+        /// 2回目の呼び出しは InvalidOperationException をスローする（黙って上書きしない）。
+        /// </summary>
         IAddressRuleGroupBuilder Address(Func<AssetContext, string> selector);
+
+        /// <summary>
+        /// 1グループにつき1回のみ呼び出し可能（もう一方の Address() オーバーロードと合わせて1回）。
+        /// 2回目の呼び出しは InvalidOperationException をスローする（黙って上書きしない）。
+        /// </summary>
         IAddressRuleGroupBuilder Address(string address);
         IAddressRuleGroupBuilder Label(Func<AssetContext, string> selector);
         IAddressRuleGroupBuilder Label(string label);

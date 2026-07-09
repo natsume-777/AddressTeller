@@ -46,6 +46,16 @@ namespace AddressTeller.Editor.Tests
                 null));
         }
 
+        [Test]
+        public void AddressablesConfigFolder_AdjacentFolderWithSamePrefix_IsNotExcluded()
+        {
+            // "/" 境界を付けずに StartsWith するだけだと、configFolder と前方一致するだけの
+            // 別フォルダ（例: AddressableAssetsData_Backup）まで誤って除外してしまう。
+            Assert.IsFalse(AssetFilter.ShouldExclude(
+                Ctx("Assets/AddressableAssetsData_Backup/Hero.prefab"),
+                "Assets/AddressableAssetsData"));
+        }
+
         // ShouldExcludeByPath は AssetContext 構築前にパス文字列のみで判定する早期除外用。
         // ShouldExclude(context, ...) のパス部分の判定結果と一致することを確認する。
 
@@ -85,6 +95,14 @@ namespace AddressTeller.Editor.Tests
             Assert.IsFalse(AssetFilter.ShouldExcludeByPath(
                 "Assets/AddressableAssetsData/Settings.asset",
                 null));
+        }
+
+        [Test]
+        public void ShouldExcludeByPath_AdjacentFolderWithSamePrefix_IsNotExcluded()
+        {
+            Assert.IsFalse(AssetFilter.ShouldExcludeByPath(
+                "Assets/AddressableAssetsData_Backup/Hero.prefab",
+                "Assets/AddressableAssetsData"));
         }
 
         [TestCase(@"Assets\Game\Player.cs")]

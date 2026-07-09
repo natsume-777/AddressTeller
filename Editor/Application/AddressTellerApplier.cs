@@ -65,7 +65,14 @@ namespace AddressTeller.Editor
             bool autoCreateMissingGroups = false)
         {
             if (resolution.AddressCandidates.Count == 0)
+            {
+                // アドレス候補は無いが、ラベルが1件以上あればラベルのみルール（AnyGroup() 等）がマッチしている。
+                // これは「どのルールにもマッチしなかった」わけではないため、真の無マッチ(Skipped)とは区別する。
+                if (resolution.Labels.Count > 0)
+                    return new ValidationResult(context, ValidationStatus.LabelsOnly,
+                        "Only label rule(s) matched; no address assigned.");
                 return new ValidationResult(context, ValidationStatus.Skipped, "No matching rule.");
+            }
 
             if (resolution.AddressCandidates.Count > 1)
             {
@@ -125,6 +132,9 @@ namespace AddressTeller.Editor
         /// </summary>
         /// <param name="existingGroupNames">
         /// settings.groups から事前に構築したグループ名の集合（呼び出し側でループ外に1回だけ構築する想定）。
+        /// AutoCreateMissingGroups により新規グループを作成した場合、このメソッドが呼び出し元のコレクションに
+        /// 作成したグループ名を追加する（同じインスタンスをループの全アセットで使い回すことで、
+        /// 2件目以降の同名グループ対象アセットで重複した GroupWillBeCreated 警告・重複 EnsureGroup 呼び出しを防ぐ）。
         /// </param>
         /// <param name="managedGroups">
         /// AddressTeller のいずれかのルールが GroupName として参照しているグループ名の集合。
@@ -142,7 +152,7 @@ namespace AddressTeller.Editor
             AssetContext context,
             AddressResolution resolution,
             AddressableAssetSettings settings,
-            IEnumerable<string> existingGroupNames,
+            ICollection<string> existingGroupNames,
             IReadOnlyCollection<string> managedGroups = null,
             bool autoCreateMissingGroups = false)
         {
@@ -158,6 +168,27 @@ namespace AddressTeller.Editor
                 return result;
             }
 
+            if (result.Status == ValidationStatus.LabelsOnly)
+            {
+                // ラベルのみルールは新規エントリを作らない（アドレス/グループを持たないため）。
+                // 既存エントリがある場合のみ、そのエントリにラベルを加算適用する。cleanup は呼ばない
+                // (このアセットは現在マッチするルールが存在するため stale ではない)。
+                // ただし、削除と同様にラベル加算も「管理対象グループに属するエントリのみ」に限定する。
+                // 管理外グループ(ユーザーが手動登録したエントリ等)には触れない所有権原則を、
+                // 書き込み側であるラベル加算にも適用する。
+                var existingEntry = settings.FindAssetEntry(context.Guid);
+                if (existingEntry?.parentGroup != null
+                    && managedGroups != null && managedGroups.Contains(existingEntry.parentGroup.Name))
+                {
+                    foreach (var label in resolution.Labels)
+                    {
+                        settings.AddLabel(label);
+                        existingEntry.SetLabel(label, true);
+                    }
+                }
+                return result;
+            }
+
             AddressableAssetGroup group;
             if (result.Status == ValidationStatus.GroupWillBeCreated)
             {
@@ -170,6 +201,11 @@ namespace AddressTeller.Editor
                         ValidationStatus.GroupCreationFailed,
                         $"Failed to auto-create group '{candidateForCreate.GroupName}' for '{context.Path}': {failureReason}");
                 }
+
+                // 作成したグループ名を existingGroupNames にも反映する。反映しないと、同じグループを
+                // 対象とする次のアセットでも「存在しない」と誤判定され、GroupWillBeCreated 警告と
+                // EnsureGroup 呼び出しが重複してしまう。
+                existingGroupNames.Add(candidateForCreate.GroupName);
             }
             else if (!result.IsOk)
             {
@@ -226,6 +262,35 @@ namespace AddressTeller.Editor
                 }
 
                 return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
+            }
+
+            if (result.Status == ValidationStatus.LabelsOnly)
+            {
+                // ラベルのみルールは新規エントリを作らない。既存エントリが無ければ Apply しても何も変化しない。
+                var existingEntryForLabels = settings.FindAssetEntry(context.Guid);
+                if (existingEntryForLabels == null)
+                    return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
+
+                // Apply 側と対称に、管理外グループ(ユーザーが手動登録したエントリ等)に属する場合は
+                // ラベル加算そのものを行わないため、予測も NoOp とする。
+                if (existingEntryForLabels.parentGroup == null
+                    || !managedGroups.Contains(existingEntryForLabels.parentGroup.Name))
+                    return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
+
+                // 既存エントリの address/group は維持しつつ、ラベルのみ既存分と resolution.Labels の和集合にする。
+                var labelsOnlyLabels = new HashSet<string>(resolution.Labels);
+                foreach (var existingLabel in existingEntryForLabels.labels)
+                    labelsOnlyLabels.Add(existingLabel);
+
+                var labelsOnlyPredictedEntry = new SnapshotEntry
+                {
+                    Guid = context.Guid,
+                    Address = existingEntryForLabels.address,
+                    GroupName = existingEntryForLabels.parentGroup?.Name,
+                    Labels = labelsOnlyLabels.OrderBy(l => l, StringComparer.Ordinal).ToList(),
+                };
+
+                return new ApplyPrediction(PredictedAction.AddOrUpdate, result, labelsOnlyPredictedEntry, null);
             }
 
             if (!result.IsOk)

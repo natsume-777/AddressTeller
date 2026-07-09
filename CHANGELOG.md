@@ -8,6 +8,28 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 
 ## [Unreleased]
 
+### Fixed
+
+- `RestoreExactWithRemoval` API: `Undo Last Apply` now correctly deletes entries matching the confirmation dialog count, instead of leaving all entries intact.
+- Rule collection no longer stops on constructor exceptions or open generic types; problematic rules are skipped and evaluation continues.
+- Settings folder exclusion filter now includes path separators to prevent adjacent folders (e.g., `AddressableAssetsData_Backup`) from being mistakenly excluded.
+- Cleanup no longer incorrectly deletes entries for assets matched by label-only rules; added `ValidationStatus.LabelsOnly` to properly track label-only rule matches.
+- `CollectManagedGroups` now excludes `null` values and unresolved `GroupDefault()` sentinels from the managed groups list.
+- `NullReferenceException` when `ApplyAll` is called with `paths: null`.
+- Duplicate warnings and processing for the same group after `AutoCreateMissingGroups`.
+- Potential `NullReferenceException` in the result window when `Context` is null.
+- Snapshot file overwriting when multiple saves occur within the same second; improved error handling for write failures.
+- Snapshot file helper duplication and folder boundary detection.
+- `SnapshotFolder` path traversal vulnerability; added range check to restrict paths to the project directory.
+- `Apply All` lacking progress bar display and cancellation support; integrated `EditorProgressReporter`.
+- Incorrect comment in `Naming` class.
+- Unnecessary array allocations in `AssetContext.PathSegments` by caching.
+- Label-only rules incorrectly writing labels to unmanaged group entries without ownership check; labels are now restricted to managed groups.
+
+### Changed
+
+- **BREAKING**: `IAddressRuleBuilder.Address()` now throws `InvalidOperationException` when called twice on the same rule, matching `Where()` behavior. Previously, duplicate address assignments were silently overwritten; this change ensures early detection of ambiguous address specification.
+
 ### Documentation
 
 - Added English versions of README.md and all Documentation~ files. The original Japanese content is preserved as `.ja.md` files (e.g., `README.ja.md`, `architecture.ja.md`). Each file includes a language switch link at the top.

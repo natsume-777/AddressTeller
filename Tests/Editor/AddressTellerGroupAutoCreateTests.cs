@@ -173,6 +173,32 @@ namespace AddressTeller.Editor.Tests
             Assert.AreSame(_existingGroup, entry.parentGroup);
         }
 
+        [Test]
+        public void Apply_AutoCreateOn_SameMissingGroupTwice_SecondAssetReusesCreatedGroup_WithoutDuplicateWarning()
+        {
+            // 同じ existingGroupNames インスタンスを2件のアセットの Apply 呼び出しに使い回すことで、
+            // 1件目でグループが作成された後、2件目では GroupWillBeCreated ではなく Ok になり、
+            // EnsureGroup が再度呼ばれないこと（= 新規グループが1個だけ作成されること）を検証する。
+            var existingGroupNames = ExistingGroupNames();
+            var resolution1 = Resolution(new AddressCandidate("NewGroup", "addr1"));
+            var resolution2 = Resolution(new AddressCandidate("NewGroup", "addr2"));
+
+            var result1 = AddressTellerApplier.Apply(Ctx("guid-1"), resolution1, _settings, existingGroupNames, autoCreateMissingGroups: true);
+            var result2 = AddressTellerApplier.Apply(Ctx("guid-2"), resolution2, _settings, existingGroupNames, autoCreateMissingGroups: true);
+
+            Assert.AreEqual(ValidationStatus.GroupWillBeCreated, result1.Status);
+            Assert.AreEqual(ValidationStatus.Ok, result2.Status,
+                "existingGroupNames に作成済みグループが反映されていれば、2件目は GroupWillBeCreated ではなく Ok になるはず。");
+
+            // NewGroup という名前のグループはちょうど1個だけ作成されていること。
+            var newGroups = _settings.groups.Where(g => g != null && g.Name == "NewGroup").ToList();
+            Assert.AreEqual(1, newGroups.Count);
+
+            var entry1 = _settings.FindAssetEntry("guid-1");
+            var entry2 = _settings.FindAssetEntry("guid-2");
+            Assert.AreSame(entry1.parentGroup, entry2.parentGroup, "2件目のアセットも1件目で作成されたグループへ書き込まれるべき。");
+        }
+
         // --- AddressTellerGroupFactory.EnsureGroup ---
 
         [Test]

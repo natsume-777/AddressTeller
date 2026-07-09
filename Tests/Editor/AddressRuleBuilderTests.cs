@@ -127,6 +127,33 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Address_CalledTwice_StringOverload_Throws()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            var group = builder.Group("G").Address("first");
+
+            Assert.Throws<InvalidOperationException>(() => group.Address("second"));
+        }
+
+        [Test]
+        public void Address_CalledTwice_SelectorOverload_Throws()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            var group = builder.Group("G").Address(ctx => "first");
+
+            Assert.Throws<InvalidOperationException>(() => group.Address(ctx => "second"));
+        }
+
+        [Test]
+        public void Address_CalledTwice_MixedOverloads_Throws()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            var group = builder.Group("G").Address("first");
+
+            Assert.Throws<InvalidOperationException>(() => group.Address(ctx => "second"));
+        }
+
+        [Test]
         public void Where_WithAssetCondition_UsesPredicateAndDescription()
         {
             var condition = new AssetCondition(ctx => ctx.Path.StartsWith("Assets/A/"), "InFolderA");

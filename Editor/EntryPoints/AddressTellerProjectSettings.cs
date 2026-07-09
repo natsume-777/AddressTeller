@@ -385,6 +385,10 @@ namespace AddressTeller.Editor
         /// 有効なルールクラスが Configure() で参照しているグループ名を、<see cref="RuleEvaluationPipeline.BuildSetup"/>
         /// の managedGroups（<see cref="AddressTellerSettings.CleanupStaleEntries"/> /
         /// <see cref="AddressTellerSettings.AutoCreateMissingGroups"/> の対象）と同じ条件で集約する。
+        /// AnyGroup() 由来の GroupName（null）と未解決の GroupDefault() センチネルは
+        /// BuildSetup の managedGroups 計算（<see cref="RuleEvaluationPipeline.BuildSetup"/> 内の
+        /// null / DefaultGroupSentinel 除外）と同じく除外する（この概要キャッシュは Configure() の
+        /// 生出力からのみ構築され、実際の DefaultGroup 解決は行わないため、センチネルは常に未解決扱いとなる）。
         /// 表示順序は決定的にするため Ordinal でソートする。
         /// </summary>
         internal static IReadOnlyList<string> CollectManagedGroups(in RuleOverviewCache overviewCache)
@@ -394,7 +398,11 @@ namespace AddressTeller.Editor
             {
                 if (!AddressTellerSettings.IsRuleEnabled(rule.RuleType.FullName)) continue;
                 foreach (var entry in rule.Entries)
-                    groups.Add(AddressRuleBuilderImpl.DisplayGroupName(entry.GroupName));
+                {
+                    if (entry.GroupName == null || entry.GroupName == AddressRuleBuilderImpl.DefaultGroupSentinel)
+                        continue;
+                    groups.Add(entry.GroupName);
+                }
             }
             return groups.OrderBy(g => g, StringComparer.Ordinal).ToList();
         }

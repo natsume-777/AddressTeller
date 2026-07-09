@@ -54,8 +54,12 @@ namespace AddressTeller.Editor
             if (path.IndexOf("/Editor/", StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
 
+            // "/" 境界込みで比較する。末尾に "/" を付けずに StartsWith するだけだと、
+            // 例えば configFolder="Assets/AddressableAssetsData" のとき
+            // "Assets/AddressableAssetsData_Backup/Hero.prefab" のような隣接フォルダの
+            // アセットまで誤って除外されてしまう。
             if (addressablesConfigFolder != null
-                && path.StartsWith(addressablesConfigFolder, StringComparison.Ordinal))
+                && path.StartsWith(addressablesConfigFolder.TrimEnd('/') + "/", StringComparison.Ordinal))
                 return true;
 
             return false;

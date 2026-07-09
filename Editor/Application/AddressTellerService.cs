@@ -89,6 +89,7 @@ namespace AddressTeller.Editor
 
                 progress ??= NullProgressReporter.Instance;
                 rules ??= Array.Empty<AddressRuleBase>();
+                paths ??= Array.Empty<string>();
 
                 var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
                 // ManagedGroups（CleanupStaleEntriesの対象判定）は有効化されているルールのグループのみが対象。
