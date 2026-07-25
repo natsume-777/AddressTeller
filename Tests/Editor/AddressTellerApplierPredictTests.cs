@@ -192,6 +192,21 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Skipped_WithConfigureFailures_DoesNotPredictRemove()
+        {
+            // Apply の Skipped_WithConfigureFailures_KeepsEntry と対称。managedGroups が信頼できない実行では
+            // Predict も Remove を予測してはならない。
+            AddressTellerSettings.CleanupStaleEntries = true;
+            _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups, hasConfigureFailures: true);
+
+            Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
+            Assert.IsNull(prediction.RemovedFromGroup);
+        }
+
+        [Test]
         public void Conflict_TwoCandidates_PredictsNoOp()
         {
             var resolution = Resolution(

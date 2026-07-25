@@ -10,7 +10,7 @@ namespace AddressTeller.Editor
 {
     /// <summary>
     /// <see cref="AddressTellerReport"/> を JSON / JUnit XML にシリアライズし、ファイルへ書き出す。
-    /// CLI（Step 13-c/d）から呼ばれる想定で、Addressables には依存しない。
+    /// CLI から呼ばれる想定で、Addressables には依存しない。
     /// </summary>
     public static class AddressTellerReportWriter
     {

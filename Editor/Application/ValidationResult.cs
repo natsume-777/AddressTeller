@@ -33,6 +33,12 @@ namespace AddressTeller.Editor
         /// 該当ルールが関わるアセットへの書き込みはスキップされる。
         /// </summary>
         DefaultGroupUnavailable,
+        /// <summary>
+        /// ルールクラスの Configure() 呼び出し自体が例外を送出した。該当ルールは全アセットに対して
+        /// エントリ0件（未評価）として扱われ、他のルールの評価は継続される。Context は特定のアセットに
+        /// 紐づかないため null。
+        /// </summary>
+        RuleConfigureFailed,
     }
 
     public sealed class ValidationResult

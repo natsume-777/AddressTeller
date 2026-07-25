@@ -113,6 +113,8 @@ namespace AddressTeller.Editor
         /// 直近 <see cref="AutoSnapshotRetention"/> 件を超える古いものは自動的に削除される。
         /// 対象は上記2つのメニューのみ。import 時の自動適用（Postprocessor）と CLI
         /// （ApplyAllCLI/ApplyWithValidateCLI）はビルド時間とディスク I/O を避けるため対象外。
+        /// スナップショットの保存自体に失敗した場合、Undo Last Apply の後ろ盾が無い状態のまま
+        /// 破壊的操作を進めないよう、Apply 自体が中止される（<see cref="AddressTellerApplyFlow"/> 参照）。
         /// </summary>
         public static bool AutoSnapshotBeforeApplyAll
         {

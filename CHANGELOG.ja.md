@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- `ValidationStatus.RuleConfigureFailed`: ユーザールールの `Configure()` メソッドが例外を投げた場合に返される。問題のあるルールはスキップされ（エントリ0件として扱われ）、評価は継続される。どのルールに構成問題があるかを特定するのに役立つ。
+- ルール構成エラーが存在する場合、`Undo Last Apply` ダイアログと `Explain` ウィンドウに警告が表示されるため、利用者は報告された結果が不完全であることに気づくことができる。
+
 ### Fixed
 
 - `RestoreExactWithRemoval` API を新設。`Undo Last Apply` が確認ダイアログの件数どおりにエントリを削除するようになり、従前のエントリ未削除状態を改正した。
@@ -25,10 +30,15 @@
 - `Naming` クラスのコメント誤りを修正。
 - `AssetContext.PathSegments` の配列割り当てをキャッシュ化して削減。
 - ラベルのみルールが管理外グループのエントリに所有権判定なしにラベルを書き込んでいた問題を修正し、管理対象グループのみに制限。
+- 自動セーフティスナップショット保存に失敗した場合、従前は無視されていた。`Apply All` / `Apply with Validate` はエラーを適切に処理して実行を停止し、ユーザーに通知するようになった。
+- スナップショット保存時の `Directory.CreateDirectory` が失敗する場合（不正なパスやパーミッション不足など）、例外を発生させずに適切に処理するようになった。
 
 ### Changed
 
 - **BREAKING**: `IAddressRuleBuilder.Address()` を同一ルール上で2回呼び出すと `InvalidOperationException` を投げるようになり、`Where()` と同様の早期検出を実現。従前は重複アドレス指定が無警告で上書きされていた。
+- `ApplyAll`、`ValidateAll`、`BuildPredictedSnapshot` は、ルール構成エラーが検出された場合、stale entry cleanup（DeletedAssets 追跡）をスキップするようになった。問題のあるルールが管理するエントリの誤削除を防ぐため。
+- `ApplyAll` / `Apply with Validate` メニュー実行時、自動セーフティスナップショット保存に失敗した場合はApplyを中止するようになった（`ClearAll` の fail-fast 設計と対称にするため）。
+- `ClearAll` メニューおよび `ClearCLI` コマンドは、ルール構成エラーが存在する場合は中止するようになった（CLIではexit code 3）。
 
 ### Documentation
 

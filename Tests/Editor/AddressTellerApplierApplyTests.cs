@@ -103,6 +103,22 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Skipped_WithConfigureFailures_KeepsEntry()
+        {
+            // 他のルールの Configure() が例外を送出した実行では、managedGroups が
+            // 「失敗したルールが本来担当していたグループを別のルールがたまたま宣言していただけ」の
+            // 可能性があり信頼できないため、Skipped でも削除してはならない。
+            AddressTellerSettings.CleanupStaleEntries = true;
+            _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups, hasConfigureFailures: true);
+
+            Assert.AreEqual(ValidationStatus.Skipped, result.Status);
+            Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
+        }
+
+        [Test]
         public void LabelsOnly_NoExistingEntry_ReturnsLabelsOnlyStatus_CreatesNoEntry()
         {
             var managedGroups = new HashSet<string> { _managedGroup.Name };
@@ -182,6 +198,18 @@ namespace AddressTeller.Editor.Tests
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
             AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups);
+
+            Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
+        }
+
+        [Test]
+        public void RemoveEntryForDeletedAsset_WithConfigureFailures_KeepsEntry()
+        {
+            AddressTellerSettings.CleanupStaleEntries = true;
+            _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups, hasConfigureFailures: true);
 
             Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
         }

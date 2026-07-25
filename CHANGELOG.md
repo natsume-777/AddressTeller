@@ -8,6 +8,11 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 
 ## [Unreleased]
 
+### Added
+
+- `ValidationStatus.RuleConfigureFailed`: returned when a user rule's `Configure()` method throws an exception. The problematic rule is skipped (treated as producing no entries) and evaluation continues; this status helps identify which rule has a configuration problem.
+- Warnings displayed in `Undo Last Apply` dialog and `Explain` window when rule configuration errors exist, so users are aware that reported results are incomplete.
+
 ### Fixed
 
 - `RestoreExactWithRemoval` API: `Undo Last Apply` now correctly deletes entries matching the confirmation dialog count, instead of leaving all entries intact.
@@ -25,10 +30,15 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - Incorrect comment in `Naming` class.
 - Unnecessary array allocations in `AssetContext.PathSegments` by caching.
 - Label-only rules incorrectly writing labels to unmanaged group entries without ownership check; labels are now restricted to managed groups.
+- Automatic safety snapshot save failures were previously ignored; `Apply All` / `Apply with Validate` now properly handle these errors by stopping the operation and notifying the user.
+- Snapshot save operation now handles `Directory.CreateDirectory` failures (e.g., invalid path or permission error) gracefully, preventing unhandled exceptions.
 
 ### Changed
 
 - **BREAKING**: `IAddressRuleBuilder.Address()` now throws `InvalidOperationException` when called twice on the same rule, matching `Where()` behavior. Previously, duplicate address assignments were silently overwritten; this change ensures early detection of ambiguous address specification.
+- `ApplyAll`, `ValidateAll`, and `BuildPredictedSnapshot` now skip stale-entry cleanup (DeletedAssets tracking) if any rule configuration error is detected, preventing incorrect deletions of entries managed by broken rules.
+- `ApplyAll` / `Apply with Validate` menu operations now cancel instead of continuing when automatic safety snapshot save fails, matching the fail-fast design of `ClearAll`.
+- `ClearAll` menu and `ClearCLI` command now abort when rule configuration errors exist (CLI exits with code 3).
 
 ### Documentation
 

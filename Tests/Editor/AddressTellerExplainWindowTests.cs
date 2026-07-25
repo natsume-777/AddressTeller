@@ -64,7 +64,7 @@ namespace AddressTeller.Editor.Tests
         public void RuleErrors_ButStatusOk_ConclusionShowsOkNotRuleError()
         {
             // 他のルールがマッチしてアドレスが確定している場合は、Ok 表示を優先する
-            // （M-1としてスコープ外、RuleError優先表示はSkipped時のみ）。
+            // （RuleError 優先表示は Skipped 時のみ、この観点はスコープ外）。
             var validation = new ValidationResult(Ctx(), ValidationStatus.Ok, null);
             var candidates = new[] { new AddressCandidate("Group", "addr") };
             var resolution = Resolution(candidates: candidates, errors: new[]

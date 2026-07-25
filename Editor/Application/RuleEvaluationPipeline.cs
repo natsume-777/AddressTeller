@@ -31,7 +31,14 @@ namespace AddressTeller.Editor
         /// </summary>
         public bool DefaultGroupUnavailable { get; }
 
-        public EvaluationSetup(IReadOnlyList<AddressRuleEntry> entries, string configFolder, HashSet<string> managedGroups, HashSet<string> existingGroupNames, bool autoCreateMissingGroups, bool defaultGroupUnavailable = false)
+        /// <summary>
+        /// Configure() が例外を送出したルールごとの失敗一覧（<see cref="ValidationStatus.RuleConfigureFailed"/>、
+        /// Context は null）。ApplyAll/ValidateAll/BuildPredictedSnapshot 等、issues リストを返す呼び出し側は
+        /// これをそのまま結果に含めること。ここに含まれるルールは <see cref="Entries"/> に一切寄与しない。
+        /// </summary>
+        public IReadOnlyList<ValidationResult> ConfigureFailures { get; }
+
+        public EvaluationSetup(IReadOnlyList<AddressRuleEntry> entries, string configFolder, HashSet<string> managedGroups, HashSet<string> existingGroupNames, bool autoCreateMissingGroups, bool defaultGroupUnavailable = false, IReadOnlyList<ValidationResult> configureFailures = null)
         {
             Entries = entries;
             ConfigFolder = configFolder;
@@ -39,6 +46,7 @@ namespace AddressTeller.Editor
             ExistingGroupNames = existingGroupNames;
             AutoCreateMissingGroups = autoCreateMissingGroups;
             DefaultGroupUnavailable = defaultGroupUnavailable;
+            ConfigureFailures = configureFailures ?? Array.Empty<ValidationResult>();
         }
     }
 
@@ -58,7 +66,7 @@ namespace AddressTeller.Editor
         /// </summary>
         public static EvaluationSetup BuildSetup(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
         {
-            var entries = GetOrderedEntries(rules);
+            var entries = GetOrderedEntries(rules, out var configureFailures);
             var configFolder = settings.ConfigFolder;
             var defaultGroupUnavailable = false;
 
@@ -98,7 +106,7 @@ namespace AddressTeller.Editor
                 .Select(e => e.GroupName));
             // settings.groups の null 要素を除外する（Capture の if (group == null) continue; と対称にする）。
             var existingGroupNames = new HashSet<string>(settings.groups.Where(g => g != null).Select(g => g.Name));
-            return new EvaluationSetup(entries, configFolder, managedGroups, existingGroupNames, AddressTellerSettings.AutoCreateMissingGroups, defaultGroupUnavailable);
+            return new EvaluationSetup(entries, configFolder, managedGroups, existingGroupNames, AddressTellerSettings.AutoCreateMissingGroups, defaultGroupUnavailable, configureFailures);
         }
 
         /// <summary>
@@ -134,16 +142,41 @@ namespace AddressTeller.Editor
                     $"{error.RuleSource} threw for '{ctx.Path}': {error.Message}"));
         }
 
-        /// <summary>Configure() を実行してルールエントリ一覧を構築する。</summary>
-        private static IReadOnlyList<AddressRuleEntry> GetOrderedEntries(IEnumerable<AddressRuleBase> rules)
+        /// <summary>
+        /// Configure() を実行してルールエントリ一覧を構築する。Configure() はルールごとに try/catch し、
+        /// 例外が発生したルールは他のルールの評価をブロックせずスキップする（該当ルールのエントリは0件）。
+        /// 失敗したルールは <see cref="ValidationStatus.RuleConfigureFailed"/> の <see cref="ValidationResult"/>
+        /// として <paramref name="configureFailures"/> に毎回まとめる（ClearAll/UndoLastApply 等、issues リストを
+        /// 持たない呼び出し側でも失敗が可視化されるようにするため）。コンソールへのエラー出力（スタックトレース込み）も
+        /// 呼び出しのたびに毎回行う。同じ失敗が import のたびに繰り返しログされうるが、原因調査の容易さを優先する。
+        /// </summary>
+        private static IReadOnlyList<AddressRuleEntry> GetOrderedEntries(IEnumerable<AddressRuleBase> rules, out IReadOnlyList<ValidationResult> configureFailures)
         {
             var all = new List<AddressRuleEntry>();
+            List<ValidationResult> failures = null;
+
             foreach (var rule in rules)
             {
                 var builder = new AddressRuleBuilderImpl(rule.GetType().Name);
-                rule.Configure(builder);
+                try
+                {
+                    rule.Configure(builder);
+                }
+                catch (Exception ex)
+                {
+                    var message = $"{rule.GetType().Name}.Configure() threw and will be skipped: {ex.GetType().Name}: {ex.Message}";
+                    // ValidationResult.Message は簡潔なままにし、ログ側にのみスタックトレースを含める。
+                    // 呼び出しのたびに毎回出す（ログが増える代わりに、原因特定に必要な情報を常に確保する）。
+                    Debug.LogError($"[AddressTeller] {message}\n{ex}");
+                    failures ??= new List<ValidationResult>();
+                    failures.Add(new ValidationResult(null, ValidationStatus.RuleConfigureFailed, message));
+                    continue;
+                }
+
                 all.AddRange(builder.Entries);
             }
+
+            configureFailures = (IReadOnlyList<ValidationResult>)failures ?? Array.Empty<ValidationResult>();
             return all;
         }
     }

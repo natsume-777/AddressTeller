@@ -148,21 +148,30 @@ namespace AddressTeller.Editor
         /// 成功すればそのまま書き込みを続行する。失敗した場合は <see cref="ValidationStatus.GroupCreationFailed"/>
         /// を返し書き込みは行わない。
         /// </param>
+        /// <param name="hasConfigureFailures">
+        /// この実行で1件以上のルールの Configure() が例外を送出した（<see cref="EvaluationSetup.ConfigureFailures"/>
+        /// が空でない）場合に true。true の場合、managedGroups は「本来担当するはずだったルールの Configure()
+        /// が失敗した結果、たまたま他のルールが同じグループを宣言していたため残っただけ」の可能性があり信頼できない。
+        /// そのためこのアセットが Skipped でも stale クリーンアップは行わない
+        /// （失敗したルールが担当していたエントリを誤って削除してしまうことを防ぐ）。
+        /// </param>
         public static ValidationResult Apply(
             AssetContext context,
             AddressResolution resolution,
             AddressableAssetSettings settings,
             ICollection<string> existingGroupNames,
             IReadOnlyCollection<string> managedGroups = null,
-            bool autoCreateMissingGroups = false)
+            bool autoCreateMissingGroups = false,
+            bool hasConfigureFailures = false)
         {
             var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups);
 
             if (result.Status == ValidationStatus.Skipped)
             {
-                // ルール例外があった場合は「全ルールが正常評価された上でマッチ0件」とは言えないため、
-                // クリーンアップは行わない(ルールのバグで誤ってエントリを削除しないようにする)。
-                if (resolution.Errors.Count == 0
+                // ルール例外(resolution.Errors)・ルール構成例外(hasConfigureFailures)いずれかがあった場合、
+                // 「全ルールが正常評価された上でマッチ0件」とは言えないため、クリーンアップは行わない
+                // (ルールのバグで誤ってエントリを削除しないようにする)。
+                if (resolution.Errors.Count == 0 && !hasConfigureFailures
                     && managedGroups != null && AddressTellerSettings.CleanupStaleEntries)
                     RemoveStaleEntryIfManaged(context.Guid, settings, managedGroups);
                 return result;
@@ -240,13 +249,18 @@ namespace AddressTeller.Editor
         /// <see cref="ValidationStatus.GroupNotFound"/> ではなく <see cref="ValidationStatus.GroupWillBeCreated"/>
         /// となり（IsOk=true）、AddOrUpdate として予測される（実際の作成は行わない）。
         /// </param>
+        /// <param name="hasConfigureFailures">
+        /// <see cref="Apply"/> の同名パラメータと同じ意図。true の場合、managedGroups が信頼できないため
+        /// stale クリーンアップ（Remove の予測）を行わない。
+        /// </param>
         public static ApplyPrediction Predict(
             AssetContext context,
             AddressResolution resolution,
             AddressableAssetSettings settings,
             HashSet<string> existingGroupNames,
             HashSet<string> managedGroups,
-            bool autoCreateMissingGroups = false)
+            bool autoCreateMissingGroups = false,
+            bool hasConfigureFailures = false)
         {
             var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups);
 
@@ -256,7 +270,8 @@ namespace AddressTeller.Editor
                 if (entry?.parentGroup != null
                     && managedGroups.Contains(entry.parentGroup.Name)
                     && AddressTellerSettings.CleanupStaleEntries
-                    && resolution.Errors.Count == 0)
+                    && resolution.Errors.Count == 0
+                    && !hasConfigureFailures)
                 {
                     return new ApplyPrediction(PredictedAction.Remove, result, null, entry.parentGroup.Name);
                 }
@@ -323,13 +338,19 @@ namespace AddressTeller.Editor
         /// <see cref="AddressTellerSettings.CleanupStaleEntries"/> が true のときのみ削除する。
         /// ルール評価を伴わない（資産が既に存在しない）削除専用のエントリポイント。
         /// </summary>
+        /// <param name="hasConfigureFailures">
+        /// <see cref="Apply"/> の同名パラメータと同じ意図。true の場合、managedGroups が信頼できないため
+        /// 削除を行わない。
+        /// </param>
         public static void RemoveEntryForDeletedAsset(
             string guid,
             AddressableAssetSettings settings,
-            IReadOnlyCollection<string> managedGroups)
+            IReadOnlyCollection<string> managedGroups,
+            bool hasConfigureFailures = false)
         {
             if (managedGroups == null) return;
             if (!AddressTellerSettings.CleanupStaleEntries) return;
+            if (hasConfigureFailures) return;
 
             RemoveStaleEntryIfManaged(guid, settings, managedGroups);
         }

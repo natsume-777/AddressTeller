@@ -269,6 +269,74 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Restore_NullEntry_ReportsIssueAndContinuesRestoringOtherEntries()
+        {
+            // JsonUtility はデフォルトコンストラクタ・フィールド初期化子を経由せずにオブジェクトを生成するため、
+            // 手動編集された/壊れたスナップショット JSON からは entry 自体が null のまま List に混入しうる。
+            var snapshot = new AddressTellerSnapshot();
+            snapshot.Entries.Add(null);
+            snapshot.Entries.Add(Entry("guid-ok", "Bar", "GroupA"));
+
+            IReadOnlyList<string> issues = null;
+            Assert.DoesNotThrow(() => issues = AddressTellerSnapshotService.Restore(snapshot, _settings));
+
+            Assert.AreEqual(1, issues.Count);
+            var restored = _settings.FindAssetEntry("guid-ok");
+            Assert.IsNotNull(restored);
+            Assert.AreEqual("Bar", restored.address);
+        }
+
+        [Test]
+        public void Restore_NullGroupName_ReportsIssueAndContinuesRestoringOtherEntries()
+        {
+            var snapshot = new AddressTellerSnapshot();
+            snapshot.Entries.Add(new SnapshotEntry { Guid = "guid-no-group", Address = "Foo", GroupName = null, Labels = new List<string>() });
+            snapshot.Entries.Add(Entry("guid-ok", "Bar", "GroupA"));
+
+            var issues = AddressTellerSnapshotService.Restore(snapshot, _settings);
+
+            Assert.AreEqual(1, issues.Count);
+            Assert.IsNull(_settings.FindAssetEntry("guid-no-group"));
+            Assert.IsNotNull(_settings.FindAssetEntry("guid-ok"));
+        }
+
+        [Test]
+        public void Restore_NullLabels_ReportsIssueAndContinuesRestoringOtherEntries()
+        {
+            var snapshot = new AddressTellerSnapshot();
+            snapshot.Entries.Add(new SnapshotEntry { Guid = "guid-no-labels", Address = "Foo", GroupName = "GroupA", Labels = null });
+            snapshot.Entries.Add(Entry("guid-ok", "Bar", "GroupA"));
+
+            var issues = AddressTellerSnapshotService.Restore(snapshot, _settings);
+
+            Assert.AreEqual(1, issues.Count);
+            Assert.IsNull(_settings.FindAssetEntry("guid-no-labels"));
+            Assert.IsNotNull(_settings.FindAssetEntry("guid-ok"));
+        }
+
+        [Test]
+        public void Restore_CreateOrMoveEntryReturnsNull_ReportsIssueAndContinuesRestoringOtherEntries()
+        {
+            // AddressableAssetSettings.CreateOrMoveEntry は guid が空文字の場合に null を返す
+            // （targetParent == null || string.IsNullOrEmpty(guid) の早期リターン）。
+            // LoadFromFile 経由の正規スナップショットではここまで空 guid のエントリが混入することはないが、
+            // Restore/RestoreExactWithRemoval は任意の AddressTellerSnapshot を受け取れる公開 API のため、
+            // CreateOrMoveEntry が null を返すケース自体をここで直接再現し、NRE でループが中断しないことを検証する。
+            var snapshot = new AddressTellerSnapshot();
+            snapshot.Entries.Add(Entry("", "Foo", "GroupA"));
+            snapshot.Entries.Add(Entry("guid-ok", "Bar", "GroupA"));
+
+            var issues = AddressTellerSnapshotService.Restore(snapshot, _settings);
+
+            Assert.AreEqual(1, issues.Count);
+            StringAssert.Contains("Failed to create/move entry", issues[0]);
+            // NRE でループが中断されず、後続のエントリは正常に復元されるべき。
+            var restored = _settings.FindAssetEntry("guid-ok");
+            Assert.IsNotNull(restored);
+            Assert.AreEqual("Bar", restored.address);
+        }
+
+        [Test]
         public void Restore_Exact_DoesNotRemoveEntriesNotInSnapshot()
         {
             // 汎用 Restore（Exact モードでもラベルの完全一致のみを行い、エントリ削除は行わない）の固定回帰テスト。
@@ -304,6 +372,21 @@ namespace AddressTeller.Editor.Tests
             AddressTellerSnapshotService.RestoreExactWithRemoval(snapshot, _settings, Array.Empty<string>());
 
             Assert.IsNotNull(_settings.FindAssetEntry("guid1"), "削除対象 GUID に含まれないエントリは保持されるべき。");
+        }
+
+        [Test]
+        public void RestoreExactWithRemoval_CreateOrMoveEntryReturnsNull_DoesNotThrowAndReportsIssue()
+        {
+            // RestoreExactWithRemoval は内部で Restore を呼ぶため、CreateOrMoveEntry が null を返すケースの
+            // NRE 耐性はここでも同様に効くべき（Restore 側のテストと対で確認する回帰テスト）。
+            var snapshot = new AddressTellerSnapshot();
+            snapshot.Entries.Add(Entry("", "Foo", "GroupA"));
+
+            IReadOnlyList<string> issues = null;
+            Assert.DoesNotThrow(() =>
+                issues = AddressTellerSnapshotService.RestoreExactWithRemoval(snapshot, _settings, Array.Empty<string>()));
+
+            Assert.AreEqual(1, issues.Count);
         }
 
         [Test]

@@ -52,12 +52,27 @@ namespace AddressTeller.Editor
         /// ルール一覧をそのまま評価に使う（テスト等での利用を想定）。
         /// </summary>
         public static IReadOnlyList<AssetExplanation> Explain(IReadOnlyList<string> assetPaths, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
+            => Explain(assetPaths, settings, rules, out _);
+
+        /// <summary>
+        /// <see cref="Explain(IReadOnlyList{string}, AddressableAssetSettings, IReadOnlyList{AddressRuleBase})"/> に
+        /// <paramref name="configureFailures"/> を追加したオーバーロード。ルールクラスの Configure() が例外を
+        /// 送出した場合、そのルールはどのアセットの評価にも一切寄与しない（Details に現れない）ため、
+        /// 呼び出し側 UI（Explain ウィンドウ等）が「N 件のルールが構成エラーでスキップされた」ことを
+        /// 提示できるよう、失敗一覧を別途返す。
+        /// </summary>
+        public static IReadOnlyList<AssetExplanation> Explain(IReadOnlyList<string> assetPaths, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules, out IReadOnlyList<ValidationResult> configureFailures)
         {
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
-            if (settings == null) return Array.Empty<AssetExplanation>();
+            if (settings == null)
+            {
+                configureFailures = Array.Empty<ValidationResult>();
+                return Array.Empty<AssetExplanation>();
+            }
             rules ??= Array.Empty<AddressRuleBase>();
 
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
+            configureFailures = setup.ConfigureFailures;
 
             var results = new List<AssetExplanation>(assetPaths.Count);
 

@@ -163,6 +163,22 @@ namespace AddressTeller.Editor
 
             foreach (var entry in snapshot.Entries)
             {
+                // JsonUtility はデフォルトコンストラクタ・フィールド初期化子を経由せずオブジェクトを生成するため、
+                // 手動編集された/壊れたスナップショット JSON では entry 自体や GroupName/Labels が
+                // null のまま渡ってくることがある。CreateOrMoveEntry の null チェックと同様、
+                // ここでも1件のスキップとして扱い、復元全体を止めない。
+                if (entry == null)
+                {
+                    issues.Add("Snapshot entry is invalid (null entry). Skipped.");
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(entry.GroupName) || entry.Labels == null)
+                {
+                    issues.Add($"Snapshot entry is invalid (missing GroupName/Labels). Skipped entry '{entry.Guid}'.");
+                    continue;
+                }
+
                 if (!groupsByName.TryGetValue(entry.GroupName, out var group))
                 {
                     issues.Add($"Group '{entry.GroupName}' not found. Skipped entry '{entry.Guid}'.");
@@ -170,6 +186,14 @@ namespace AddressTeller.Editor
                 }
 
                 var assetEntry = settings.CreateOrMoveEntry(entry.Guid, group);
+                if (assetEntry == null)
+                {
+                    // guid に対応するアセットが既に存在しない等の理由で作成できなかった場合、NRE で
+                    // ループを中断せず、このエントリだけをスキップして復元を継続する（部分的な復元中断防止）。
+                    issues.Add($"Failed to create/move entry for GUID '{entry.Guid}' into group '{entry.GroupName}' (the asset may no longer exist). Skipped.");
+                    continue;
+                }
+
                 assetEntry.SetAddress(entry.Address);
 
                 if (mode == SnapshotRestoreMode.Exact)
@@ -230,8 +254,12 @@ namespace AddressTeller.Editor
             // 重複 Order の警告は RuleCollector.CollectRules() のキャッシュ構築時（ドメインリロードごとに1回）に
             // 出力済みのため、dry-run では出さない（二重ログ防止）。
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
+            // ApplyAll/RemoveEntriesForDeletedAssets と同じ理由（managedGroups が信頼できなくなる）で、
+            // Configure() に失敗したルールがある場合は Remove の予測（stale クリーンアップ）を行わない。
+            // dry-run のため、スキップ自体のログはここでは出さない（実 Apply 側で1本出れば十分なため）。
+            var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
 
-            var issues = new List<ValidationResult>();
+            var issues = new List<ValidationResult>(setup.ConfigureFailures);
             var groupsToCreate = new HashSet<string>();
 
             foreach (var path in paths)
@@ -245,7 +273,7 @@ namespace AddressTeller.Editor
                 var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
                 RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                var prediction = AddressTellerApplier.Predict(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups, setup.AutoCreateMissingGroups);
+                var prediction = AddressTellerApplier.Predict(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups, setup.AutoCreateMissingGroups, hasConfigureFailures);
 
                 switch (prediction.Action)
                 {

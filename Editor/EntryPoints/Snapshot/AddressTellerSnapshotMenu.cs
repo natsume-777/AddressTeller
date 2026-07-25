@@ -21,29 +21,58 @@ namespace AddressTeller.Editor
             }
 
             var snapshot = AddressTellerSnapshotService.Capture(settings);
-            var folder = GetSnapshotFolder();
-            // 同じ秒に2回保存されても上書きされないよう、Auto/Clear スナップショットと同じ一意化ロジックを使う。
-            var path = SnapshotFileHelper.ResolveUniquePath(folder, DateTime.Now);
 
-            try
+            if (!TryWriteSnapshotFile(snapshot, out var path, out var error, out var exception))
             {
-                File.WriteAllText(path, snapshot.ToJson());
-            }
-            catch (Exception e)
-            {
-                // 読み取り専用フォルダ等での書き込み失敗をメニュー操作の未処理例外として漏らさず、
-                // ダイアログとログの両方で明確に伝える。
+                // フォルダ作成（無効な SnapshotFolder 設定等）・ファイル書き込みいずれの失敗も
+                // メニュー操作の未処理例外として漏らさず、ダイアログとログの両方で明確に伝える。
+                // ダイアログには要点（対象フォルダ・簡潔な理由）、ログには調査用にスタックトレース込みの全体を出す。
                 EditorUtility.DisplayDialog(
                     "AddressTeller - Save Snapshot",
-                    $"Failed to save snapshot to '{path}'.\n\n{e.Message}",
+                    $"Failed to save snapshot.\n\n{error}",
                     "OK");
-                Debug.LogError($"[AddressTeller] Save Snapshot: Failed to write '{path}': {e}");
+                Debug.LogError($"[AddressTeller] Save Snapshot: Failed to write snapshot: {exception}");
                 return;
             }
 
-            SnapshotFileHelper.RefreshIfInsideAssets(path);
-
             Debug.Log($"[AddressTeller] Snapshot saved: {path} ({snapshot.Entries.Count} entries)");
+        }
+
+        /// <summary>
+        /// スナップショットをファイルへ書き込む。フォルダ作成（<see cref="GetSnapshotFolder"/> 経由の
+        /// Directory.CreateDirectory）・ファイル書き込みのいずれの失敗も例外として外へ漏らさず、
+        /// false と <paramref name="error"/>（対象フォルダを含む簡潔な理由）・<paramref name="exception"/>
+        /// （呼び出し側がログにスタックトレース込みで出すための元例外）に理由を返す。SaveSnapshot() から
+        /// ダイアログ表示込みで呼ばれるほか、UI（EditorUtility.DisplayDialog）を経由せずテストから
+        /// 直接検証できるように分離する。
+        /// </summary>
+        internal static bool TryWriteSnapshotFile(AddressTellerSnapshot snapshot, out string path, out string error, out Exception exception)
+        {
+            // GetSnapshotFolderAbsolutePath() 自体が Path.GetFullPath/Path.Combine を経由するため、
+            // SnapshotFolder が不正な文字列の場合は catch 節内で再呼び出ししても同じ例外を投げうる
+            // （Try...と名乗りながら例外を外に漏らしてしまう）。folder を try 内で確定できた場合のみ使い、
+            // 確定できなかった場合は catch 内で生の設定値（SnapshotFolder）にフォールバックする。
+            string folder = null;
+            try
+            {
+                folder = GetSnapshotFolder();
+                // 同じ秒に2回保存されても上書きされないよう、Auto/Clear スナップショットと同じ一意化ロジックを使う。
+                path = SnapshotFileHelper.ResolveUniquePath(folder, DateTime.Now);
+                File.WriteAllText(path, snapshot.ToJson());
+                // 兄弟実装(AddressTellerAutoSnapshotService.CaptureAndSave等)と対称に、try 内で行う
+                // （AssetDatabase.Refresh 自体が投げうる例外も同じ catch でエラーとして扱うため）。
+                SnapshotFileHelper.RefreshIfInsideAssets(path);
+                error = null;
+                exception = null;
+                return true;
+            }
+            catch (Exception e)
+            {
+                path = null;
+                error = $"Failed to save snapshot to '{folder ?? AddressTellerSettings.SnapshotFolder}': {e.Message}";
+                exception = e;
+                return false;
+            }
         }
 
         /// <summary>
@@ -84,7 +113,8 @@ namespace AddressTeller.Editor
             // 削除追従の所有権判定（managedGroups）は、有効/無効に関わらず全ルールを対象にする。
             // ルールが Off でも過去に付与されたエントリの所属グループは一貫して管理下として扱うため
             // （RemoveEntriesForDeletedAssets と同じ考え方）。
-            var managedGroups = RuleEvaluationPipeline.BuildSetup(settings, RuleCollector.CollectRules()).ManagedGroups;
+            var setup = RuleEvaluationPipeline.BuildSetup(settings, RuleCollector.CollectRules());
+            var managedGroups = setup.ManagedGroups;
             var removable = diff.Removed.Where(e => managedGroups.Contains(e.GroupName)).ToList();
             var keptCount = diff.Removed.Count - removable.Count;
 
@@ -94,6 +124,15 @@ namespace AddressTeller.Editor
                 $"Entries to remove: {removable.Count}\n" +
                 $"Entries to change: {diff.Changed.Count}\n\n" +
                 (keptCount > 0 ? $"{keptCount} entry/entries in unmanaged groups will be kept.\n\n" : "") +
+                // ルールの Configure() が1件でも失敗していると managedGroups が不完全な可能性がある
+                // （本来 managed のはずのグループが「未検出」として扱われうる）ことをユーザーに明示する。
+                // RuleCollector.CollectRules() は無効化中のルールも含むため、Project Settings で無効化しても
+                // この警告は解除されない（ルールの Configure() 自体を修正する必要がある）旨も添える。
+                (setup.ConfigureFailures.Count > 0
+                    ? $"Warning: {setup.ConfigureFailures.Count} rule(s) failed to configure; some groups may not be recognized as managed.\n"
+                        + $"{string.Join("; ", setup.ConfigureFailures.Select(f => f.Message))}\n"
+                        + "Disabling the rule in Project Settings will not resolve this; fix the rule's Configure() instead.\n\n"
+                    : "") +
                 "Restores in Exact mode; labels added after the snapshot was taken may be removed.";
 
             if (!EditorUtility.DisplayDialog("Undo Last Apply", message, "Restore", "Cancel"))

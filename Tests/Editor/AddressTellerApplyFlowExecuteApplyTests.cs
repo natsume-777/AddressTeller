@@ -59,6 +59,7 @@ namespace AddressTeller.Editor.Tests
         private string _originalSnapshotFolder;
         private bool _originalAutoCreateMissingGroups;
         private string _tempSnapshotRoot;
+        private Action<string, string> _originalNotifyApplyAborted;
 
         [SetUp]
         public void SetUp()
@@ -68,6 +69,10 @@ namespace AddressTeller.Editor.Tests
             _originalAutoCreateMissingGroups = AddressTellerSettings.AutoCreateMissingGroups;
             AddressTellerSettings.AutoCreateMissingGroups = false;
             AddressTellerSettings.AutoSnapshotBeforeApplyAll = false;
+
+            // ExecuteApply の中止経路が実モーダルダイアログを開かないよう、テスト用シームを no-op に差し替える。
+            _originalNotifyApplyAborted = AddressTellerApplyFlow.s_notifyApplyAborted;
+            AddressTellerApplyFlow.s_notifyApplyAborted = (_, _) => { };
 
             _tempSnapshotRoot = Path.Combine(Path.GetTempPath(), "AddressTellerApplyFlowTests_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tempSnapshotRoot);
@@ -93,6 +98,7 @@ namespace AddressTeller.Editor.Tests
             AddressTellerSettings.AutoSnapshotBeforeApplyAll = _originalAutoSnapshot;
             AddressTellerSettings.SnapshotFolder = _originalSnapshotFolder;
             AddressTellerSettings.AutoCreateMissingGroups = _originalAutoCreateMissingGroups;
+            AddressTellerApplyFlow.s_notifyApplyAborted = _originalNotifyApplyAborted;
 
             AssetDatabase.DeleteAsset(TestRootFolder);
 
@@ -140,6 +146,34 @@ namespace AddressTeller.Editor.Tests
 
             Assert.IsNotNull(AddressTellerAutoSnapshotService.FindLatestAuto(),
                 "AutoSnapshotBeforeApplyAll=true の場合、ExecuteApply は Apply の前にスナップショットを保存するべき。");
+        }
+
+        [Test]
+        public void ExecuteApply_AutoSnapshotSaveFails_AbortsApplyWithoutWriting()
+        {
+            // _tempSnapshotRoot（フォルダ）の直下に、Auto サブフォルダと同名の「ファイル」を事前に作ることで、
+            // AddressTellerAutoSnapshotService.CaptureAndSave 内の Directory.CreateDirectory を
+            // 確実かつポータブルに失敗させる（無効な SnapshotFolder 設定を再現する手段）。
+            var conflictingFilePath = Path.Combine(_tempSnapshotRoot, "Auto");
+            File.WriteAllText(conflictingFilePath, "not a directory");
+
+            AddressTellerSettings.AutoSnapshotBeforeApplyAll = true;
+
+            string notifiedMessage = null;
+            AddressTellerApplyFlow.s_notifyApplyAborted = (_, message) => notifiedMessage = message;
+
+            LogAssert.Expect(LogType.Error, new Regex("AutoSnapshot: Failed to save auto snapshot"));
+            LogAssert.Expect(LogType.Error, new Regex(Regex.Escape("[AddressTeller] ApplyAll aborted: failed to save the auto snapshot before Apply.")));
+
+            AddressTellerApplyFlow.ExecuteApply(_settings, new[] { StubAssetPath }, new AddressRuleBase[] { new StubRule() });
+
+            Assert.IsNull(_settings.FindAssetEntry(GuidOf(StubAssetPath)),
+                "自動スナップショットの保存に失敗した場合、Undo Last Apply の後ろ盾が無い状態で Apply を実行してはいけない。");
+            Assert.IsNotNull(notifiedMessage,
+                "自動スナップショットの保存に失敗した場合、s_notifyApplyAborted 経由でユーザーに通知されるべき。");
+
+            // conflictingFilePath は _tempSnapshotRoot 配下にあるため、TearDown の
+            // Directory.Delete(_tempSnapshotRoot, true) で回収される（明示的な削除は不要）。
         }
 
         [Test]

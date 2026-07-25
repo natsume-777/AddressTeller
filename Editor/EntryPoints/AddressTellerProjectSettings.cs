@@ -260,7 +260,7 @@ namespace AddressTeller.Editor
             var autoSnapshotToggle = new Toggle("Auto-snapshot before Apply") { value = AddressTellerSettings.AutoSnapshotBeforeApplyAll };
             autoSnapshotToggle.RegisterValueChangedCallback(e => AddressTellerSettings.AutoSnapshotBeforeApplyAll = e.newValue);
             container.Add(autoSnapshotToggle);
-            container.Add(MakeDescription("Applies only to the Apply All / Apply with Validate menu actions. Auto-apply on import and CLI execution are not covered."));
+            container.Add(MakeDescription("Applies only to the Apply All / Apply with Validate menu actions. Auto-apply on import and CLI execution are not covered. If saving the snapshot fails, Apply itself is aborted (see the Console for details)."));
 
             var retentionField = new IntegerField("Auto-snapshot retention count") { value = AddressTellerSettings.AutoSnapshotRetention };
             retentionField.RegisterValueChangedCallback(e => AddressTellerSettings.AutoSnapshotRetention = e.newValue);

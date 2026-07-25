@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
+using UnityEngine;
 
 namespace AddressTeller.Editor
 {
@@ -96,7 +97,14 @@ namespace AddressTeller.Editor
                 // 無効化中のルールが管理するグループのエントリはApplyAllでは掃除対象外（managed外扱い）になるが、
                 // 資産削除時のRemoveEntriesForDeletedAssetsは全ルール対象で掃除するため、両者の間に非対称が存在する。
 
-                var issues = new List<ValidationResult>();
+                var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
+                // Configure() に失敗したルールがある場合、managedGroups は「失敗したルールが本来担当していた
+                // グループを、別の正常なルールがたまたま宣言していたため残っただけ」の可能性があり信頼できない。
+                // そのためこの実行全体で stale クリーンアップ（Apply の Skipped 分岐での削除）を停止する。
+                if (hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
+                    Debug.LogWarning($"[AddressTeller] Skipping stale entry cleanup for this run because {setup.ConfigureFailures.Count} rule(s) failed to configure.");
+
+                var issues = new List<ValidationResult>(setup.ConfigureFailures);
 
                 var pathList = paths as IList<string> ?? paths.ToList();
                 var total = pathList.Count;
@@ -121,7 +129,7 @@ namespace AddressTeller.Editor
                     var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
                     RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups, setup.AutoCreateMissingGroups);
+                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups, setup.AutoCreateMissingGroups, hasConfigureFailures);
                     // GroupWillBeCreated は IsOk=true（グループ自動作成が成功した）だが、
                     // 「作成された」ことを提示するため issues に情報として積む。
                     if (!result.IsOk || result.Status == ValidationStatus.GroupWillBeCreated)
@@ -170,10 +178,16 @@ namespace AddressTeller.Editor
 
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
+            // ApplyAll と同じ理由（managedGroups が信頼できなくなる）で、Configure() に失敗したルールが
+            // ある場合はこの実行全体で削除追従（stale クリーンアップ）を停止する。
+            var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
+            if (hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
+                Debug.LogWarning($"[AddressTeller] Skipping stale entry cleanup for this run because {setup.ConfigureFailures.Count} rule(s) failed to configure.");
+
             foreach (var guid in deletedGuids)
             {
                 if (string.IsNullOrEmpty(guid)) continue;
-                AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, setup.ManagedGroups);
+                AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, setup.ManagedGroups, hasConfigureFailures);
             }
         }
 
@@ -217,7 +231,7 @@ namespace AddressTeller.Editor
 
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
-            var issues = new List<ValidationResult>();
+            var issues = new List<ValidationResult>(setup.ConfigureFailures);
 
             var pathList = AssetDatabase.GetAllAssetPaths();
             var total = pathList.Length;

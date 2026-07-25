@@ -64,12 +64,24 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
+        /// ClearAll() のルール構成エラー中止通知を差し替え可能にするテスト用シーム。
+        /// 既定では EditorUtility.DisplayDialog を呼ぶが、EditMode テストが実モーダルダイアログを開かずに
+        /// この中止経路を検証できるよう差し替え可能にしている
+        /// （AddressTellerApplyFlow.s_notifyApplyAborted と同じ「テスト用シーム」の考え方。
+        /// テストは差し替え後、TearDown で必ず既定値へ戻すこと）。
+        /// </summary>
+        internal static Action<string> s_notifyClearAborted = message =>
+            EditorUtility.DisplayDialog("AddressTeller - Clear All Addresses & Labels", message, "OK");
+
+        /// <summary>
         /// AddressTeller が管理するグループ（いずれかのルールが GroupName として参照しているグループ）のエントリ
         /// （アドレス・グループ割り当て・ラベル）を削除する。
         /// 既定の安全側運用（資産単位の所有権判定・デフォルト OFF）から意図的に逸脱した、
         /// 公開前パッケージの初期セットアップ用途向けの割り切り機能。実行前に専用スナップショット
         /// （SnapshotFolder/Clear 以下、ローテーション対象外）を必須で保存し、確認ダイアログを経て実行する。
         /// 全エントリを対象にする場合は <see cref="ClearCLI"/> の -addressTellerClearScope all を使う。
+        /// ルールの Configure() が1件でも失敗している場合、managedGroups（所有権判定）が信頼できないため
+        /// 確認ダイアログを出す前に中止する（<see cref="ClearCLI"/> が exit code 3 で中止するのと対称）。
         /// </summary>
         [MenuItem("Tools/AddressTeller/Clear All Addresses & Labels...")]
         public static void ClearAll()
@@ -81,8 +93,29 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            var setup = RuleEvaluationPipeline.BuildSetup(settings, RuleCollector.CollectRules());
-            var managedGroups = setup.ManagedGroups;
+            ClearAll(settings, RuleCollector.CollectRules());
+        }
+
+        /// <summary>
+        /// <see cref="ClearAll()"/> のコア処理。評価対象ルールを注入可能にしたオーバーロード（internal）。
+        /// RuleCollector.CollectRules() はテストアセンブリ（nunit.framework 参照）を除外するため、
+        /// テストからルール構成エラー（Configure() 失敗）による中止分岐を決定的に検証できるよう分離する
+        /// （AddressTellerApplyFlow.ExecuteApply の rules 注入オーバーロードと同じ意図）。
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> が null の場合。</exception>
+        internal static void ClearAll(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
+        {
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
+
+            if (!TryResolveManagedGroups(settings, rules, out var managedGroups, out var abortDetail))
+            {
+                // ルールの Configure() が1件でも失敗していると managedGroups（所有権判定）が信頼できない。
+                // 破壊的操作である Clear はこの状態のまま実行してはいけないため、確認ダイアログを出す前に中止する
+                // （ClearCLI が exit code 3 で中止するのと対称の安全対策）。
+                s_notifyClearAborted($"Aborted: {abortDetail}");
+                Debug.LogError($"[AddressTeller] Clear All aborted: {abortDetail}");
+                return;
+            }
 
             var entryCount = settings.groups
                 .Where(g => g != null && managedGroups.Contains(g.Name))
@@ -115,12 +148,40 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
+        /// scope=Managed でのクリア系操作（<see cref="ClearAll(AddressableAssetSettings, IReadOnlyList{AddressRuleBase})"/> /
+        /// <see cref="ClearCLI"/>）が共有する、managedGroups（所有権判定）の解決処理。
+        /// ルールの Configure() が1件でも失敗している場合、managedGroups は信頼できないため false を返し、
+        /// <paramref name="abortDetail"/> に失敗したルールごとの詳細メッセージを返す
+        /// （RuleCollector.CollectRules() は無効化中のルールも含むため、Project Settings でルールを無効化しても
+        /// この中止は解除されない旨も含める）。
+        /// </summary>
+        private static bool TryResolveManagedGroups(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules, out HashSet<string> managedGroups, out string abortDetail)
+        {
+            var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
+            if (setup.ConfigureFailures.Count > 0)
+            {
+                var detail = string.Join("; ", setup.ConfigureFailures.Select(f => f.Message));
+                abortDetail = $"{setup.ConfigureFailures.Count} rule(s) failed to configure; managed-group ownership cannot be trusted for scope=Managed. {detail} "
+                    + "Disabling the rule in Project Settings will not resolve this (RuleCollector still collects disabled rules for managed-group tracking); fix the rule's Configure() instead.";
+                managedGroups = null;
+                return false;
+            }
+
+            managedGroups = setup.ManagedGroups;
+            abortDetail = null;
+            return true;
+        }
+
+        /// <summary>
         /// CI 向け。-executeMethod AddressTeller.Editor.AddressTellerMenu.ClearCLI で実行。
         /// 確認フラグ <c>-addressTellerConfirmClear</c> が無い場合は意図的な拒否として exit code 4 で終了する
         /// （ダイアログを出せない CLI での誤実行防止）。
         /// <c>-addressTellerClearScope all|managed</c> でクリア対象を切り替える（既定 managed）。
-        /// 実行前に専用スナップショット（SnapshotFolder/Clear 以下）の保存を必須とし、失敗時は exit code 3 で中止する。
-        /// exit code: 0=完了、3=実行環境エラー（スナップショット保存失敗を含む）、4=確認フラグ未指定。
+        /// scope=managed の場合、ルールの Configure() が1件でも失敗していれば managedGroups（所有権判定）が
+        /// 信頼できないため、スナップショットを保存する前に exit code 3 で中止する（何も削除していないのに
+        /// スナップショットだけが残る事態を避けるため）。実行前に専用スナップショット（SnapshotFolder/Clear 以下）の
+        /// 保存を必須とし、失敗時も exit code 3 で中止する。
+        /// exit code: 0=完了、3=実行環境エラー（ルール構成エラー・スナップショット保存失敗を含む）、4=確認フラグ未指定。
         /// </summary>
         public static void ClearCLI()
         {
@@ -146,19 +207,27 @@ namespace AddressTeller.Editor
                 return;
             }
 
+            // managedGroups の解決（所有権判定が信頼できるかの確認）は、スナップショット保存より先に行う。
+            // 逆順だと、ルール構成エラーで中止した際に「何も削除していないのにスナップショットだけが残る」
+            // 孤児ファイルを作ってしまう。
+            IReadOnlyCollection<string> managedGroups = null;
+            if (cliArgs.ClearScope == ClearScope.Managed)
+            {
+                if (!TryResolveManagedGroups(settings, RuleCollector.CollectRules(), out var resolvedManagedGroups, out var abortDetail))
+                {
+                    Debug.LogError($"[AddressTeller] Clear All aborted: {abortDetail}");
+                    EditorApplication.Exit(3);
+                    return;
+                }
+                managedGroups = resolvedManagedGroups;
+            }
+
             var snapshotPath = AddressTellerClearSnapshotService.CaptureAndSave(settings, out var snapshotError);
             if (snapshotPath == null)
             {
                 Debug.LogError($"[AddressTeller] Clear All: {snapshotError}");
                 EditorApplication.Exit(3);
                 return;
-            }
-
-            IReadOnlyCollection<string> managedGroups = null;
-            if (cliArgs.ClearScope == ClearScope.Managed)
-            {
-                var setup = RuleEvaluationPipeline.BuildSetup(settings, RuleCollector.CollectRules());
-                managedGroups = setup.ManagedGroups;
             }
 
             var cleared = AddressTellerClearService.Clear(settings, cliArgs.ClearScope, managedGroups);
@@ -319,7 +388,7 @@ namespace AddressTeller.Editor
         /// </summary>
         /// <remarks>
         /// この除外は CLI 実行限定の一時除外であり、Postprocessor/Menu には波及しない。
-        /// DEVELOPMENT_GUIDELINESの「設定フラグの全エントリポイント一貫評価」原則からの意図的な逸脱。
+        /// 「新設定フラグは全エントリポイントで一貫評価する」という原則からの意図的な逸脱。
         /// </remarks>
         private static bool TryBuildCliRules(AddressTellerCliArgs cliArgs, out IReadOnlyList<AddressRuleBase> rules, out string error)
         {

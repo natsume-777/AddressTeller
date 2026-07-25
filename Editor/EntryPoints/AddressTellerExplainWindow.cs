@@ -15,21 +15,27 @@ namespace AddressTeller.Editor
     internal sealed class AddressTellerExplainWindow : EditorWindow
     {
         private List<AssetExplanation> _explanations = new();
+        private IReadOnlyList<ValidationResult> _configureFailures = Array.Empty<ValidationResult>();
 
         /// <summary>結果を渡してウィンドウを開く。既存ウィンドウがあれば再利用する。</summary>
-        public static void ShowWindow(IReadOnlyList<AssetExplanation> explanations)
+        /// <param name="configureFailures">
+        /// ルールクラスの Configure() が例外を送出した場合の失敗一覧（<see cref="RuleExplainService"/> の
+        /// out 引数付き Explain オーバーロード参照）。1件以上あれば、ウィンドウ先頭に警告として提示する。
+        /// </param>
+        public static void ShowWindow(IReadOnlyList<AssetExplanation> explanations, IReadOnlyList<ValidationResult> configureFailures = null)
         {
             var window = GetWindow<AddressTellerExplainWindow>();
             window.titleContent = new GUIContent("AddressTeller - Explain");
             window.minSize = new Vector2(480, 320);
-            window.SetExplanations(explanations);
+            window.SetExplanations(explanations, configureFailures);
             window.Show();
             window.Focus();
         }
 
-        private void SetExplanations(IReadOnlyList<AssetExplanation> explanations)
+        private void SetExplanations(IReadOnlyList<AssetExplanation> explanations, IReadOnlyList<ValidationResult> configureFailures)
         {
             _explanations = explanations?.ToList() ?? new List<AssetExplanation>();
+            _configureFailures = configureFailures ?? Array.Empty<ValidationResult>();
             // データ更新時は UI を再構築する
             var root = rootVisualElement;
             root.Clear();
@@ -52,6 +58,14 @@ namespace AddressTeller.Editor
         private void BuildUI(VisualElement root)
         {
             root.Clear();
+
+            // ルールクラスの Configure() が例外を送出したルールはどのアセットの評価にも一切現れないため、
+            // 個々のアセット行とは別に、ウィンドウ先頭でまとめて警告する。
+            if (_configureFailures.Count > 0)
+                root.Add(new HelpBox(
+                    $"{_configureFailures.Count} rule(s) failed to configure and were skipped: "
+                        + $"{string.Join("; ", _configureFailures.Select(f => f.Message))}",
+                    HelpBoxMessageType.Warning));
 
             if (_explanations.Count == 0)
             {
