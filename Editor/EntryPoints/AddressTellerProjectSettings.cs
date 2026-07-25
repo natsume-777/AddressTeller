@@ -59,12 +59,21 @@ namespace AddressTeller.Editor
         /// <summary>Configure() 実行時に発生した例外のメッセージ。発生していない場合は null。</summary>
         public string ConfigureError { get; }
 
-        public RuleClassOverview(Type ruleType, int order, IReadOnlyList<RuleEntryOverview> entries, string configureError)
+        /// <summary>
+        /// ルールクラスに対応する MonoScript アセット。見つからない場合は null。
+        /// <see cref="AddressTellerProjectSettings.RefreshRuleOverviewCache"/> が
+        /// <see cref="AddressTellerProjectSettings.BuildRuleOverviewCache"/> の構築結果に対して一度だけ解決する
+        /// （UI 再構築のたびに <see cref="AssetDatabase.FindAssets"/> を呼ばないようにするため）。
+        /// </summary>
+        public MonoScript Script { get; }
+
+        public RuleClassOverview(Type ruleType, int order, IReadOnlyList<RuleEntryOverview> entries, string configureError, MonoScript script)
         {
             RuleType = ruleType;
             Order = order;
             Entries = entries;
             ConfigureError = configureError;
+            Script = script;
         }
     }
 
@@ -149,8 +158,16 @@ namespace AddressTeller.Editor
             container.Add(autoApplyToggle);
             container.Add(MakeDescription("Runs ApplyAll whenever assets are imported, moved, or deleted."));
 
-            var orderField = new IntegerField("Postprocessor order") { value = AddressTellerSettings.PostprocessOrder };
-            orderField.RegisterValueChangedCallback(e => AddressTellerSettings.PostprocessOrder = e.newValue);
+            // isDelayed: フォーカスが外れる/Enter が押されるまで値の変更を通知しない。
+            // キーストロークごとに ProjectSettings/*.asset へ書き出すことを防ぐ。
+            var orderField = new IntegerField("Postprocessor order") { value = AddressTellerSettings.PostprocessOrder, isDelayed = true };
+            orderField.RegisterValueChangedCallback(e =>
+            {
+                AddressTellerSettings.PostprocessOrder = e.newValue;
+                // PostprocessOrder のゲッターは 0 を DefaultPostprocessOrder(1000) に読み替える。UI 表示にも
+                // その読み替え後の値を反映し、入力欄に 0 が表示され続けたまま実効値が 1000 という不整合を防ぐ。
+                orderField.SetValueWithoutNotify(AddressTellerSettings.PostprocessOrder);
+            });
             container.Add(orderField);
             container.Add(MakeDescription("Value passed to AssetPostprocessor.GetPostprocessOrder(). Lower values run before other postprocessors. Default is 1000 (runs later)."));
 
@@ -226,7 +243,9 @@ namespace AddressTeller.Editor
 
             var opsRow = new VisualElement();
             opsRow.AddToClassList("at-ops-row");
-            var validateBtn = new Button(AddressTellerMenu.Validate) { text = "Run Validate" };
+            // AddressTellerMenu.Validate() には internal オーバーロード（settings, rules）もあるため、
+            // メソッドグループ参照だとオーバーロード解決に依存してしまう。引数なし版を明示的に呼ぶ。
+            var validateBtn = new Button(() => AddressTellerMenu.Validate()) { text = "Run Validate" };
             validateBtn.SetEnabled(addressablesSettings != null);
             var previewBtn = new Button(AddressTellerMenu.ApplyWithValidate) { text = "Preview (with Validate)" };
             previewBtn.SetEnabled(addressablesSettings != null);
@@ -241,7 +260,9 @@ namespace AddressTeller.Editor
             container.Add(MakeSpacer());
             container.Add(MakeSectionLabel("Snapshot"));
 
-            var snapshotField = new TextField("Snapshot folder") { value = AddressTellerSettings.SnapshotFolder };
+            // isDelayed: フォーカスが外れる/Enter が押されるまで値の変更を通知しない。
+            // キーストロークごとに ProjectSettings/*.asset へ書き出すことを防ぐ。
+            var snapshotField = new TextField("Snapshot folder") { value = AddressTellerSettings.SnapshotFolder, isDelayed = true };
             snapshotField.RegisterValueChangedCallback(e => AddressTellerSettings.SnapshotFolder = e.newValue);
             container.Add(snapshotField);
             container.Add(MakeDescription("Relative path from the project root (parent directory of Assets). Default is \"AddressTellerSnapshots\" (outside Assets, not imported by Unity)."));
@@ -262,8 +283,16 @@ namespace AddressTeller.Editor
             container.Add(autoSnapshotToggle);
             container.Add(MakeDescription("Applies only to the Apply All / Apply with Validate menu actions. Auto-apply on import and CLI execution are not covered. If saving the snapshot fails, Apply itself is aborted (see the Console for details)."));
 
-            var retentionField = new IntegerField("Auto-snapshot retention count") { value = AddressTellerSettings.AutoSnapshotRetention };
-            retentionField.RegisterValueChangedCallback(e => AddressTellerSettings.AutoSnapshotRetention = e.newValue);
+            // isDelayed: フォーカスが外れる/Enter が押されるまで値の変更を通知しない。
+            // キーストロークごとに ProjectSettings/*.asset へ書き出すことを防ぐ。
+            var retentionField = new IntegerField("Auto-snapshot retention count") { value = AddressTellerSettings.AutoSnapshotRetention, isDelayed = true };
+            retentionField.RegisterValueChangedCallback(e =>
+            {
+                AddressTellerSettings.AutoSnapshotRetention = e.newValue;
+                // AutoSnapshotRetention のセッターは最小値1へクランプする。UI 表示にもクランプ後の値を反映し、
+                // 入力欄に無効な値（0以下）が表示され続けないようにする。
+                retentionField.SetValueWithoutNotify(AddressTellerSettings.AutoSnapshotRetention);
+            });
             container.Add(retentionField);
             container.Add(MakeDescription("Auto snapshots exceeding this count are automatically deleted. Minimum is 1."));
         }
@@ -304,7 +333,7 @@ namespace AddressTeller.Editor
             var buttonsRow = new VisualElement();
             buttonsRow.AddToClassList("at-rule-row__buttons");
 
-            var script = FindScriptForType(type);
+            var script = overview.Script;
             var selectBtn = new Button(() => Selection.activeObject = script) { text = "Select" };
             selectBtn.SetEnabled(script != null);
             buttonsRow.Add(selectBtn);
@@ -415,10 +444,20 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// <see cref="RuleCollector.CollectRules()"/> からルール概要キャッシュを再構築し、static キャッシュへ格納する。
+        /// <see cref="BuildRuleOverviewCache"/>（純粋関数）で組み立てた後、ここで各ルールクラスの MonoScript を
+        /// 解決して詰め直す。AssetDatabase.FindAssets はルール数に比例したコストがかかるため、
+        /// この再構築のタイミング（ドメインリロードごとに1回）でのみ呼び、UI 再構築（Project Settings 画面の
+        /// 描画のたび）では呼ばないようにする。
         /// </summary>
         internal static RuleOverviewCache RefreshRuleOverviewCache()
         {
             var cache = BuildRuleOverviewCache(RuleCollector.CollectRules());
+
+            var rulesWithScript = cache.Rules
+                .Select(r => new RuleClassOverview(r.RuleType, r.Order, r.Entries, r.ConfigureError, FindScriptForType(r.RuleType)))
+                .ToArray();
+            cache = new RuleOverviewCache(rulesWithScript, cache.DuplicateOrders);
+
             s_ruleOverviewCache = cache;
             return cache;
         }
@@ -427,6 +466,8 @@ namespace AddressTeller.Editor
         /// 与えられたルール一覧から概要キャッシュを構築する純粋関数。Configure() はルールごとに try/catch し、
         /// 例外が発生したルールも他のルールの処理をブロックせずスキップする（例外時は <see cref="RuleClassOverview.ConfigureError"/>
         /// にメッセージを記録し <see cref="RuleClassOverview.Entries"/> は空）。
+        /// AssetDatabase 等の Unity API には依存しないため、各 <see cref="RuleClassOverview.Script"/> は常に null
+        /// になる（MonoScript の解決は呼び出し元の <see cref="RefreshRuleOverviewCache"/> が別途行う）。
         /// </summary>
         internal static RuleOverviewCache BuildRuleOverviewCache(IReadOnlyList<AddressRuleBase> rules)
         {
@@ -451,7 +492,7 @@ namespace AddressTeller.Editor
                     configureError = $"{ex.GetType().Name}: {ex.Message}";
                 }
 
-                ruleOverviews.Add(new RuleClassOverview(type, rule.Order, entryOverviews, configureError));
+                ruleOverviews.Add(new RuleClassOverview(type, rule.Order, entryOverviews, configureError, script: null));
             }
 
             ruleOverviews = ruleOverviews

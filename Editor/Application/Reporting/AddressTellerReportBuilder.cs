@@ -109,7 +109,10 @@ namespace AddressTeller.Editor
 
             try
             {
-                var distribution = BundleDistributionSummarizer.Build(result.After, settings);
+                var distribution = BundleDistributionSummarizer.Build(result.After, settings, out var warnings);
+
+                foreach (var warning in warnings)
+                    UnityEngine.Debug.LogWarning($"[AddressTeller] {warning}");
 
                 report.BundleDistribution = ToBundleDistributionReport(distribution);
             }

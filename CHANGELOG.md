@@ -32,9 +32,17 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - Label-only rules incorrectly writing labels to unmanaged group entries without ownership check; labels are now restricted to managed groups.
 - Automatic safety snapshot save failures were previously ignored; `Apply All` / `Apply with Validate` now properly handle these errors by stopping the operation and notifying the user.
 - Snapshot save operation now handles `Directory.CreateDirectory` failures (e.g., invalid path or permission error) gracefully, preventing unhandled exceptions.
+- Snapshot restoration now tolerates duplicate group names instead of throwing an exception; duplicate groups are reported as warnings. `AddressTellerSnapshotService.Restore` and `BundleModeReader` have been updated to handle this gracefully.
+- `AssetFilter.ShouldExcludeByPath`: added null check before calling `path.Replace()` to prevent `NullReferenceException`.
+- Snapshot JSON loading (`LoadFromFile`): extended mandatory field validation to include `GroupName` and `Entries` (in addition to the existing `Guid` check).
+- Project Settings UI: Postprocessor order field now displays the effective clamped value (e.g., 0 becomes 1000) when the user leaves the field or presses Enter.
+- `ExportDistribution`: now displays an error dialog when file write fails, instead of silently suppressing the error.
 
 ### Changed
 
+- Validation notifications with `IsOk=true` (e.g., `GroupWillBeCreated`) are now logged as `Warning` instead of `Error` across all entry points (Postprocessor, Menu, ApplyFlow). This distinguishes informational status messages from actual errors.
+- `AddressTellerMenu.Validate()` now opens the result window (showing Issues tab) when one or more errors (`IsOk=false`) are detected. Previously, results were only logged to the console.
+- **BREAKING**: `BundleModeReader.ReadBundleModes()` and `BundleDistributionSummarizer.Build()` now include an `out` parameter for reporting duplicate group name warnings. Callers must accept this new parameter.
 - **BREAKING**: `IAddressRuleBuilder.Address()` now throws `InvalidOperationException` when called twice on the same rule, matching `Where()` behavior. Previously, duplicate address assignments were silently overwritten; this change ensures early detection of ambiguous address specification.
 - `ApplyAll`, `ValidateAll`, and `BuildPredictedSnapshot` now skip stale-entry cleanup (DeletedAssets tracking) if any rule configuration error is detected, preventing incorrect deletions of entries managed by broken rules.
 - `ApplyAll` / `Apply with Validate` menu operations now cancel instead of continuing when automatic safety snapshot save fails, matching the fail-fast design of `ClearAll`.

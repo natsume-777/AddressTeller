@@ -127,7 +127,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError($"AddressTeller: Failed to write bundle distribution ({path}): {e.Message}");
+                Debug.LogError($"[AddressTeller] Failed to write bundle distribution ({path}): {e.Message}");
                 return false;
             }
         }

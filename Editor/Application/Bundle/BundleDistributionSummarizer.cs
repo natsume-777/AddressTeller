@@ -15,14 +15,17 @@ namespace AddressTeller.Editor
         /// <summary>
         /// 適用後スナップショットと現在の <see cref="AddressableAssetSettings"/> から論理バンドル分布を算出する。
         /// 呼び出し側で例外を捕捉すること（<see cref="AddressTellerReportBuilder.Build(DryRunResult, AddressableAssetSettings)"/> 参照）。
+        /// <paramref name="warnings"/> には <see cref="BundleModeReader.ReadBundleModes"/> が検出した
+        /// グループ名重複の警告（0件の場合もある）が入る。呼び出し元がログ出力するかどうかを決められるよう、
+        /// ここではログへ直書きしない。
         /// </summary>
-        public static BundleDistribution Build(AddressTellerSnapshot after, AddressableAssetSettings settings)
+        public static BundleDistribution Build(AddressTellerSnapshot after, AddressableAssetSettings settings, out IReadOnlyList<string> warnings)
         {
             var placements = after.Entries.ToDictionary(
                 e => e.Guid,
                 e => new BundleAssetPlacement(e.GroupName, e.Labels));
 
-            var groupModes = BundleModeReader.ReadBundleModes(settings.groups);
+            var groupModes = BundleModeReader.ReadBundleModes(settings.groups, out warnings);
 
             return BundleDistributionCalculator.Calculate(placements, groupModes);
         }

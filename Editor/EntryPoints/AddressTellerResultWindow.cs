@@ -159,7 +159,10 @@ namespace AddressTeller.Editor
 
             try
             {
-                _distribution = BundleDistributionSummarizer.Build(dryRun.After, settings);
+                _distribution = BundleDistributionSummarizer.Build(dryRun.After, settings, out var warnings);
+                foreach (var warning in warnings)
+                    Debug.LogWarning($"[AddressTeller] {warning}");
+
                 _distributionSummary = BundleDistributionSummarizer.Summarize(_distribution);
                 _showDistributionTab = true;
             }
@@ -385,13 +388,39 @@ namespace AddressTeller.Editor
             _distributionTabContent.Add(btnRow);
         }
 
+        /// <summary>
+        /// Export の失敗時にユーザーへ通知する処理を差し替え可能にするテスト用シーム。既定では
+        /// EditorUtility.DisplayDialog を呼ぶが、EditMode テストが実モーダルダイアログを開かずに
+        /// この失敗経路を検証できるよう差し替え可能にしている（AddressTellerApplyFlow.s_notifyApplyAborted /
+        /// AddressTellerMenu.s_notifyClearAborted と同じ「テスト用シーム」の考え方。
+        /// テストは差し替え後、TearDown で必ず既定値へ戻すこと）。
+        /// </summary>
+        internal static Action<string, string> s_notifyExportFailed = (title, message) =>
+            EditorUtility.DisplayDialog(title, message, "OK");
+
         /// <summary>算出済みの論理バンドル分布をユーザーが選択したファイルに書き出す。</summary>
         private void ExportDistribution(string format, string extension)
         {
             var path = EditorUtility.SaveFilePanel("Export Bundle Distribution", string.Empty, $"bundle-distribution.{extension}", extension);
             if (string.IsNullOrEmpty(path)) return;
 
-            BundleDistributionSerializer.WriteToFile(path, _distribution, _distributionSummary, format);
+            ExportDistributionToPath(path, format);
+        }
+
+        /// <summary>
+        /// <see cref="ExportDistribution(string, string)"/> の実処理。ファイル選択ダイアログ（SaveFilePanel）を
+        /// 経由せず、テストから任意のパスで書き込み失敗経路を決定的に検証できるよう分離する
+        /// （<see cref="AddressTellerApplyFlow.ExecuteApply(AddressableAssetSettings, IReadOnlyList{string}, IReadOnlyList{AddressRuleBase})"/>
+        /// の rules 注入オーバーロードと同じ意図）。
+        /// </summary>
+        internal void ExportDistributionToPath(string path, string format)
+        {
+            if (!BundleDistributionSerializer.WriteToFile(path, _distribution, _distributionSummary, format))
+            {
+                s_notifyExportFailed(
+                    "AddressTeller - Export Bundle Distribution",
+                    $"Failed to write the bundle distribution to:\n{path}\n\nSee the previous error in the Console for details.");
+            }
         }
     }
 }

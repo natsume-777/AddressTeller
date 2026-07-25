@@ -52,7 +52,9 @@ namespace AddressTeller.Editor
                 }
             }
 
-            snapshot.Entries.Sort((a, b) => string.Compare(a.Guid, b.Guid, StringComparison.Ordinal));
+            // List.Sort は不安定ソート（同値の相対順序が保証されない）。他箇所（Labels の OrderBy 等）と揃え、
+            // 決定的な順序を保証する OrderBy + StringComparer.Ordinal を使う。
+            snapshot.Entries = snapshot.Entries.OrderBy(e => e.Guid, StringComparer.Ordinal).ToList();
 
             snapshot.CapturedAtIso = DateTime.UtcNow.ToString("o");
             snapshot.Comment = comment ?? "";
@@ -137,6 +139,28 @@ namespace AddressTeller.Editor
                     error = $"Snapshot content is invalid (duplicate GUID '{entry.Guid}'): {path}";
                     return false;
                 }
+
+                // GroupName/Labels は Restore() 実行時にも欠落チェックしているが（そちらは任意の
+                // AddressTellerSnapshot を受け取れる公開 API のためのエントリ単位スキップ）、
+                // ファイル読み込み時点で壊れた内容を検出できるよう、ここではファイル全体のロードを失敗させる
+                // （fail-closed。1件のエントリ破損のせいで残り全件の復元が塞がれるのは意図した割り切りで、
+                // 復旧手段としてはエラーメッセージの通り該当エントリを JSON から削除して再読込する）。
+                if (string.IsNullOrEmpty(entry.GroupName))
+                {
+                    error = $"Snapshot content is invalid (an entry has an empty GroupName; GUID '{entry.Guid}'): {path}. "
+                        + "Removing this entry from the JSON file allows the rest of the snapshot to be restored.";
+                    return false;
+                }
+
+                // JsonUtility はここまで到達しない実測結果あり（"Labels": null を指定しても List<T> フィールドの
+                // 初期化子由来の空リストが保持される。参照型フィールドへの null 反映自体を JsonUtility がサポート
+                // していないため）。手動編集で Labels キー自体を削除した等、将来の入力パターンに備えた防御として維持する。
+                if (entry.Labels == null)
+                {
+                    error = $"Snapshot content is invalid (an entry has no Labels list; GUID '{entry.Guid}'): {path}. "
+                        + "Removing this entry from the JSON file allows the rest of the snapshot to be restored.";
+                    return false;
+                }
             }
 
             snapshot = parsed;
@@ -147,6 +171,9 @@ namespace AddressTeller.Editor
         /// <summary>
         /// スナップショットの内容を Addressables へ書き戻す。
         /// スナップショットに記録されたグループが存在しない場合、そのエントリをスキップしメッセージを返す。
+        /// Addressables はグループ名の一意性を保証しないため、復元先グループ名が重複している場合は
+        /// 最初に見つかったグループを採用して処理を継続し、issues にその旨を報告する
+        /// （<paramref name="snapshot"/> が実際に参照しているグループ名のみを対象とし、無関係な重複グループについては報告しない）。
         /// </summary>
         public static IReadOnlyList<string> Restore(
             AddressTellerSnapshot snapshot,
@@ -155,18 +182,39 @@ namespace AddressTeller.Editor
         {
             var issues = new List<string>();
 
+            // 重複グループ名の報告対象を、このスナップショットが実際に使うグループ名だけに絞り込む
+            // （settings 全体の重複を無条件に報告すると、スナップショットと無関係なグループの重複まで
+            // issues に混ざりノイズになるため）。
+            var neededGroupNames = new HashSet<string>(
+                snapshot.Entries
+                    .Where(e => e != null && !string.IsNullOrEmpty(e.GroupName))
+                    .Select(e => e.GroupName));
+
             // FindGroup は内部で settings.groups を毎回線形探索するため、
             // ループ外で一度だけ Dictionary 化して参照する。
-            var groupsByName = settings.groups
-                .Where(g => g != null)
-                .ToDictionary(g => g.Name, g => g);
+            // グループ名は Addressables 上で一意性が保証されていない（UI からは一意性が強制されるが、
+            // API 直接操作・アセット複製・別フォルダ配置等では重複しうる）ため、
+            // ToDictionary（重複キーで例外）は使わず、重複を検出したら issues に報告した上で
+            // 最初に見つかったグループを採用して処理を継続する。
+            var groupsByName = new Dictionary<string, AddressableAssetGroup>();
+            foreach (var group in settings.groups.Where(g => g != null))
+            {
+                if (groupsByName.ContainsKey(group.Name))
+                {
+                    if (neededGroupNames.Contains(group.Name))
+                        issues.Add($"Multiple groups are named '{group.Name}'. The first one found will be used for restoring matching entries.");
+                    continue;
+                }
+
+                groupsByName.Add(group.Name, group);
+            }
 
             foreach (var entry in snapshot.Entries)
             {
-                // JsonUtility はデフォルトコンストラクタ・フィールド初期化子を経由せずオブジェクトを生成するため、
-                // 手動編集された/壊れたスナップショット JSON では entry 自体や GroupName/Labels が
-                // null のまま渡ってくることがある。CreateOrMoveEntry の null チェックと同様、
-                // ここでも1件のスキップとして扱い、復元全体を止めない。
+                // Restore/RestoreExactWithRemoval は任意の AddressTellerSnapshot を受け取れる公開 API のため、
+                // 呼び出し側が手で組み立てたスナップショット（LoadFromFile を経由しないもの）では
+                // entry 自体や GroupName/Labels が null のまま渡ってくることがある。CreateOrMoveEntry の
+                // null チェックと同様、ここでも1件のスキップとして扱い、復元全体を止めない。
                 if (entry == null)
                 {
                     issues.Add("Snapshot entry is invalid (null entry). Skipped.");

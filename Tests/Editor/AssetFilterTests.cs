@@ -123,6 +123,15 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void ShouldExcludeByPath_NullPath_ReturnsTrueWithoutThrowing()
+        {
+            // path.Replace('\\','/') は path が null だと NRE になるため、安全側（除外扱い）にフォールバックする。
+            Assert.DoesNotThrow(() => AssetFilter.ShouldExcludeByPath(null));
+            Assert.IsTrue(AssetFilter.ShouldExcludeByPath(null));
+            Assert.IsTrue(AssetFilter.ShouldExcludeByPath(null, "Assets/AddressableAssetsData"));
+        }
+
+        [Test]
         public void ShouldExclude_TypeOnlyExclusion_NotCaughtByPathCheck()
         {
             // AddressableAssetSettings 型は ExcludedAddressablesTypes による除外であり、

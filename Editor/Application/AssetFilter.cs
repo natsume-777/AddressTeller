@@ -44,6 +44,9 @@ namespace AddressTeller.Editor
         /// </summary>
         public static bool ShouldExcludeByPath(string path, string addressablesConfigFolder = null)
         {
+            // path が null の場合、以降の判定は成立しない（安全側に倒し除外扱いとする）。
+            if (path == null) return true;
+
             // AssetContext のコンストラクタと同じ正規化を行い、ShouldExclude と判定結果を一致させる。
             path = path.Replace('\\', '/');
 

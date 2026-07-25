@@ -120,7 +120,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError($"AddressTeller: Failed to write report ({path}): {e.Message}");
+                Debug.LogError($"[AddressTeller] Failed to write report ({path}): {e.Message}");
                 return false;
             }
         }

@@ -249,17 +249,56 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            var issues = AddressTellerService.ValidateAll(settings);
+            Validate(settings, null);
+        }
+
+        /// <summary>
+        /// Validate() が issue（IsOk=false）を検出した際に結果ウィンドウを開く処理。既定では
+        /// <see cref="AddressTellerResultWindow.Show(IReadOnlyList{ValidationResult}, string)"/> を呼ぶが、
+        /// EditMode テストが実ウィンドウを開かずにこの経路（呼ばれた issues・タイトル）を検証できるよう
+        /// 差し替え可能にしている（<see cref="s_notifyClearAborted"/> / <see cref="AddressTellerApplyFlow.s_notifyApplyAborted"/>
+        /// と同じ「テスト用シーム」の考え方。テストは差し替え後、TearDown で必ず既定値へ戻すこと）。
+        /// </summary>
+        internal static Action<IReadOnlyList<ValidationResult>, string> s_showResultWindow =
+            (issues, title) => AddressTellerResultWindow.Show(issues, title);
+
+        /// <summary>
+        /// <see cref="Validate()"/> のコア処理。評価対象ルールを注入可能にしたオーバーロード（internal）。
+        /// rules が null の場合はリフレクションによるルール収集（本来の Validate() 経由の挙動）を使う
+        /// （<see cref="AddressTellerApplyFlow.ExecuteApply(AddressableAssetSettings, IReadOnlyList{string}, IReadOnlyList{AddressRuleBase})"/>
+        /// と同じ「テスト用シーム」の意図。テストから issues が実際に発生する状況を決定的に再現できるようにする）。
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> が null の場合。</exception>
+        internal static void Validate(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
+        {
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
+
+            var issues = rules != null
+                ? AddressTellerService.ValidateAll(settings, NullProgressReporter.Instance, rules)
+                : AddressTellerService.ValidateAll(settings);
+
             if (issues.Count == 0)
             {
                 Debug.Log("[AddressTeller] Validate completed: no issues.");
                 return;
             }
 
-            foreach (var issue in issues)
-                Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+            AddressTellerIssueLogger.LogAll(issues);
 
-            Debug.LogError($"[AddressTeller] Validate completed: {issues.Count} issue(s) found.");
+            // issues には GroupWillBeCreated（IsOk=true、グループ自動作成の通知）が含まれる場合があるため、
+            // 「完了」を error として扱うべきかどうかは IsOk=false の件数で判定する。
+            var errorCount = issues.Count(i => !i.IsOk);
+            if (errorCount == 0)
+            {
+                Debug.Log($"[AddressTeller] Validate completed: {issues.Count} notice(s) (no issues).");
+                return;
+            }
+
+            Debug.LogError($"[AddressTeller] Validate completed: {errorCount} issue(s) found.");
+
+            // Apply All / Apply with Validate の中止経路と対称に、IsOk=false の問題が1件以上ある場合のみ
+            // 結果ウィンドウを開く。GroupWillBeCreated 等の通知のみ（errorCount == 0）ではフォーカスを奪わない。
+            s_showResultWindow(issues, "AddressTeller - Validate");
         }
 
         /// <summary>
@@ -300,8 +339,7 @@ namespace AddressTeller.Editor
             var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
 
             var applyIssues = AddressTellerService.ApplyAll(paths, settings, NullProgressReporter.Instance, rules);
-            foreach (var issue in applyIssues)
-                Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+            AddressTellerIssueLogger.LogAll(applyIssues);
 
             ExitWithReport(dryRun, applyIssues, cliArgs, settings);
         }
@@ -359,8 +397,7 @@ namespace AddressTeller.Editor
             // 含まれる場合がある。中止が必要なのは IsOk=false の要素のみ。
             if (validateIssues.Any(i => !i.IsOk))
             {
-                foreach (var issue in validateIssues)
-                    Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+                AddressTellerIssueLogger.LogAll(validateIssues);
 
                 Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => !i.IsOk)} issue(s).");
 
@@ -376,8 +413,7 @@ namespace AddressTeller.Editor
             var applyDryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, applyPaths, rules);
 
             var applyIssues = AddressTellerService.ApplyAll(applyPaths, settings, NullProgressReporter.Instance, rules);
-            foreach (var issue in applyIssues)
-                Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+            AddressTellerIssueLogger.LogAll(applyIssues);
 
             ExitWithReport(applyDryRun, applyIssues, cliArgs, settings);
         }
@@ -462,8 +498,7 @@ namespace AddressTeller.Editor
             var result = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
 
             Debug.Log($"[AddressTeller] Check completed: Added={result.Diff.Added.Count} / Removed={result.Diff.Removed.Count} / Changed={result.Diff.Changed.Count}, Issues={result.Issues.Count}.");
-            foreach (var issue in result.Issues)
-                Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+            AddressTellerIssueLogger.LogAll(result.Issues);
 
             if (!string.IsNullOrEmpty(cliArgs.ReportPath))
             {

@@ -32,9 +32,17 @@
 - ラベルのみルールが管理外グループのエントリに所有権判定なしにラベルを書き込んでいた問題を修正し、管理対象グループのみに制限。
 - 自動セーフティスナップショット保存に失敗した場合、従前は無視されていた。`Apply All` / `Apply with Validate` はエラーを適切に処理して実行を停止し、ユーザーに通知するようになった。
 - スナップショット保存時の `Directory.CreateDirectory` が失敗する場合（不正なパスやパーミッション不足など）、例外を発生させずに適切に処理するようになった。
+- スナップショット復元時、グループ名の重複があると例外で中断していた問題を修正。重複を許容し警告として報告するようになった。`AddressTellerSnapshotService.Restore` と `BundleModeReader` の両方で対応。
+- `AssetFilter.ShouldExcludeByPath`: `path.Replace()` 呼び出し前に null チェックを追加し、NullReferenceException を防止。
+- スナップショット JSON 読み込み（`LoadFromFile`）: 必須フィールド検証を GroupName・Entries にも拡張（従来の Guid チェックに加えて）。
+- Project Settings の Postprocessor order 欄: クランプ後の実効値（0入力時は1000）が UI 表示に反映されない不整合を修正。
+- `ExportDistribution`: ファイル書き込み失敗時に、従前はエラーを握りつぶしていたが、エラーダイアログを表示するようになった。
 
 ### Changed
 
+- `IsOk=true` の検証通知（例: `GroupWillBeCreated`）が、全エントリポイント（Postprocessor・Menu・ApplyFlow）で `Error` ではなく `Warning` としてログされるようになった。これにより情報通知と実エラーが区別される。
+- `AddressTellerMenu.Validate()` は、エラー（`IsOk=false`）が1件以上ある場合に結果ウィンドウ（Issues タブを表示）を開くようになった。従前はコンソール出力のみだった。
+- **BREAKING**: `BundleModeReader.ReadBundleModes()` および `BundleDistributionSummarizer.Build()` のシグネチャに `out` 引数（グループ名重複の警告）が追加された。呼び出し元はこの新しい引数を受け入れる必要がある。
 - **BREAKING**: `IAddressRuleBuilder.Address()` を同一ルール上で2回呼び出すと `InvalidOperationException` を投げるようになり、`Where()` と同様の早期検出を実現。従前は重複アドレス指定が無警告で上書きされていた。
 - `ApplyAll`、`ValidateAll`、`BuildPredictedSnapshot` は、ルール構成エラーが検出された場合、stale entry cleanup（DeletedAssets 追跡）をスキップするようになった。問題のあるルールが管理するエントリの誤削除を防ぐため。
 - `ApplyAll` / `Apply with Validate` メニュー実行時、自動セーフティスナップショット保存に失敗した場合はApplyを中止するようになった（`ClearAll` の fail-fast 設計と対称にするため）。

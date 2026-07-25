@@ -37,12 +37,35 @@ namespace AddressTeller.Editor
             }
         }
 
-        /// <summary>複数グループの BundleMode をまとめて読み取り、グループ名→BundleMode の辞書を返す。</summary>
-        public static IReadOnlyDictionary<string, BundleModeKind> ReadBundleModes(IEnumerable<AddressableAssetGroup> groups)
+        /// <summary>
+        /// 複数グループの BundleMode をまとめて読み取り、グループ名→BundleMode の辞書を返す。
+        /// グループ名は Addressables 上で一意性が保証されていない（UI からは一意性が強制されるが、
+        /// API 直接操作・アセット複製・別フォルダ配置等では重複しうる）ため、ToDictionary（重複キーで例外）は使わず、
+        /// 重複を検出した場合は最初に見つかったグループを採用して処理を継続する。重複が見つかった場合の警告は
+        /// ログへ直書きせず <paramref name="warnings"/> として返す（呼び出し元がレポート・ResultWindow 等、
+        /// 経路ごとに重複してログ出力しないようにするため）。同一グループ名についての警告は1件のみ返す
+        /// （3件以上重複していても警告は1回にまとめる）。
+        /// </summary>
+        public static IReadOnlyDictionary<string, BundleModeKind> ReadBundleModes(IEnumerable<AddressableAssetGroup> groups, out IReadOnlyList<string> warnings)
         {
-            return groups
-                .Where(g => g != null)
-                .ToDictionary(g => g.Name, ReadBundleMode);
+            var result = new Dictionary<string, BundleModeKind>();
+            var warningList = new List<string>();
+            var warnedGroupNames = new HashSet<string>();
+
+            foreach (var group in groups.Where(g => g != null))
+            {
+                if (result.ContainsKey(group.Name))
+                {
+                    if (warnedGroupNames.Add(group.Name))
+                        warningList.Add($"Multiple groups are named '{group.Name}'. The first one found will be used for bundle distribution calculation.");
+                    continue;
+                }
+
+                result.Add(group.Name, ReadBundleMode(group));
+            }
+
+            warnings = warningList;
+            return result;
         }
     }
 }

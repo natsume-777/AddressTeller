@@ -41,8 +41,7 @@ namespace AddressTeller.Editor
                 // 含まれる場合がある。中止が必要なのは IsOk=false の要素のみ。
                 if (validateIssues.Any(i => !i.IsOk))
                 {
-                    foreach (var issue in validateIssues)
-                        Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+                    AddressTellerIssueLogger.LogAll(validateIssues);
 
                     Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => !i.IsOk)} issue(s).");
                     AddressTellerResultWindow.Show(validateIssues, title);
@@ -167,10 +166,15 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            foreach (var issue in issues)
-                Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+            AddressTellerIssueLogger.LogAll(issues);
 
-            Debug.LogError($"[AddressTeller] ApplyAll completed with {issues.Count} issue(s).");
+            // issues には GroupWillBeCreated（IsOk=true、グループ自動作成の通知）が含まれる場合があるため、
+            // 「完了」を error として扱うべきかどうかは IsOk=false の件数で判定する。
+            var errorCount = issues.Count(i => !i.IsOk);
+            if (errorCount > 0)
+                Debug.LogError($"[AddressTeller] ApplyAll completed with {errorCount} issue(s).");
+            else
+                Debug.Log($"[AddressTeller] ApplyAll completed with {issues.Count} notice(s) (no issues).");
         }
     }
 }

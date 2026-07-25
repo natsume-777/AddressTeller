@@ -185,6 +185,61 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void LoadFromFile_EntryWithEmptyGroupName_ReturnsError()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"AddressTellerSnapshotTests_EmptyGroupName_{Guid.NewGuid():N}.json");
+            var snapshot = AddressTellerSnapshotService.Capture(_settings, "empty-groupname");
+            snapshot.Entries.Add(new SnapshotEntry { Guid = "guid-empty-group", Address = "Foo", GroupName = "" });
+            File.WriteAllText(path, snapshot.ToJson());
+
+            try
+            {
+                var result = AddressTellerSnapshotService.LoadFromFile(path, out var loaded, out var error);
+
+                Assert.IsFalse(result);
+                Assert.IsNull(loaded);
+                Assert.IsFalse(string.IsNullOrEmpty(error));
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void LoadFromFile_EntryWithNullLabelsInJson_LoadsSuccessfullyWithEmptyLabels()
+        {
+            // JsonUtility は List<T> フィールドに対して JSON 側で "Labels": null を明示的に指定しても、
+            // その値を反映せずフィールド初期化子（= new()）の空リストを保持する（実測で確認済み。
+            // 参照型フィールドへの null 反映自体をサポートしていないための挙動）。
+            // そのため LoadFromFile 内の entry.Labels == null チェック（Restore() 側の同種チェックと対称に
+            // 維持している防御的コード）はこの経路では発火せず、壊れた JSON でも空リストとしてロードに成功する。
+            // 手動編集された壊れたスナップショット JSON を模して、直接テキストを組み立てる。
+            var path = Path.Combine(Path.GetTempPath(), $"AddressTellerSnapshotTests_NullLabels_{Guid.NewGuid():N}.json");
+            var json = "{"
+                + "\"Entries\":[{\"Guid\":\"guid-null-labels\",\"Address\":\"Foo\",\"GroupName\":\"GroupA\",\"Labels\":null}],"
+                + "\"CapturedAtIso\":\"\",\"Comment\":\"\",\"UnityVersion\":\"\",\"PackageVersion\":\"\",\"SchemaVersion\":1"
+                + "}";
+            File.WriteAllText(path, json);
+
+            try
+            {
+                var result = AddressTellerSnapshotService.LoadFromFile(path, out var loaded, out var error);
+
+                Assert.IsTrue(result);
+                Assert.IsNull(error);
+                Assert.IsNotNull(loaded);
+                Assert.AreEqual(1, loaded.Entries.Count);
+                Assert.IsNotNull(loaded.Entries[0].Labels);
+                Assert.AreEqual(0, loaded.Entries[0].Labels.Count);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Test]
         public void LoadFromFile_ValidJson_ReturnsSnapshot()
         {
             var path = Path.Combine(Path.GetTempPath(), $"AddressTellerSnapshotTests_Valid_{Guid.NewGuid():N}.json");
@@ -266,6 +321,57 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(1, issues.Count);
             StringAssert.Contains("Missing", issues[0]);
             Assert.IsNull(_settings.FindAssetEntry("guid-x"));
+        }
+
+        [Test]
+        public void Restore_DuplicateGroupName_ReportsIssueAndUsesFirstGroup_WithoutThrowing()
+        {
+            // Addressables はグループ名の一意性を保証しないため、settings.groups.ToDictionary(g => g.Name, ...)
+            // は重複時に例外を投げてしまう。ここでは意図的に GroupA と同名のグループを作り、
+            // Restore が例外を投げず issues に報告した上で処理を継続することを検証する。
+            var duplicateGroup = _settings.CreateGroup("GroupA_TemporaryName", false, false, false, null);
+            try
+            {
+                duplicateGroup.Name = "GroupA";
+
+                var snapshot = new AddressTellerSnapshot();
+                snapshot.Entries.Add(Entry("guid1", "Foo", "GroupA"));
+
+                IReadOnlyList<string> issues = null;
+                Assert.DoesNotThrow(() => issues = AddressTellerSnapshotService.Restore(snapshot, _settings));
+
+                Assert.IsTrue(issues.Any(i => i.Contains("GroupA")), "重複グループ名を検出した場合、issues に報告されるべき。");
+                Assert.IsNotNull(_settings.FindAssetEntry("guid1"), "重複があっても、いずれかの GroupA へ復元自体は継続されるべき。");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(duplicateGroup, true);
+            }
+        }
+
+        [Test]
+        public void Restore_DuplicateGroupNameNotUsedBySnapshot_DoesNotReportIssue()
+        {
+            // GroupB と同名の重複グループが settings に存在していても、スナップショットが GroupB を
+            // 一切参照していない場合、無関係な重複についてまで issues に報告してはいけない
+            // （ノイズ防止。Restore_DuplicateGroupName_ReportsIssueAndUsesFirstGroup_WithoutThrowing の対比）。
+            var duplicateGroup = _settings.CreateGroup("GroupB_TemporaryName", false, false, false, null);
+            try
+            {
+                duplicateGroup.Name = "GroupB";
+
+                var snapshot = new AddressTellerSnapshot();
+                snapshot.Entries.Add(Entry("guid1", "Foo", "GroupA"));
+
+                var issues = AddressTellerSnapshotService.Restore(snapshot, _settings);
+
+                Assert.AreEqual(0, issues.Count, "スナップショットが参照していないグループの重複は報告してはいけない。");
+                Assert.IsNotNull(_settings.FindAssetEntry("guid1"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(duplicateGroup, true);
+            }
         }
 
         [Test]

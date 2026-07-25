@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
-using UnityEngine;
 
 namespace AddressTeller.Editor
 {
@@ -42,8 +41,7 @@ namespace AddressTeller.Editor
                 // 新パスがどのルールにもマッチしなければ Skipped としてクリーンアップ対象になる。
                 var targetPaths = importedAssets.Concat(movedAssets);
                 var issues = AddressTellerService.ApplyAll(targetPaths, settings);
-                foreach (var issue in issues)
-                    Debug.LogError($"[AddressTeller] {issue.Status}: {issue.Message}");
+                AddressTellerIssueLogger.LogAll(issues);
 
                 if (deletedAssets.Length > 0)
                 {

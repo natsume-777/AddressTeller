@@ -100,6 +100,37 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void BuildRuleOverviewCache_IsPure_ScriptIsAlwaysNull()
+        {
+            // BuildRuleOverviewCache は AssetDatabase 等の Unity API に依存しない純粋関数であるべき。
+            // MonoScript の解決は呼び出し元の RefreshRuleOverviewCache が別途行うため、
+            // ここでは常に Script == null になることを確認する。
+            var rules = new AddressRuleBase[] { new TwoGroupRule() };
+
+            var cache1 = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
+            var cache2 = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
+
+            Assert.IsNull(cache1.Rules[0].Script);
+            Assert.IsNull(cache2.Rules[0].Script);
+        }
+
+        [Test]
+        public void RefreshRuleOverviewCache_ResolvesScript_WithoutThrowing()
+        {
+            // RefreshRuleOverviewCache は RuleCollector.CollectRules()（このアセンブリ内のテスト専用ルールは
+            // 対象外）を経由するため、ここでは呼び出し自体が例外を投げず、複数回呼んでも安定して完了することのみ検証する
+            // （テストアセンブリ内のルールに対応する MonoScript は見つからないことがあるため、Script の
+            // null/非 null 自体は問わない）。
+            RuleOverviewCache cache1 = default;
+            RuleOverviewCache cache2 = default;
+
+            Assert.DoesNotThrow(() => cache1 = AddressTellerProjectSettings.RefreshRuleOverviewCache());
+            Assert.DoesNotThrow(() => cache2 = AddressTellerProjectSettings.RefreshRuleOverviewCache());
+
+            Assert.AreEqual(cache1.Rules.Count, cache2.Rules.Count);
+        }
+
+        [Test]
         public void BuildRuleOverviewCache_ConfigureThrows_RecordsErrorWithoutBlockingOthers()
         {
             var rules = new AddressRuleBase[] { new ThrowingRule(), new NoEntryRule() };
