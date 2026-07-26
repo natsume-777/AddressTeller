@@ -1,0 +1,369 @@
+struct AddressTeller.AddressCandidate
+  Constructor (System.String groupName, System.String address, System.String sourceClass = null, System.String description = null, System.Int32 ruleIndex = 0)
+  Method System.String DescribeSource()
+  Property System.String Address { get; }
+  Property System.String Description { get; }
+  Property System.String GroupName { get; }
+  Property System.Int32 RuleIndex { get; }
+  Property System.String SourceClass { get; }
+
+abstract class AddressTeller.AddressRuleBase
+  Constructor protected ()
+  Method abstract System.Void Configure(AddressTeller.IAddressRuleBuilder rules)
+  Property virtual System.Int32 Order { get; }
+
+sealed class AddressTeller.AddressRuleEntry
+  Constructor (System.String groupName, System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.Func<AddressTeller.AssetContext, System.String> addressSelector, System.Collections.Generic.IReadOnlyList<System.Func<AddressTeller.AssetContext, System.String>> labelSelectors, System.String sourceClass = null, System.String description = null, System.Int32 ruleIndex = 0)
+  Method static System.String DescribeSource(System.String sourceClass, System.String description, System.Int32 ruleIndex)
+  Property System.Func<AddressTeller.AssetContext, System.String> AddressSelector { get; }
+  Property System.String Description { get; }
+  Property System.String GroupName { get; }
+  Property System.Collections.Generic.IReadOnlyList<System.Func<AddressTeller.AssetContext, System.String>> LabelSelectors { get; }
+  Property System.Func<AddressTeller.AssetContext, System.Boolean> Predicate { get; }
+  Property System.Int32 RuleIndex { get; }
+  Property System.String SourceClass { get; }
+
+sealed class AddressTeller.AssetCondition
+  Constructor (System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description = null)
+  Method AddressTeller.AssetCondition And(AddressTeller.AssetCondition other)
+  Method AddressTeller.AssetCondition And(System.Func<AddressTeller.AssetContext, System.Boolean> other, System.String description = null)
+  Method System.Boolean Test(AddressTeller.AssetContext ctx)
+  Method static System.Func<AddressTeller.AssetContext, System.Boolean> op_Implicit(AddressTeller.AssetCondition condition)
+  Property System.String Description { get; }
+  Property System.Func<AddressTeller.AssetContext, System.Boolean> Predicate { get; }
+
+sealed class AddressTeller.AssetContext
+  Constructor (System.String guid, System.String path, System.Type type)
+  Method System.Boolean IsInFolder(System.String folder)
+  Method System.String RelativePathFrom(System.String root)
+  Property System.String Directory { get; }
+  Property System.String Extension { get; }
+  Property System.String FileName { get; }
+  Property System.String FileNameWithoutExtension { get; }
+  Property System.String Guid { get; }
+  Property System.String Path { get; }
+  Property System.String[] PathSegments { get; }
+  Property System.Type Type { get; }
+
+struct AddressTeller.BundleAssetPlacement
+  Constructor (System.String groupName, System.Collections.Generic.IReadOnlyCollection<System.String> labels)
+  Property System.String GroupName { get; }
+  Property System.Collections.Generic.IReadOnlyCollection<System.String> Labels { get; }
+
+sealed class AddressTeller.BundleDistribution
+  Constructor (System.Collections.Generic.IReadOnlyList<AddressTeller.LogicalBundle> bundles)
+  Property System.Collections.Generic.IReadOnlyList<AddressTeller.LogicalBundle> Bundles { get; }
+
+static class AddressTeller.BundleDistributionCalculator
+  Field static const System.String NoLabelsSplitKey = "(no labels)"
+  Field static const System.String UnknownSplitKey = "(unknown)"
+  Method static AddressTeller.BundleDistribution Calculate(System.Collections.Generic.IReadOnlyDictionary<System.String, AddressTeller.BundleAssetPlacement> assets, System.Collections.Generic.IReadOnlyDictionary<System.String, AddressTeller.BundleModeKind> groupModes)
+
+enum AddressTeller.BundleModeKind
+  EnumMember PackSeparately = 1
+  EnumMember PackTogether = 0
+  EnumMember PackTogetherByLabel = 2
+  EnumMember Unknown = 3
+
+static class AddressTeller.Editor.AddressTellerClearService
+  Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ClearedEntry> Clear(UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, AddressTeller.Editor.ClearScope scope, System.Collections.Generic.IReadOnlyCollection<System.String> managedGroups = null)
+
+sealed class AddressTeller.Editor.AddressTellerCliArgs
+  Constructor ()
+  Method static System.Boolean TryParse(System.String[] args, out AddressTeller.Editor.AddressTellerCliArgs result, out System.String error)
+  Property AddressTeller.Editor.ClearScope ClearScope { get; }
+  Property System.Boolean ConfirmClear { get; }
+  Property System.Collections.Generic.IReadOnlyList<System.String> DisableRuleFullNames { get; }
+  Property System.String ReportFormat { get; }
+  Property System.String ReportPath { get; }
+
+sealed class AddressTeller.Editor.AddressTellerExplainAsset
+  Constructor ()
+  Field System.Boolean IsExcluded
+  Field System.String Path
+  Field System.Collections.Generic.List<AddressTeller.Editor.AddressTellerExplainRule> Rules
+  Field System.String ValidationMessage
+  Field System.String ValidationStatus
+
+static class AddressTeller.Editor.AddressTellerExplainMenu
+  Method static System.Void Explain()
+  Method static System.Boolean ExplainValidate()
+  Method static System.Void Preview()
+  Method static System.Boolean PreviewValidate()
+
+sealed class AddressTeller.Editor.AddressTellerExplainReport
+  Constructor ()
+  Field System.Collections.Generic.List<AddressTeller.Editor.AddressTellerExplainAsset> Assets
+  Method static AddressTeller.Editor.AddressTellerExplainReport FromJson(System.String json)
+  Method System.String ToJson()
+
+sealed class AddressTeller.Editor.AddressTellerExplainRule
+  Constructor ()
+  Field System.String Description
+  Field System.String ErrorMessage
+  Field System.String GroupName
+  Field System.String Outcome
+  Field System.String ProducedAddress
+  Field System.Collections.Generic.List<System.String> ProducedLabels
+  Field System.String RuleSource
+
+static class AddressTeller.Editor.AddressTellerMenu
+  Method static System.Void ApplyAll()
+  Method static System.Void ApplyAllCLI()
+  Method static System.Void ApplyWithValidate()
+  Method static System.Void ApplyWithValidateCLI()
+  Method static System.Void CheckCLI()
+  Method static System.Void ClearAll()
+  Method static System.Void ClearCLI()
+  Method static System.Void PreviewGroup()
+  Method static System.Void Validate()
+
+class AddressTeller.Editor.AddressTellerPostprocessor : UnityEditor.AssetPostprocessor
+  Constructor ()
+  Method virtual System.Int32 GetPostprocessOrder()
+
+sealed class AddressTeller.Editor.AddressTellerReport
+  Constructor ()
+  Field AddressTeller.Editor.BundleDistributionReport BundleDistribution
+  Field System.Collections.Generic.List<AddressTeller.Editor.AddressTellerReportDrift> Drift
+  Field System.Collections.Generic.List<AddressTeller.Editor.AddressTellerReportIssue> Issues
+  Field AddressTeller.Editor.AddressTellerReportSummary Summary
+  Method static AddressTeller.Editor.AddressTellerReport FromJson(System.String json)
+  Method System.String ToJson()
+
+sealed class AddressTeller.Editor.AddressTellerReportDrift
+  Constructor ()
+  Field AddressTeller.Editor.AddressTellerReportEntry After
+  Field AddressTeller.Editor.AddressTellerReportEntry Before
+  Field System.String ChangeType
+  Field System.String Guid
+  Field System.String Path
+
+sealed class AddressTeller.Editor.AddressTellerReportEntry
+  Constructor ()
+  Field System.String Address
+  Field System.String GroupName
+  Field System.Collections.Generic.List<System.String> Labels
+
+sealed class AddressTeller.Editor.AddressTellerReportIssue
+  Constructor ()
+  Field System.String Message
+  Field System.String Path
+  Field System.String Status
+
+sealed class AddressTeller.Editor.AddressTellerReportSummary
+  Constructor ()
+  Field System.Int32 Added
+  Field System.Int32 Changed
+  Field System.Int32 ExitCode
+  Field System.Int32 Issues
+  Field System.Int32 Removed
+
+static class AddressTeller.Editor.AddressTellerReportWriter
+  Method static System.String ToJUnitXml(AddressTeller.Editor.AddressTellerReport report)
+  Method static System.String ToJson(AddressTeller.Editor.AddressTellerReport report)
+  Method static System.Boolean WriteToFile(System.String path, AddressTeller.Editor.AddressTellerReport report, System.String format)
+
+static class AddressTeller.Editor.AddressTellerService
+  Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> ApplyAll(System.Collections.Generic.IEnumerable<System.String> paths, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings = null)
+  Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> ApplyAll(System.Collections.Generic.IEnumerable<System.String> paths, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, AddressTeller.Editor.IProgressReporter progress)
+  Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> ApplyAll(System.Collections.Generic.IEnumerable<System.String> paths, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, AddressTeller.Editor.IProgressReporter progress, System.Collections.Generic.IReadOnlyList<AddressTeller.AddressRuleBase> rules)
+  Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> ApplyAll(UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings = null)
+  Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> ApplyAll(UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, AddressTeller.Editor.IProgressReporter progress)
+  Method static System.Void RemoveEntriesForDeletedAssets(System.Collections.Generic.IEnumerable<System.String> deletedGuids, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings = null)
+  Method static System.Void RemoveEntriesForDeletedAssets(System.Collections.Generic.IEnumerable<System.String> deletedGuids, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, System.Collections.Generic.IReadOnlyList<AddressTeller.AddressRuleBase> rules)
+  Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> ValidateAll(UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings = null)
+  Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> ValidateAll(UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, AddressTeller.Editor.IProgressReporter progress)
+  Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> ValidateAll(UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, AddressTeller.Editor.IProgressReporter progress, System.Collections.Generic.IReadOnlyList<AddressTeller.AddressRuleBase> rules)
+
+static class AddressTeller.Editor.AddressTellerSettings
+  Field static const System.Int32 DefaultPostprocessOrder = 1000
+  Field static const System.String DefaultSnapshotFolder = "AddressTellerSnapshots"
+  Method static System.String GetSnapshotFolderAbsolutePath()
+  Method static System.Boolean IsRuleEnabled(System.String ruleClassFullName)
+  Method static System.Void SetRuleEnabled(System.String ruleClassFullName, System.Boolean enabled)
+  Property static System.Boolean AutoCreateMissingGroups { get; set; }
+  Property static System.Boolean AutoSnapshotBeforeApplyAll { get; set; }
+  Property static System.Int32 AutoSnapshotRetention { get; set; }
+  Property static System.Boolean CleanupStaleEntries { get; set; }
+  Property static System.Collections.Generic.IReadOnlyList<System.String> DisabledRuleClassNames { get; }
+  Property static System.Boolean PostprocessEnabled { get; set; }
+  Property static System.Int32 PostprocessOrder { get; set; }
+  Property static System.String SnapshotFolder { get; set; }
+
+sealed class AddressTeller.Editor.AddressTellerSnapshot
+  Constructor ()
+  Field System.String CapturedAtIso
+  Field System.String Comment
+  Field System.Collections.Generic.List<AddressTeller.Editor.SnapshotEntry> Entries
+  Field System.String PackageVersion
+  Field System.Int32 SchemaVersion
+  Field System.String UnityVersion
+  Method static AddressTeller.Editor.AddressTellerSnapshot FromJson(System.String json)
+  Method System.String ToJson()
+
+static class AddressTeller.Editor.AddressTellerSnapshotMenu
+  Method static System.Void SaveSnapshot()
+  Method static System.Void UndoLastApply()
+
+static class AddressTeller.Editor.AddressTellerSnapshotService
+  Field static const System.Int32 CurrentSchemaVersion = 1
+  Method static AddressTeller.Editor.DryRunResult BuildPredictedSnapshot(UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, System.Collections.Generic.IEnumerable<System.String> paths)
+  Method static AddressTeller.Editor.DryRunResult BuildPredictedSnapshot(UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, System.Collections.Generic.IEnumerable<System.String> paths, System.Collections.Generic.IReadOnlyList<AddressTeller.AddressRuleBase> rules)
+  Method static AddressTeller.Editor.AddressTellerSnapshot Capture(UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings)
+  Method static AddressTeller.Editor.AddressTellerSnapshot Capture(UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, System.String comment)
+  Method static AddressTeller.Editor.SnapshotDiff Diff(AddressTeller.Editor.AddressTellerSnapshot before, AddressTeller.Editor.AddressTellerSnapshot after)
+  Method static System.Boolean LoadFromFile(System.String path, out AddressTeller.Editor.AddressTellerSnapshot snapshot, out System.String error)
+  Method static System.Collections.Generic.IReadOnlyList<System.String> Restore(AddressTeller.Editor.AddressTellerSnapshot snapshot, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, AddressTeller.Editor.SnapshotRestoreMode mode = Additive)
+  Method static System.Collections.Generic.IReadOnlyList<System.String> RestoreExactWithRemoval(AddressTeller.Editor.AddressTellerSnapshot snapshot, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, System.Collections.Generic.IEnumerable<System.String> guidsToRemove)
+
+sealed class AddressTeller.Editor.BundleDistributionReport
+  Constructor ()
+  Field AddressTeller.Editor.LogicalBundleDto[] Bundles
+  Field System.String Disclaimer
+  Field System.Int32 TotalLogicalBundleCount
+  Field System.Int32 UnknownGroupCount
+
+static class AddressTeller.Editor.BundleDistributionSerializer
+  Method static System.String ToCsv(AddressTeller.BundleDistribution distribution, AddressTeller.Editor.DistributionSummary summary)
+  Method static System.String ToMarkdown(AddressTeller.BundleDistribution distribution, AddressTeller.Editor.DistributionSummary summary)
+  Method static System.Boolean WriteToFile(System.String path, AddressTeller.BundleDistribution distribution, AddressTeller.Editor.DistributionSummary summary, System.String format)
+
+static class AddressTeller.Editor.BundleDistributionSummarizer
+  Method static AddressTeller.BundleDistribution Build(AddressTeller.Editor.AddressTellerSnapshot after, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings, out System.Collections.Generic.IReadOnlyList<System.String> warnings)
+  Method static AddressTeller.Editor.DistributionSummary Summarize(AddressTeller.BundleDistribution distribution)
+
+static class AddressTeller.Editor.BundleModeReader
+  Method static AddressTeller.BundleModeKind ReadBundleMode(UnityEditor.AddressableAssets.Settings.AddressableAssetGroup group)
+  Method static System.Collections.Generic.IReadOnlyDictionary<System.String, AddressTeller.BundleModeKind> ReadBundleModes(System.Collections.Generic.IEnumerable<UnityEditor.AddressableAssets.Settings.AddressableAssetGroup> groups, out System.Collections.Generic.IReadOnlyList<System.String> warnings)
+
+enum AddressTeller.Editor.ClearScope
+  EnumMember All = 0
+  EnumMember Managed = 1
+
+struct AddressTeller.Editor.ClearedEntry
+  Constructor (System.String guid, System.String address, System.String groupName, System.Collections.Generic.IReadOnlyList<System.String> labels)
+  Property System.String Address { get; }
+  Property System.String GroupName { get; }
+  Property System.String Guid { get; }
+  Property System.Collections.Generic.IReadOnlyList<System.String> Labels { get; }
+
+sealed class AddressTeller.Editor.DistributionSummary
+  Constructor (System.Int32 totalLogicalBundleCount, System.Int32 unknownGroupCount, AddressTeller.Editor.LargestBundleInfo largestBundle)
+  Property AddressTeller.Editor.LargestBundleInfo LargestBundle { get; }
+  Property System.Int32 TotalLogicalBundleCount { get; }
+  Property System.Int32 UnknownGroupCount { get; }
+
+struct AddressTeller.Editor.DryRunResult
+  Constructor (AddressTeller.Editor.SnapshotDiff diff, System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> issues, System.Collections.Generic.IReadOnlyList<System.String> groupsToCreate = null, AddressTeller.Editor.AddressTellerSnapshot after = null)
+  Property AddressTeller.Editor.AddressTellerSnapshot After { get; }
+  Property AddressTeller.Editor.SnapshotDiff Diff { get; }
+  Property System.Collections.Generic.IReadOnlyList<System.String> GroupsToCreate { get; }
+  Property System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> Issues { get; }
+
+sealed class AddressTeller.Editor.EditorProgressReporter : AddressTeller.Editor.IProgressReporter, System.IDisposable
+  Constructor (System.String title)
+  Method System.Void Dispose()
+  Method System.Boolean Report(System.Int32 current, System.Int32 total, System.String description)
+  Property System.Boolean WasCancelled { get; }
+
+interface AddressTeller.Editor.IProgressReporter
+  Method abstract System.Boolean Report(System.Int32 current, System.Int32 total, System.String description)
+
+sealed class AddressTeller.Editor.LargestBundleInfo
+  Constructor (System.String groupName, AddressTeller.BundleModeKind mode, System.String splitKey, System.Int32 assetCount)
+  Property System.Int32 AssetCount { get; }
+  Property System.String GroupName { get; }
+  Property AddressTeller.BundleModeKind Mode { get; }
+  Property System.String SplitKey { get; }
+
+sealed class AddressTeller.Editor.LogicalBundleDto
+  Constructor ()
+  Field System.Int32 AssetCount
+  Field System.String GroupName
+  Field System.String Mode
+  Field System.String SplitKey
+
+sealed class AddressTeller.Editor.NullProgressReporter : AddressTeller.Editor.IProgressReporter
+  Field static readonly AddressTeller.Editor.NullProgressReporter Instance
+  Method System.Boolean Report(System.Int32 current, System.Int32 total, System.String description)
+
+sealed class AddressTeller.Editor.SnapshotDiff
+  Constructor ()
+  Property System.Collections.Generic.List<AddressTeller.Editor.SnapshotEntry> Added { get; }
+  Property System.Collections.Generic.List<System.ValueTuple<AddressTeller.Editor.SnapshotEntry, AddressTeller.Editor.SnapshotEntry>> Changed { get; }
+  Property System.Boolean IsEmpty { get; }
+  Property System.Collections.Generic.List<AddressTeller.Editor.SnapshotEntry> Removed { get; }
+
+sealed class AddressTeller.Editor.SnapshotEntry
+  Constructor ()
+  Field System.String Address
+  Field System.String GroupName
+  Field System.String Guid
+  Field System.Collections.Generic.List<System.String> Labels
+
+enum AddressTeller.Editor.SnapshotRestoreMode
+  EnumMember Additive = 0
+  EnumMember Exact = 1
+
+sealed class AddressTeller.Editor.ValidationResult
+  Constructor (AddressTeller.AssetContext context, AddressTeller.Editor.ValidationStatus status, System.String message, System.Collections.Generic.IReadOnlyList<AddressTeller.AddressCandidate> conflictingCandidates = null)
+  Property System.Collections.Generic.IReadOnlyList<AddressTeller.AddressCandidate> ConflictingCandidates { get; }
+  Property AddressTeller.AssetContext Context { get; }
+  Property System.Boolean IsOk { get; }
+  Property System.String Message { get; }
+  Property AddressTeller.Editor.ValidationStatus Status { get; }
+
+enum AddressTeller.Editor.ValidationStatus
+  EnumMember ConflictingAddress = 3
+  EnumMember DefaultGroupUnavailable = 9
+  EnumMember GroupCreationFailed = 8
+  EnumMember GroupNotFound = 4
+  EnumMember GroupWillBeCreated = 7
+  EnumMember InvalidAddress = 5
+  EnumMember LabelsOnly = 2
+  EnumMember Ok = 0
+  EnumMember RuleConfigureFailed = 10
+  EnumMember RuleError = 6
+  EnumMember Skipped = 1
+
+interface AddressTeller.IAddressRuleBuilder
+  Method abstract AddressTeller.ILabelRuleBuilder AnyGroup()
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Group(System.String groupName)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder GroupDefault()
+
+interface AddressTeller.IAddressRuleGroupBuilder
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Address(System.Func<AddressTeller.AssetContext, System.String> selector)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Address(System.String address)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Label(System.Func<AddressTeller.AssetContext, System.String> selector)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Label(System.String label)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Where(AddressTeller.AssetCondition condition)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description)
+
+interface AddressTeller.ILabelRuleBuilder
+  Method abstract AddressTeller.ILabelRuleBuilder Label(System.Func<AddressTeller.AssetContext, System.String> selector)
+  Method abstract AddressTeller.ILabelRuleBuilder Label(System.String label)
+  Method abstract AddressTeller.ILabelRuleBuilder Where(AddressTeller.AssetCondition condition)
+  Method abstract AddressTeller.ILabelRuleBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate)
+  Method abstract AddressTeller.ILabelRuleBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description)
+
+sealed class AddressTeller.LogicalBundle
+  Constructor (System.String groupName, AddressTeller.BundleModeKind mode, System.String splitKey, System.Int32 assetCount)
+  Property System.Int32 AssetCount { get; }
+  Property System.String GroupName { get; }
+  Property AddressTeller.BundleModeKind Mode { get; }
+  Property System.String SplitKey { get; }
+
+static class AddressTeller.Match
+  Method static AddressTeller.AssetCondition All(params AddressTeller.AssetCondition[] conditions)
+  Method static AddressTeller.AssetCondition Glob(System.String pattern)
+  Method static AddressTeller.AssetCondition InFolder(System.String folder, System.Boolean recursive = true)
+  Method static AddressTeller.AssetCondition OfType<T>()
+
+static class AddressTeller.Naming
+  Method static System.Func<AddressTeller.AssetContext, System.String> FileName()
+  Method static System.Func<AddressTeller.AssetContext, System.String> FileNameWithoutExtension()
+  Method static System.Func<AddressTeller.AssetContext, System.String> ParentFolderName()
+  Method static System.Func<AddressTeller.AssetContext, System.String> RelativePath(System.String root)
+
