@@ -56,6 +56,8 @@ public sealed class GameAddressRules : AddressRuleBase
 `Characters` グループは事前に Addressable Groups ウィンドウで作成しておく必要があります（存在しないグループ名はエラーになります）。
 Addressables の DefaultGroup に付与したい場合は `Group("名前")` の代わりに `GroupDefault()` を使えます（DefaultGroup のリネームに追従します）。詳しくは [ルールの書き方](Documentation~/writing-rules.ja.md#groupdefault) を参照してください。
 
+ルールクラスを独自の asmdef 内に定義する場合、その asmdef の `references` に `AddressTeller.Core` と `AddressTeller.Editor` の両方を追加してください（公開 API が両方のアセンブリ型を露出しているため）。
+
 ## ドキュメント
 
 - [ルールの書き方](Documentation~/writing-rules.ja.md) — `AddressRuleBase` の書き方、`Match`/`Naming` ヘルパー、`AssetContext`、評価ルールの詳細

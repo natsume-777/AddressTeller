@@ -14,6 +14,8 @@ public abstract class AddressRuleBase
 
 Classes that inherit `AddressRuleBase` are collected automatically from assemblies — no central registration required. Place them under an `Editor` folder.
 
+If you define rule classes in a custom assembly definition (asmdef), add both `AddressTeller.Core` and `AddressTeller.Editor` to its `references`, since the public APIs expose types from both assemblies (e.g., `ValidationResult.Context` is `AddressTeller.AssetContext` from Core).
+
 ## Group / Where / Address / Label
 
 ```csharp

@@ -56,6 +56,8 @@ Run `Tools/AddressTeller/Apply All` to assign addresses and labels to matching a
 The `Characters` group must be created in the Addressable Groups window beforehand (a missing group name is treated as an error).
 To assign to the Addressables DefaultGroup, use `GroupDefault()` instead of `Group("name")` — it follows DefaultGroup renames automatically. See [Writing Rules](Documentation~/writing-rules.md#groupdefault) for details.
 
+If you define rule classes in a custom assembly, ensure your asmdef's `references` includes both `AddressTeller.Core` and `AddressTeller.Editor` (the public APIs expose types from both assemblies).
+
 ## Documentation
 
 - [Writing Rules](Documentation~/writing-rules.md) — `AddressRuleBase` authoring, `Match`/`Naming` helpers, `AssetContext`, evaluation behavior

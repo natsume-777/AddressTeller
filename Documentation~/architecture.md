@@ -7,14 +7,19 @@ For the rationale behind the public API / internal implementation boundary, see 
 
 ## Assembly and Namespaces
 
-All editor code is consolidated into a single assembly `AddressTeller.Editor` (asmdef name / rootNamespace), but it spans two namespaces:
+Editor code is split across two assemblies that mirror the layer boundary:
 
-- Types under `Editor/Core` — the rule-definition surface and evaluation engine (`AddressRuleBase`, `Match`, `Naming`, `AssetContext`, `AddressResolution`, `RuleEvaluator`, etc.) — use `namespace AddressTeller` (no `.Editor` suffix).
-- Types under `Editor/Application` and `Editor/EntryPoints` use `namespace AddressTeller.Editor`.
+- **`AddressTeller.Core`** (asmdef name / rootNamespace `AddressTeller`) — everything under `Editor/Core`. This assembly has no reference to the Unity engine/editor modules or Addressables (`noEngineReferences: true` in the asmdef removes the `UnityEngine`/`UnityEditor` module references), so it cannot depend on those APIs even by accident. Note that Unity's standard precompiled references (e.g. the Test Runner assemblies) are still present, since `noEngineReferences` only drops engine/editor module references.
+- **`AddressTeller.Editor`** (asmdef name / rootNamespace `AddressTeller.Editor`) — everything under `Editor/Application`, `Editor/EntryPoints`, and the `Editor/AssemblyInfo.cs` file directly under `Editor/` (i.e. everything under `Editor/` other than `Editor/Core`). References `AddressTeller.Core` plus the Addressables packages.
 
-The `Editor/Core` / `Editor/Application` / `Editor/EntryPoints` folder split represents a logical layer boundary, not an assembly boundary (only Core uses a different namespace, as noted above). The one-way dependency direction between layers (described below) is enforced by folder conventions and `internal`/`public` access modifiers, not by the compiler — the compiler only prevents access to `internal` types from outside the assembly.
+The `Editor/Core` / `Editor/Application` / `Editor/EntryPoints` folder split now matches this assembly boundary directly. The one-way dependency direction between layers (described below) is therefore enforced by the compiler, not just by folder conventions: `AddressTeller.Core` has no assembly reference to `AddressTeller.Editor`, so it cannot access any type there (public or internal), regardless of access modifiers.
 
-The test assembly `AddressTeller.Editor.Tests` can directly reference `internal` types inside `AddressTeller.Editor` (in either namespace) via the `InternalsVisibleTo` attribute in `Editor/AssemblyInfo.cs`. `InternalsVisibleTo` is per-assembly, not per-namespace.
+Each assembly declares its own `InternalsVisibleTo`:
+
+- `Editor/Core/AssemblyInfo.cs` (on `AddressTeller.Core`) grants `AddressTeller.Editor` and `AddressTeller.Editor.Tests` access to its `internal` types (the evaluation engine: `RuleEvaluator`, `AddressResolution`, `AddressRuleBuilderImpl`, etc.).
+- `Editor/AssemblyInfo.cs` (on `AddressTeller.Editor`) grants `AddressTeller.Editor.Tests` access to its own `internal` types (`AddressTellerApplier`, `RuleEvaluationPipeline`, etc.).
+
+`InternalsVisibleTo` is per-assembly, not per-namespace.
 
 ## Layer Dependencies
 
@@ -28,7 +33,7 @@ Application  ── Service / Applier / RuleCollector / Pipeline / Snapshot / Re
 Core         ── Rule-definition surface / Evaluation engine (no Addressables dependency)
 ```
 
-Dependencies flow one-way from upper layers to lower layers. Core does not reference Application or EntryPoints.
+Dependencies flow one-way from upper layers to lower layers. Core does not reference Application or EntryPoints — and, since Core is now its own assembly with no reference back to `AddressTeller.Editor`, this direction is a compile-time guarantee rather than just a convention.
 
 - **Core**: Pure logic with no dependency on Addressables (rule-definition surface and evaluation engine).
 - **Application**: Addressables integration layer — handles `AddressableAssetSettings` and other Addressables APIs.
@@ -40,7 +45,7 @@ Each layer contains both public surface and internal implementation. For example
 
 ### Editor/Core
 
-Domain model and evaluation engine with no dependency on Addressables. The assembly is `AddressTeller.Editor`, but types here use `namespace AddressTeller` (no `.Editor` suffix).
+Domain model and evaluation engine with no dependency on Addressables. The assembly is `AddressTeller.Core`, and types here use `namespace AddressTeller` (no `.Editor` suffix), matching the asmdef's rootNamespace.
 
 - Rule-definition surface (public): `AddressRuleBase`, `IAddressRuleBuilder`, `Match`, `AssetCondition`, `Naming`, `AssetContext`, `AddressRuleEntry`, etc.
 - Evaluation implementation (internal): `RuleEvaluator`, `AddressRuleBuilderImpl`, `AddressResolution`, `RuleExplanation`, etc.
@@ -60,11 +65,11 @@ This layer only calls the public surface of Application and carries no domain lo
 
 ### Tests/Editor
 
-NUnit EditMode tests. Uses `InternalsVisibleTo` to directly test `internal` types in Application/Core. The `Tests` folder is treated as a UPM test assembly and is not included in the distribution.
+NUnit EditMode tests (`AddressTeller.Editor.Tests`). References both `AddressTeller.Core` and `AddressTeller.Editor` directly and uses `InternalsVisibleTo` (declared on each of those assemblies) to test their `internal` types. The `Tests` folder is treated as a UPM test assembly and is not included in the distribution.
 
 ### Samples~
 
-Sample rules for users (`BasicRules`, `FolderBasedRules`, `TypeBasedRules`). Per UPM conventions, `Samples~` is not imported by default; users import individual samples from the Package Manager.
+Sample rules and utilities for users (`BasicRules`, `FolderBasedRules`, `TypeBasedRules`, `RuleUnitTestHelper`). Per UPM conventions, `Samples~` is not imported by default; users import individual samples from the Package Manager.
 
 ## Rule Injection and Evaluation Flow
 

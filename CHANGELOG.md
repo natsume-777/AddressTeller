@@ -40,6 +40,7 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 
 ### Changed
 
+- **BREAKING**: Core domain model and evaluation engine (`Editor/Core/` content) are now split into an independent assembly `AddressTeller.Core`. The asmdef name is `AddressTeller.Core`, and the namespace remains `AddressTeller` (unchanged). If your project has a custom asmdef that references `AddressTeller.Editor`, you must also add `AddressTeller.Core` to its `references`; since public APIs in `AddressTeller.Editor` expose Core types (e.g., `ValidationResult.Context` is `AddressTeller.AssetContext`, `AddressTellerService.ApplyAll(..., rules)` accepts `IReadOnlyList<AddressTeller.AddressRuleBase>`), the compiler requires both assemblies in `references`.
 - Validation notifications with `IsOk=true` (e.g., `GroupWillBeCreated`) are now logged as `Warning` instead of `Error` across all entry points (Postprocessor, Menu, ApplyFlow). This distinguishes informational status messages from actual errors.
 - `AddressTellerMenu.Validate()` now opens the result window (showing Issues tab) when one or more errors (`IsOk=false`) are detected. Previously, results were only logged to the console.
 - **BREAKING**: `BundleModeReader.ReadBundleModes()` and `BundleDistributionSummarizer.Build()` now include an `out` parameter for reporting duplicate group name warnings. Callers must accept this new parameter.

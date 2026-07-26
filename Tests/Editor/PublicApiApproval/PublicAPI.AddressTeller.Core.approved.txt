@@ -1,0 +1,107 @@
+struct AddressTeller.AddressCandidate
+  Constructor (System.String groupName, System.String address, System.String sourceClass = null, System.String description = null, System.Int32 ruleIndex = 0)
+  Method System.String DescribeSource()
+  Property System.String Address { get; }
+  Property System.String Description { get; }
+  Property System.String GroupName { get; }
+  Property System.Int32 RuleIndex { get; }
+  Property System.String SourceClass { get; }
+
+abstract class AddressTeller.AddressRuleBase
+  Constructor protected ()
+  Method abstract System.Void Configure(AddressTeller.IAddressRuleBuilder rules)
+  Property virtual System.Int32 Order { get; }
+
+sealed class AddressTeller.AddressRuleEntry
+  Constructor (System.String groupName, System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.Func<AddressTeller.AssetContext, System.String> addressSelector, System.Collections.Generic.IReadOnlyList<System.Func<AddressTeller.AssetContext, System.String>> labelSelectors, System.String sourceClass = null, System.String description = null, System.Int32 ruleIndex = 0)
+  Method static System.String DescribeSource(System.String sourceClass, System.String description, System.Int32 ruleIndex)
+  Property System.Func<AddressTeller.AssetContext, System.String> AddressSelector { get; }
+  Property System.String Description { get; }
+  Property System.String GroupName { get; }
+  Property System.Collections.Generic.IReadOnlyList<System.Func<AddressTeller.AssetContext, System.String>> LabelSelectors { get; }
+  Property System.Func<AddressTeller.AssetContext, System.Boolean> Predicate { get; }
+  Property System.Int32 RuleIndex { get; }
+  Property System.String SourceClass { get; }
+
+sealed class AddressTeller.AssetCondition
+  Constructor (System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description = null)
+  Method AddressTeller.AssetCondition And(AddressTeller.AssetCondition other)
+  Method AddressTeller.AssetCondition And(System.Func<AddressTeller.AssetContext, System.Boolean> other, System.String description = null)
+  Method System.Boolean Test(AddressTeller.AssetContext ctx)
+  Method static System.Func<AddressTeller.AssetContext, System.Boolean> op_Implicit(AddressTeller.AssetCondition condition)
+  Property System.String Description { get; }
+  Property System.Func<AddressTeller.AssetContext, System.Boolean> Predicate { get; }
+
+sealed class AddressTeller.AssetContext
+  Constructor (System.String guid, System.String path, System.Type type)
+  Method System.Boolean IsInFolder(System.String folder)
+  Method System.String RelativePathFrom(System.String root)
+  Property System.String Directory { get; }
+  Property System.String Extension { get; }
+  Property System.String FileName { get; }
+  Property System.String FileNameWithoutExtension { get; }
+  Property System.String Guid { get; }
+  Property System.String Path { get; }
+  Property System.String[] PathSegments { get; }
+  Property System.Type Type { get; }
+
+struct AddressTeller.BundleAssetPlacement
+  Constructor (System.String groupName, System.Collections.Generic.IReadOnlyCollection<System.String> labels)
+  Property System.String GroupName { get; }
+  Property System.Collections.Generic.IReadOnlyCollection<System.String> Labels { get; }
+
+sealed class AddressTeller.BundleDistribution
+  Constructor (System.Collections.Generic.IReadOnlyList<AddressTeller.LogicalBundle> bundles)
+  Property System.Collections.Generic.IReadOnlyList<AddressTeller.LogicalBundle> Bundles { get; }
+
+static class AddressTeller.BundleDistributionCalculator
+  Field static const System.String NoLabelsSplitKey = "(no labels)"
+  Field static const System.String UnknownSplitKey = "(unknown)"
+  Method static AddressTeller.BundleDistribution Calculate(System.Collections.Generic.IReadOnlyDictionary<System.String, AddressTeller.BundleAssetPlacement> assets, System.Collections.Generic.IReadOnlyDictionary<System.String, AddressTeller.BundleModeKind> groupModes)
+
+enum AddressTeller.BundleModeKind
+  EnumMember PackSeparately = 1
+  EnumMember PackTogether = 0
+  EnumMember PackTogetherByLabel = 2
+  EnumMember Unknown = 3
+
+interface AddressTeller.IAddressRuleBuilder
+  Method abstract AddressTeller.ILabelRuleBuilder AnyGroup()
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Group(System.String groupName)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder GroupDefault()
+
+interface AddressTeller.IAddressRuleGroupBuilder
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Address(System.Func<AddressTeller.AssetContext, System.String> selector)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Address(System.String address)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Label(System.Func<AddressTeller.AssetContext, System.String> selector)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Label(System.String label)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Where(AddressTeller.AssetCondition condition)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description)
+
+interface AddressTeller.ILabelRuleBuilder
+  Method abstract AddressTeller.ILabelRuleBuilder Label(System.Func<AddressTeller.AssetContext, System.String> selector)
+  Method abstract AddressTeller.ILabelRuleBuilder Label(System.String label)
+  Method abstract AddressTeller.ILabelRuleBuilder Where(AddressTeller.AssetCondition condition)
+  Method abstract AddressTeller.ILabelRuleBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate)
+  Method abstract AddressTeller.ILabelRuleBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description)
+
+sealed class AddressTeller.LogicalBundle
+  Constructor (System.String groupName, AddressTeller.BundleModeKind mode, System.String splitKey, System.Int32 assetCount)
+  Property System.Int32 AssetCount { get; }
+  Property System.String GroupName { get; }
+  Property AddressTeller.BundleModeKind Mode { get; }
+  Property System.String SplitKey { get; }
+
+static class AddressTeller.Match
+  Method static AddressTeller.AssetCondition All(params AddressTeller.AssetCondition[] conditions)
+  Method static AddressTeller.AssetCondition Glob(System.String pattern)
+  Method static AddressTeller.AssetCondition InFolder(System.String folder, System.Boolean recursive = true)
+  Method static AddressTeller.AssetCondition OfType<T>()
+
+static class AddressTeller.Naming
+  Method static System.Func<AddressTeller.AssetContext, System.String> FileName()
+  Method static System.Func<AddressTeller.AssetContext, System.String> FileNameWithoutExtension()
+  Method static System.Func<AddressTeller.AssetContext, System.String> ParentFolderName()
+  Method static System.Func<AddressTeller.AssetContext, System.String> RelativePath(System.String root)
+

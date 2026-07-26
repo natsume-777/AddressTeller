@@ -7,14 +7,19 @@ AddressTeller のコード構成・レイヤ依存・ルール評価の流れを
 
 ## アセンブリと名前空間
 
-エディタコードは単一アセンブリ `AddressTeller.Editor`（asmdef名/rootNamespace）にまとまっているが、名前空間は2つに分かれている。
+エディタコードはレイヤ境界と対応する2つのアセンブリに分かれている。
 
-- `Editor/Core` 配下のルール定義面・評価エンジン（`AddressRuleBase`/`Match`/`Naming`/`AssetContext`/`AddressResolution`/`RuleEvaluator` など）は `namespace AddressTeller`（`.Editor` なし）。
-- `Editor/Application`・`Editor/EntryPoints` 配下の型は `namespace AddressTeller.Editor`。
+- **`AddressTeller.Core`**（asmdef名/rootNamespace `AddressTeller`）— `Editor/Core` 配下すべて。このアセンブリは Unity のエンジン/エディタモジュールおよび Addressables への参照を持たない（asmdefの `noEngineReferences: true` により `UnityEngine`/`UnityEditor` モジュール参照が外れる）ため、それらの API に意図せず依存することができない。ただし Unity 標準のプリコンパイル済み参照（Test Runner 関連アセンブリ等）は `noEngineReferences` の影響を受けず残っている点に注意。
+- **`AddressTeller.Editor`**（asmdef名/rootNamespace `AddressTeller.Editor`）— `Editor/Application`・`Editor/EntryPoints` 配下すべて、および `Editor/` 直下に置かれる `Editor/AssemblyInfo.cs`（すなわち `Editor/Core` 以外の `Editor/` 配下すべて）。`AddressTeller.Core` と Addressables 関連パッケージを参照する。
 
-`Editor/Core`・`Editor/Application`・`Editor/EntryPoints` というフォルダ分けは論理レイヤの区分であり、アセンブリ境界で分離されているわけではない（名前空間は上記の通り Core のみ異なる）。レイヤ間の依存方向（後述）は、フォルダ構成の規約と `internal`/`public` のアクセス修飾子によって表現される規律であり、コンパイラが強制するのは「型が `internal` なら同一アセンブリ外からは不可視」という点までである。
+`Editor/Core`・`Editor/Application`・`Editor/EntryPoints` というフォルダ分けは、このアセンブリ境界と直接対応するようになった。レイヤ間の依存方向（後述）は、コンパイラによって強制される：`AddressTeller.Core` は `AddressTeller.Editor` へのアセンブリ参照を持たないため、アクセス修飾子（`public`/`internal`）に関わらずそちらの型へは一切アクセスできない。
 
-テストアセンブリ `AddressTeller.Editor.Tests` は `Editor/AssemblyInfo.cs` の `InternalsVisibleTo` 属性によって、アセンブリ `AddressTeller.Editor` 内の `internal` 型（`AddressTeller`/`AddressTeller.Editor` いずれの名前空間の型も含む）を直接参照できる。`InternalsVisibleTo` はアセンブリ単位の許可であり、名前空間には依存しない。
+各アセンブリはそれぞれ自身の `InternalsVisibleTo` を宣言している。
+
+- `Editor/Core/AssemblyInfo.cs`（`AddressTeller.Core` 側）は `AddressTeller.Editor` と `AddressTeller.Editor.Tests` に対して、評価エンジン系の `internal` 型（`RuleEvaluator`、`AddressResolution`、`AddressRuleBuilderImpl` 等）を許可する。
+- `Editor/AssemblyInfo.cs`（`AddressTeller.Editor` 側）は `AddressTeller.Editor.Tests` に対して、自身の `internal` 型（`AddressTellerApplier`、`RuleEvaluationPipeline` 等）を許可する。
+
+`InternalsVisibleTo` はアセンブリ単位の許可であり、名前空間には依存しない。
 
 ## レイヤ依存
 
@@ -28,7 +33,7 @@ Application  ── Service / Applier / RuleCollector / Pipeline / Snapshot / Re
 Core         ── ルール定義面・評価エンジン（Addressables 非依存）
 ```
 
-依存は上位レイヤから下位レイヤへの一方向。Core は Application・EntryPoints のいずれも参照しない。
+依存は上位レイヤから下位レイヤへの一方向。Core は Application・EntryPoints のいずれも参照しない。Core が独立アセンブリとなり `AddressTeller.Editor` への参照を持たないため、これは単なる規約ではなくコンパイル時に保証される。
 
 - **Core**: Addressables に依存しない純粋なロジック（ルール定義面・評価エンジン）。
 - **Application**: Addressables 統合層。`AddressableAssetSettings` 等の Addressables API を扱う。
@@ -40,7 +45,7 @@ Core         ── ルール定義面・評価エンジン（Addressables 非�
 
 ### Editor/Core
 
-Addressables に依存しないドメインモデルと評価エンジン。アセンブリは `AddressTeller.Editor` だが、ここに置かれる型の名前空間は `AddressTeller`（`.Editor` なし）である。
+Addressables に依存しないドメインモデルと評価エンジン。アセンブリは `AddressTeller.Core` であり、ここに置かれる型の名前空間は asmdef の rootNamespace と同じ `AddressTeller`（`.Editor` なし）である。
 
 - ルール定義面（公開）: `AddressRuleBase`、`IAddressRuleBuilder`、`Match`、`AssetCondition`、`Naming`、`AssetContext`、`AddressRuleEntry` など
 - 評価実装（内部）: `RuleEvaluator`、`AddressRuleBuilderImpl`、`AddressResolution`、`RuleExplanation` など
@@ -60,11 +65,11 @@ Unity Editor へのフック・UI・CLI。名前空間は `AddressTeller.Editor`
 
 ### Tests/Editor
 
-NUnit の EditMode テスト。`InternalsVisibleTo` により Application/Core の `internal` 型を直接検証する。`Tests` フォルダは UPM のテストアセンブリとして扱われ、配布物には含まれない。
+NUnit の EditMode テスト（`AddressTeller.Editor.Tests`）。`AddressTeller.Core`・`AddressTeller.Editor` の両方を直接参照し、それぞれのアセンブリが宣言する `InternalsVisibleTo` により `internal` 型を直接検証する。`Tests` フォルダは UPM のテストアセンブリとして扱われ、配布物には含まれない。
 
 ### Samples~
 
-利用者向けのサンプルルール（`BasicRules`、`FolderBasedRules`、`TypeBasedRules`）。`Samples~` は UPM の規約によりデフォルトではインポートされず、利用者が Package Manager から個別に取り込む配布物である。
+利用者向けのサンプルルール・ユーティリティ（`BasicRules`、`FolderBasedRules`、`TypeBasedRules`、`RuleUnitTestHelper`）。`Samples~` は UPM の規約によりデフォルトではインポートされず、利用者が Package Manager から個別に取り込む配布物である。
 
 ## ルール注入と評価フロー
 

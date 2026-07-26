@@ -14,8 +14,8 @@ namespace AddressTeller
 
         /// <summary>
         /// 表示用にグループ名を整形する。<see cref="DefaultGroupSentinel"/> を解決できなかった場合
-        /// （<see cref="ValidationStatus.DefaultGroupUnavailable"/>）に、生のセンチネル文字列を画面へ
-        /// 漏出させないための共通ヘルパー。
+        /// （評価結果が <c>ValidationStatus.DefaultGroupUnavailable</c> 相当になったケース）に、
+        /// 生のセンチネル文字列を画面へ漏出させないための共通ヘルパー。
         /// </summary>
         internal static string DisplayGroupName(string groupName)
             => groupName == DefaultGroupSentinel ? "(Default Group)" : groupName;

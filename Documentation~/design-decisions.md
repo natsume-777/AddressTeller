@@ -48,4 +48,4 @@ Internal implementation (`internal`):
 - Addressables write implementation
 - Snapshot file management, auto-evacuation, and report assembly
 
-These are all contained within a single editor assembly. Tests can access them in a limited way via `InternalsVisibleTo`. Because users are not expected to reference internal types directly, their signatures may change freely in future refactors.
+These are split across two editor assemblies, `AddressTeller.Core` and `AddressTeller.Editor` (see [Architecture](architecture.md) for the assembly layout). Tests can access them in a limited way via `InternalsVisibleTo` declared on each assembly. Because users are not expected to reference internal types directly, their signatures may change freely in future refactors.

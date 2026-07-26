@@ -14,6 +14,8 @@ public abstract class AddressRuleBase
 
 `AddressRuleBase` を継承したクラスはアセンブリから自動収集されます（中央登録は不要）。`Editor` フォルダ配下に置いてください。
 
+ルールクラスを独自の asmdef 内に定義する場合、その asmdef の `references` に `AddressTeller.Core` と `AddressTeller.Editor` の両方を追加してください。公開 API が両方のアセンブリ型を露出しているため（例: `ValidationResult.Context` は Core の `AddressTeller.AssetContext`）です。
+
 ## Group / Where / Address / Label
 
 ```csharp

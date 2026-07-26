@@ -1,1 +1,2 @@
+AddressTeller.Core
 AddressTeller.Editor

@@ -2,6 +2,7 @@
     "name": "AddressTeller.Editor.Tests",
     "rootNamespace": "AddressTeller.Editor.Tests",
     "references": [
+        "AddressTeller.Core",
         "AddressTeller.Editor",
         "Unity.Addressables",
         "Unity.Addressables.Editor",

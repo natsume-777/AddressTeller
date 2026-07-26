@@ -69,7 +69,8 @@ namespace AddressTeller
     /// <summary>
     /// Predict 結果（アセット→グループ/ラベル）と各グループの BundleMode から、
     /// ビルド前の論理バンドル単位の個数・分布を概算する純粋関数群。
-    /// Addressables / AssetDatabase に依存しない（<see cref="AddressTeller.Editor.AddressTellerReportBuilder"/> と同じ流儀）。
+    /// Addressables / AssetDatabase に依存しない（<c>AddressTellerReportBuilder</c> 等の
+    /// レポート生成系のビルダー群と同じ流儀）。
     /// </summary>
     public static class BundleDistributionCalculator
     {

@@ -40,6 +40,7 @@
 
 ### Changed
 
+- **BREAKING**: ドメインモデル・評価エンジン（`Editor/Core/` 配下）を独立アセンブリ `AddressTeller.Core` に分離した。asmdef 名は `AddressTeller.Core` で、namespace は `AddressTeller` のまま変わらない。プロジェクトの独自 asmdef が `AddressTeller.Editor` を参照している場合、`AddressTeller.Core` も `references` に追加する必要がある。理由: `AddressTeller.Editor` の公開API が Core 型を露出しているため（例: `ValidationResult.Context` は `AddressTeller.AssetContext`、`AddressTellerService.ApplyAll(..., rules)` は `IReadOnlyList<AddressTeller.AddressRuleBase>` を受け取る）。コンパイラは両方のアセンブリが `references` に必要。
 - `IsOk=true` の検証通知（例: `GroupWillBeCreated`）が、全エントリポイント（Postprocessor・Menu・ApplyFlow）で `Error` ではなく `Warning` としてログされるようになった。これにより情報通知と実エラーが区別される。
 - `AddressTellerMenu.Validate()` は、エラー（`IsOk=false`）が1件以上ある場合に結果ウィンドウ（Issues タブを表示）を開くようになった。従前はコンソール出力のみだった。
 - **BREAKING**: `BundleModeReader.ReadBundleModes()` および `BundleDistributionSummarizer.Build()` のシグネチャに `out` 引数（グループ名重複の警告）が追加された。呼び出し元はこの新しい引数を受け入れる必要がある。
