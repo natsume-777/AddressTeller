@@ -383,8 +383,8 @@ namespace AddressTeller.Editor
 
             var btnRow = new VisualElement();
             btnRow.AddToClassList("at-export-row");
-            btnRow.Add(new Button(() => ExportDistribution("csv", "csv")) { text = "Export CSV..." });
-            btnRow.Add(new Button(() => ExportDistribution("markdown", "md")) { text = "Export Markdown..." });
+            btnRow.Add(new Button(() => ExportDistribution(DistributionFormat.Csv, "csv")) { text = "Export CSV..." });
+            btnRow.Add(new Button(() => ExportDistribution(DistributionFormat.Markdown, "md")) { text = "Export Markdown..." });
             _distributionTabContent.Add(btnRow);
         }
 
@@ -399,7 +399,7 @@ namespace AddressTeller.Editor
             EditorUtility.DisplayDialog(title, message, "OK");
 
         /// <summary>算出済みの論理バンドル分布をユーザーが選択したファイルに書き出す。</summary>
-        private void ExportDistribution(string format, string extension)
+        private void ExportDistribution(DistributionFormat format, string extension)
         {
             var path = EditorUtility.SaveFilePanel("Export Bundle Distribution", string.Empty, $"bundle-distribution.{extension}", extension);
             if (string.IsNullOrEmpty(path)) return;
@@ -408,12 +408,12 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// <see cref="ExportDistribution(string, string)"/> の実処理。ファイル選択ダイアログ（SaveFilePanel）を
+        /// <see cref="ExportDistribution(DistributionFormat, string)"/> の実処理。ファイル選択ダイアログ（SaveFilePanel）を
         /// 経由せず、テストから任意のパスで書き込み失敗経路を決定的に検証できるよう分離する
         /// （<see cref="AddressTellerApplyFlow.ExecuteApply(AddressableAssetSettings, IReadOnlyList{string}, IReadOnlyList{AddressRuleBase})"/>
         /// の rules 注入オーバーロードと同じ意図）。
         /// </summary>
-        internal void ExportDistributionToPath(string path, string format)
+        internal void ExportDistributionToPath(string path, DistributionFormat format)
         {
             if (!BundleDistributionSerializer.WriteToFile(path, _distribution, _distributionSummary, format))
             {

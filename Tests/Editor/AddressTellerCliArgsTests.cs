@@ -8,6 +8,17 @@ namespace AddressTeller.Editor.Tests
     public class AddressTellerCliArgsTests
     {
         [Test]
+        public void NullArgs_ReturnsFalseWithError()
+        {
+            // TryParse は Try プレフィックスのメソッドであるため、null 入力でも例外を投げず false を返す契約。
+            var ok = AddressTellerCliArgs.TryParse(null, out var result, out var error);
+
+            Assert.IsFalse(ok);
+            Assert.IsNull(result);
+            Assert.IsNotEmpty(error);
+        }
+
+        [Test]
         public void NoReportFlags_ReportPathAndFormatAreNull()
         {
             var args = new[] { "-batchmode", "-quit" };
@@ -30,7 +41,7 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(ok);
             Assert.IsNull(error);
             Assert.AreEqual("report.json", result.ReportPath);
-            Assert.AreEqual("json", result.ReportFormat);
+            Assert.AreEqual(ReportFormat.Json, result.ReportFormat);
         }
 
         [Test]
@@ -43,7 +54,7 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(ok);
             Assert.IsNull(error);
             Assert.AreEqual("report.xml", result.ReportPath);
-            Assert.AreEqual("junit", result.ReportFormat);
+            Assert.AreEqual(ReportFormat.Junit, result.ReportFormat);
         }
 
         [Test]
@@ -56,7 +67,7 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(ok);
             Assert.IsNull(error);
             Assert.AreEqual("report.txt", result.ReportPath);
-            Assert.AreEqual("junit", result.ReportFormat);
+            Assert.AreEqual(ReportFormat.Junit, result.ReportFormat);
         }
 
         [Test]
@@ -107,7 +118,7 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(ok);
             Assert.IsNull(error);
             Assert.IsNull(result.ReportPath);
-            Assert.AreEqual("junit", result.ReportFormat);
+            Assert.AreEqual(ReportFormat.Junit, result.ReportFormat);
         }
 
         [Test]

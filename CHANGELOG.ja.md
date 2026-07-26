@@ -10,8 +10,10 @@
 
 ### Added
 
+- `ReportFormat` と `DistributionFormat` enum: レポート・分布サマリのエクスポート形式を表現する新規公開型。`ReportFormat` は `Json` と `JUnit` に対応し（`AddressTellerReportWriter.WriteToFile` で使用）、`DistributionFormat` は `Csv` と `Markdown` に対応する（`BundleDistributionSerializer.WriteToFile` で使用）。
 - `ValidationStatus.RuleConfigureFailed`: ユーザールールの `Configure()` メソッドが例外を投げた場合に返される。問題のあるルールはスキップされ（エントリ0件として扱われ）、評価は継続される。どのルールに構成問題があるかを特定するのに役立つ。
 - ルール構成エラーが存在する場合、`Undo Last Apply` ダイアログと `Explain` ウィンドウに警告が表示されるため、利用者は報告された結果が不完全であることに気づくことができる。
+- `AddressTellerReport.SchemaVersion`: `AddressTellerSnapshot.SchemaVersion` と対称の新規フィールド。既定値は1で、`AddressTellerReportBuilder.Build` が設定する。
 
 ### Fixed
 
@@ -37,6 +39,8 @@
 - スナップショット JSON 読み込み（`LoadFromFile`）: 必須フィールド検証を GroupName・Entries にも拡張（従来の Guid チェックに加えて）。
 - Project Settings の Postprocessor order 欄: クランプ後の実効値（0入力時は1000）が UI 表示に反映されない不整合を修正。
 - `ExportDistribution`: ファイル書き込み失敗時に、従前はエラーを握りつぶしていたが、エラーダイアログを表示するようになった。
+- `AddressTellerSnapshotService.Restore`/`RestoreExactWithRemoval`/`Diff` は、必須引数が null の場合、従前の無防備な `NullReferenceException` ではなく `ArgumentNullException` を送出するようになった（`AddressTellerClearService.Clear` の既存の契約と統一）。このパッケージの null 引数方針（明示的なエントリポイントは例外を送出する、`AddressTellerService.*` のような既定値フォールバックを持つメソッドは送出しない）を該当箇所の XML ドキュメントコメントに明記した。
+- `AddressTellerSettings.DisabledRuleClassNames` は、内部リストの実体ではなく防御的コピーを返すようになった。返り値を変更しても永続化された設定には影響しなくなった。
 
 ### Changed
 
@@ -48,6 +52,14 @@
 - `ApplyAll`、`ValidateAll`、`BuildPredictedSnapshot` は、ルール構成エラーが検出された場合、stale entry cleanup（DeletedAssets 追跡）をスキップするようになった。問題のあるルールが管理するエントリの誤削除を防ぐため。
 - `ApplyAll` / `Apply with Validate` メニュー実行時、自動セーフティスナップショット保存に失敗した場合はApplyを中止するようになった（`ClearAll` の fail-fast 設計と対称にするため）。
 - `ClearAll` メニューおよび `ClearCLI` コマンドは、ルール構成エラーが存在する場合は中止するようになった（CLIではexit code 3）。
+- **BREAKING**: `AddressTellerReportWriter.WriteToFile` と `BundleDistributionSerializer.WriteToFile` は、生文字列（`"json"`/`"junit"`、`"csv"`/`"markdown"`）の代わりに `ReportFormat` / `DistributionFormat` enum を引数に取るようになった。CLI のテキスト引数（`-addressTellerReportFormat`）自体には影響しない。公開API側の型のみの変更。
+- **BREAKING**: `SnapshotDiff.Added`/`Removed`/`Changed` が `List<T>` から `IReadOnlyList<T>` に変更された。これらのコレクションを直接変更していたコードは修正が必要。
+- **BREAKING**: `SnapshotDiff` と `DryRunResult` の引数なしパブリックコンストラクタが `internal` になった。これらの型はライブラリのスナップショット・dry-run API からのみ生成される想定。テストは `InternalsVisibleTo` 経由で引き続き構築できる。
+- **BREAKING**: `ValidationResult` と `AddressCandidate` の公開コンストラクタが `internal` になった。これらの型はライブラリ内部のルール評価パイプラインからのみ構築される想定。テストは `InternalsVisibleTo` 経由で引き続き構築できる。
+- **BREAKING**: `AddressTellerPostprocessor` が `sealed` になった。
+- **BREAKING**: `AddressTellerService.RemoveEntriesForDeletedAssets` が `void` ではなく `IReadOnlyList<ClearedEntry>`（実際に削除されたエントリ一覧）を返すようになった。結果を握りつぶさず返す `ApplyAll`/`ValidateAll` の流儀に揃えた。
+- **BREAKING**: `AddressTellerExplainReport`、`AddressTellerExplainAsset`、`AddressTellerExplainRule` が `internal` になった（従前は `public`）。パッケージ外部からこれらの型を構築・取得するサポートされた経路は存在しない。
+- **BREAKING**: `AddressTellerCliArgs.ReportFormat` が `string` ではなく `ReportFormat?` になった。この値を生文字列（`"json"`/`"junit"`）として読んでいたコードは `ReportFormat` enum との比較に修正が必要。
 
 ### Documentation
 

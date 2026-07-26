@@ -16,7 +16,11 @@ namespace AddressTeller
         /// <summary>Configure() 内で Group() が呼ばれた順序（0始まり）。</summary>
         public int RuleIndex { get; }
 
-        public AddressCandidate(string groupName, string address, string sourceClass = null, string description = null, int ruleIndex = 0)
+        /// <summary>
+        /// 公開コンストラクタではなく internal（ライブラリ内部のルール評価エンジンからのみ構築される想定）。
+        /// テストからは <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute"/> 経由で参照する。
+        /// </summary>
+        internal AddressCandidate(string groupName, string address, string sourceClass = null, string description = null, int ruleIndex = 0)
         {
             GroupName = groupName;
             Address = address;

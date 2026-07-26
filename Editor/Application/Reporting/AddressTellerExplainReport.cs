@@ -7,9 +7,11 @@ namespace AddressTeller.Editor
     /// <summary>
     /// Explain（<see cref="RuleExplainService.Explain"/>）の結果を CI/外部ツール向けに構造化したレポート。
     /// JsonUtility でシリアライズするため public フィールドで構成する。
+    /// 生成元（<see cref="AddressTellerExplainReportBuilder"/>）が internal であり利用者からの到達手段が無いため、
+    /// この型自体も internal とする（外部公開する場合は CLI/エクスポート経路の新設とあわせて再検討する）。
     /// </summary>
     [Serializable]
-    public sealed class AddressTellerExplainReport
+    internal sealed class AddressTellerExplainReport
     {
         public List<AddressTellerExplainAsset> Assets = new();
 
@@ -20,7 +22,7 @@ namespace AddressTeller.Editor
 
     /// <summary>1アセット分の Explain 結果。</summary>
     [Serializable]
-    public sealed class AddressTellerExplainAsset
+    internal sealed class AddressTellerExplainAsset
     {
         public string Path;
 
@@ -38,7 +40,7 @@ namespace AddressTeller.Editor
 
     /// <summary>1ルール×1アセットの評価詳細。</summary>
     [Serializable]
-    public sealed class AddressTellerExplainRule
+    internal sealed class AddressTellerExplainRule
     {
         public string RuleSource;
         public string GroupName;

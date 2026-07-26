@@ -146,7 +146,7 @@ namespace AddressTeller.Editor.Tests
 
             try
             {
-                var ok = BundleDistributionSerializer.WriteToFile(path, SimpleDistribution(), SimpleSummary(), "csv");
+                var ok = BundleDistributionSerializer.WriteToFile(path, SimpleDistribution(), SimpleSummary(), DistributionFormat.Csv);
 
                 Assert.IsTrue(ok);
                 Assert.IsTrue(File.Exists(path));
@@ -167,7 +167,7 @@ namespace AddressTeller.Editor.Tests
 
             try
             {
-                var ok = BundleDistributionSerializer.WriteToFile(path, SimpleDistribution(), SimpleSummary(), "markdown");
+                var ok = BundleDistributionSerializer.WriteToFile(path, SimpleDistribution(), SimpleSummary(), DistributionFormat.Markdown);
 
                 Assert.IsTrue(ok);
                 Assert.IsTrue(File.Exists(path));
@@ -181,12 +181,22 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void WriteToFile_NullDistribution_ThrowsArgumentNullException()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "BundleDistributionSerializerTests_null.csv");
+
+            Assert.Throws<ArgumentNullException>(() =>
+                BundleDistributionSerializer.WriteToFile(path, null, SimpleSummary(), DistributionFormat.Csv));
+        }
+
+        [Test]
         public void WriteToFile_UnknownFormat_ThrowsArgumentException()
         {
             var path = Path.Combine(Path.GetTempPath(), "BundleDistributionSerializerTests_unknown.txt");
 
+            // 定義域外の値（enum が将来拡張されず switch の default に落ちるケースの防御的分岐を検証する）。
             Assert.Throws<ArgumentException>(() =>
-                BundleDistributionSerializer.WriteToFile(path, SimpleDistribution(), SimpleSummary(), "yaml"));
+                BundleDistributionSerializer.WriteToFile(path, SimpleDistribution(), SimpleSummary(), (DistributionFormat)99));
         }
 
         [Test]
@@ -200,7 +210,7 @@ namespace AddressTeller.Editor.Tests
                 File.WriteAllText(blockingFile, "blocking");
 
                 LogAssert.Expect(LogType.Error, new Regex("Failed to write bundle distribution"));
-                var ok = BundleDistributionSerializer.WriteToFile(path, SimpleDistribution(), SimpleSummary(), "csv");
+                var ok = BundleDistributionSerializer.WriteToFile(path, SimpleDistribution(), SimpleSummary(), DistributionFormat.Csv);
 
                 Assert.IsFalse(ok);
             }

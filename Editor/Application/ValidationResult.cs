@@ -56,7 +56,11 @@ namespace AddressTeller.Editor
         public bool IsOk => Status == ValidationStatus.Ok || Status == ValidationStatus.Skipped
             || Status == ValidationStatus.LabelsOnly || Status == ValidationStatus.GroupWillBeCreated;
 
-        public ValidationResult(AssetContext context, ValidationStatus status, string message,
+        /// <summary>
+        /// 公開コンストラクタではなく internal（ライブラリ内部の評価パイプラインからのみ構築される想定）。
+        /// テストからは <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute"/> 経由で参照する。
+        /// </summary>
+        internal ValidationResult(AssetContext context, ValidationStatus status, string message,
             IReadOnlyList<AddressCandidate> conflictingCandidates = null)
         {
             Context = context;

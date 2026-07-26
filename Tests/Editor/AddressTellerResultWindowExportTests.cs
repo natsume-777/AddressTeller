@@ -64,7 +64,7 @@ namespace AddressTeller.Editor.Tests
 
                 LogAssert.Expect(LogType.Error, new Regex("Failed to write bundle distribution"));
 
-                _window.ExportDistributionToPath(path, "csv");
+                _window.ExportDistributionToPath(path, DistributionFormat.Csv);
 
                 Assert.IsNotNull(notifiedTitle, "書き込みに失敗した場合、失敗通知（ダイアログ相当）が呼ばれるべき。");
                 StringAssert.Contains(path, notifiedMessage);
@@ -91,7 +91,7 @@ namespace AddressTeller.Editor.Tests
                 var notified = false;
                 AddressTellerResultWindow.s_notifyExportFailed = (_, __) => notified = true;
 
-                _window.ExportDistributionToPath(path, "csv");
+                _window.ExportDistributionToPath(path, DistributionFormat.Csv);
 
                 Assert.IsFalse(notified, "書き込みに成功した場合、失敗通知は呼ばれないべき。");
                 Assert.IsTrue(File.Exists(path));

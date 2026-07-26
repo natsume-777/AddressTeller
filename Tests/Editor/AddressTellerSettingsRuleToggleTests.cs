@@ -57,5 +57,20 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(AddressTellerSettings.IsRuleEnabled(DummyClassName));
             CollectionAssert.DoesNotContain(AddressTellerSettings.DisabledRuleClassNames.ToList(), DummyClassName);
         }
+
+        [Test]
+        public void DisabledRuleClassNames_ReturnsDefensiveCopy_NotSameInstanceAcrossCalls()
+        {
+            // 要素が空の場合は Array.Empty<T> 相当の共有インスタンスが返ることがあるが、
+            // 空配列は変更のしようがなく安全性には影響しないため、ここでは要素を1件以上持たせた上で検証する。
+            // 内部リストの実体を露出していると、毎回同じインスタンスが返る（AreSame になる）はず。
+            // 防御的コピーであれば、呼び出しのたびに別インスタンスが返る。
+            AddressTellerSettings.SetRuleEnabled(DummyClassName, false);
+
+            var first = AddressTellerSettings.DisabledRuleClassNames;
+            var second = AddressTellerSettings.DisabledRuleClassNames;
+
+            Assert.AreNotSame(first, second);
+        }
     }
 }

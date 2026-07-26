@@ -58,7 +58,7 @@ namespace AddressTeller.Editor.Tests
         public void BuildDiffRows_Added_HasAfterValuesOnly()
         {
             var diff = new SnapshotDiff();
-            diff.Added.Add(Entry(Guid(AssetAPath), "AssetA", "GroupA", "alpha"));
+            diff.AddAdded(Entry(Guid(AssetAPath), "AssetA", "GroupA", "alpha"));
 
             var rows = AddressTellerResultWindowRows.BuildDiffRows(diff);
 
@@ -77,7 +77,7 @@ namespace AddressTeller.Editor.Tests
         public void BuildDiffRows_Removed_HasBeforeValuesOnly()
         {
             var diff = new SnapshotDiff();
-            diff.Removed.Add(Entry(Guid(AssetAPath), "OldAddress", "OldGroup", "old"));
+            diff.AddRemoved(Entry(Guid(AssetAPath), "OldAddress", "OldGroup", "old"));
 
             var rows = AddressTellerResultWindowRows.BuildDiffRows(diff);
 
@@ -98,7 +98,7 @@ namespace AddressTeller.Editor.Tests
             var diff = new SnapshotDiff();
             var before = Entry(Guid(AssetAPath), "OldAddress", "OldGroup", "old");
             var after = Entry(Guid(AssetAPath), "NewAddress", "NewGroup", "new");
-            diff.Changed.Add((before, after));
+            diff.AddChanged(before, after);
 
             var rows = AddressTellerResultWindowRows.BuildDiffRows(diff);
 
@@ -118,10 +118,10 @@ namespace AddressTeller.Editor.Tests
         {
             var diff = new SnapshotDiff();
             // 意図的に Kind と AssetPath の順序が逆になるように追加する。
-            diff.Changed.Add((Entry(Guid(AssetCPath), "a", "g", "l"), Entry(Guid(AssetCPath), "b", "g", "l")));
-            diff.Added.Add(Entry(Guid(AssetBPath), "b", "g", "l"));
-            diff.Added.Add(Entry(Guid(AssetAPath), "a", "g", "l"));
-            diff.Removed.Add(Entry(Guid(AssetCPath), "x", "g", "l"));
+            diff.AddChanged(Entry(Guid(AssetCPath), "a", "g", "l"), Entry(Guid(AssetCPath), "b", "g", "l"));
+            diff.AddAdded(Entry(Guid(AssetBPath), "b", "g", "l"));
+            diff.AddAdded(Entry(Guid(AssetAPath), "a", "g", "l"));
+            diff.AddRemoved(Entry(Guid(AssetCPath), "x", "g", "l"));
 
             var rows1 = AddressTellerResultWindowRows.BuildDiffRows(diff);
             var rows2 = AddressTellerResultWindowRows.BuildDiffRows(diff);
@@ -149,7 +149,7 @@ namespace AddressTeller.Editor.Tests
         public void BuildDiffRows_UnresolvableGuid_FallsBackToGuidAsAssetPath()
         {
             var diff = new SnapshotDiff();
-            diff.Added.Add(Entry(UnresolvableGuid, "Address", "Group", "label"));
+            diff.AddAdded(Entry(UnresolvableGuid, "Address", "Group", "label"));
 
             var rows = AddressTellerResultWindowRows.BuildDiffRows(diff);
 
@@ -231,7 +231,7 @@ namespace AddressTeller.Editor.Tests
         public void BuildDiffRows_NullLabels_SummarizesAsEmptyString()
         {
             var diff = new SnapshotDiff();
-            diff.Added.Add(new SnapshotEntry { Guid = Guid(AssetAPath), Address = "AssetA", GroupName = "GroupA", Labels = null });
+            diff.AddAdded(new SnapshotEntry { Guid = Guid(AssetAPath), Address = "AssetA", GroupName = "GroupA", Labels = null });
 
             var rows = AddressTellerResultWindowRows.BuildDiffRows(diff);
 

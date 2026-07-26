@@ -8,6 +8,16 @@ using UnityEngine;
 
 namespace AddressTeller.Editor
 {
+    /// <summary>レポートのファイル出力形式。</summary>
+    public enum ReportFormat
+    {
+        /// <summary>JSON 形式。</summary>
+        Json,
+
+        /// <summary>JUnit 形式の XML。</summary>
+        Junit,
+    }
+
     /// <summary>
     /// <see cref="AddressTellerReport"/> を JSON / JUnit XML にシリアライズし、ファイルへ書き出す。
     /// CLI から呼ばれる想定で、Addressables には依存しない。
@@ -92,17 +102,20 @@ namespace AddressTeller.Editor
         /// </summary>
         /// <param name="path">出力先ファイルパス。</param>
         /// <param name="report">出力するレポート。</param>
-        /// <param name="format">"json" または "junit"。それ以外は <see cref="ArgumentException"/>。</param>
+        /// <param name="format">出力形式。未定義の値の場合は <see cref="ArgumentException"/>。</param>
         /// <returns>書き込みに成功したら true。失敗時は false（ログ出力済み）。</returns>
-        public static bool WriteToFile(string path, AddressTellerReport report, string format)
+        /// <exception cref="ArgumentNullException"><paramref name="report"/> が null。</exception>
+        public static bool WriteToFile(string path, AddressTellerReport report, ReportFormat format)
         {
+            if (report == null) throw new ArgumentNullException(nameof(report));
+
             string content;
             switch (format)
             {
-                case "json":
+                case ReportFormat.Json:
                     content = ToJson(report);
                     break;
-                case "junit":
+                case ReportFormat.Junit:
                     content = ToJUnitXml(report);
                     break;
                 default:

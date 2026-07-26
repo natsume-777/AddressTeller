@@ -1,5 +1,4 @@
 struct AddressTeller.AddressCandidate
-  Constructor (System.String groupName, System.String address, System.String sourceClass = null, System.String description = null, System.Int32 ruleIndex = 0)
   Method System.String DescribeSource()
   Property System.String Address { get; }
   Property System.String Description { get; }

@@ -454,7 +454,8 @@ namespace AddressTeller.Editor
                 var report = AddressTellerReportBuilder.Build(dryRun, settings);
                 report.Summary.ExitCode = exitCode;
 
-                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat))
+                // ReportPath が指定されている場合、TryParse で ReportFormat は必ず（明示または拡張子推定で）設定済み。
+                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value))
                 {
                     EditorApplication.Exit(3);
                     return;
@@ -503,7 +504,8 @@ namespace AddressTeller.Editor
             if (!string.IsNullOrEmpty(cliArgs.ReportPath))
             {
                 var report = AddressTellerReportBuilder.Build(result, settings);
-                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat))
+                // ReportPath が指定されている場合、TryParse で ReportFormat は必ず（明示または拡張子推定で）設定済み。
+                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value))
                 {
                     EditorApplication.Exit(3);
                     return;

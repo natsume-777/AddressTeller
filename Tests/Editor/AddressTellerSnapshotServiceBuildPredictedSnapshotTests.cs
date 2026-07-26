@@ -106,6 +106,20 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void BuildPredictedSnapshot_NullSettings_ThrowsArgumentNullException()
+        {
+            Assert.Throws<System.ArgumentNullException>(() =>
+                AddressTellerSnapshotService.BuildPredictedSnapshot(null, new[] { StubAssetPath }, new AddressRuleBase[] { new StubRule() }));
+        }
+
+        [Test]
+        public void BuildPredictedSnapshot_NullPaths_ThrowsArgumentNullException()
+        {
+            Assert.Throws<System.ArgumentNullException>(() =>
+                AddressTellerSnapshotService.BuildPredictedSnapshot(_settings, null, new AddressRuleBase[] { new StubRule() }));
+        }
+
+        [Test]
         public void NewlyMatchedAsset_AppearsInDiffAdded()
         {
             CreatePrefab(StubAssetPath);

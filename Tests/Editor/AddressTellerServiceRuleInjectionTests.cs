@@ -106,9 +106,24 @@ namespace AddressTeller.Editor.Tests
             const string staleGuid = "stale-guid-rule-injection";
             _settings.CreateOrMoveEntry(staleGuid, _stubGroup);
 
-            AddressTellerService.RemoveEntriesForDeletedAssets(new[] { staleGuid }, _settings, new AddressRuleBase[] { new StubRule() });
+            var cleared = AddressTellerService.RemoveEntriesForDeletedAssets(new[] { staleGuid }, _settings, new AddressRuleBase[] { new StubRule() });
 
             Assert.IsNull(_settings.FindAssetEntry(staleGuid));
+            Assert.AreEqual(1, cleared.Count);
+            Assert.AreEqual(staleGuid, cleared[0].Guid);
+            Assert.AreEqual(_stubGroup.Name, cleared[0].GroupName);
+        }
+
+        [Test]
+        public void RemoveEntriesForDeletedAssets_NothingRemoved_ReturnsEmptyList()
+        {
+            // 対象 GUID に対応するエントリが存在しない場合、削除は1件も発生しないため空リストを返す
+            // (nullを返す・例外を投げるのではなく、空リストという「結果を握りつぶさない」規約に沿った挙動)。
+            var cleared = AddressTellerService.RemoveEntriesForDeletedAssets(
+                new[] { "guid-not-registered" }, _settings, new AddressRuleBase[] { new StubRule() });
+
+            Assert.IsNotNull(cleared);
+            Assert.AreEqual(0, cleared.Count);
         }
 
         [Test]

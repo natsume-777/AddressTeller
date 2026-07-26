@@ -31,14 +31,14 @@ Entries themselves are deleted, but labels are not stripped. Because labels accu
 
 To keep the surface area that users interact with as small as possible, only the following are `public`. Everything else — evaluation engine internals and Addressables integration details — is `internal`, leaving room for future refactoring without breaking changes.
 
-Public API:
+Public API (representative examples; not an exhaustive list):
 
 - **Rule-definition surface**: `AddressRuleBase`, `IAddressRuleBuilder`, `IAddressRuleGroupBuilder`, `Match`, `AssetCondition`, `Naming`, `AssetContext`, `AddressRuleEntry`
 - **Execution entry points**: `AddressTellerService`, `AddressTellerSettings`
 - **Snapshot**: `AddressTellerSnapshotService`, `SnapshotRestoreMode`, `SnapshotDiff`, `AddressTellerSnapshot`, `SnapshotEntry`
 - **Result types**: `ValidationResult`, `ValidationStatus`
 - **Progress reporting**: `IProgressReporter`, `NullProgressReporter`, `EditorProgressReporter`
-- **Reports**: `AddressTellerReportWriter`, `AddressTellerExplainReport`, `AddressTellerExplainAsset`, `AddressTellerExplainRule`, and other report DTOs
+- **Reports**: `AddressTellerReportWriter`, `ReportFormat`, `BundleDistributionSerializer`, `DistributionFormat`, and other report DTOs
 - **CLI and menu entry points**: `AddressTellerMenu`, `AddressTellerSnapshotMenu`, `AddressTellerExplainMenu`, `AddressTellerCliArgs`
 - **Auto-apply on import**: `AddressTellerPostprocessor`
 

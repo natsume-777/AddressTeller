@@ -20,20 +20,32 @@ namespace AddressTeller.Editor
     /// <summary>
     /// AddressableAssetSettings とスナップショット間の状態の収集・書き戻し・差分計算を行う。
     /// </summary>
+    /// <remarks>
+    /// 必須引数の null 契約: <see cref="Capture(AddressableAssetSettings)"/>・<see cref="Restore"/>・
+    /// <see cref="RestoreExactWithRemoval"/>・<see cref="BuildPredictedSnapshot(AddressableAssetSettings, IEnumerable{string})"/>・
+    /// <see cref="Diff"/> は利用者が明示的に呼び出す公開APIのエントリポイントであるため、必須引数が null の場合は
+    /// <see cref="ArgumentNullException"/> を送出する（<see cref="AddressTellerClearService.Clear"/> と同じ方針）。
+    /// これに対し <see cref="AddressTellerService"/> の各メソッドが settings 引数に対して行う既定値フォールバック
+    /// （省略時に現在の AddressableAssetSettings を使う）は、意図的に異なる契約であり例外を送出しない。
+    /// </remarks>
     public static class AddressTellerSnapshotService
     {
         /// <summary>現在サポートしているスナップショットのスキーマバージョン。</summary>
         public const int CurrentSchemaVersion = 1;
 
         /// <summary>現在の Addressables の状態をスナップショットとして収集する。</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> が null。</exception>
         public static AddressTellerSnapshot Capture(AddressableAssetSettings settings) => Capture(settings, "");
 
         /// <summary>
         /// 現在の Addressables の状態をスナップショットとして収集する。
         /// <paramref name="comment"/> はユーザーが付与する任意のコメントとしてそのまま記録される。
         /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> が null。</exception>
         public static AddressTellerSnapshot Capture(AddressableAssetSettings settings, string comment)
         {
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
+
             var snapshot = new AddressTellerSnapshot();
 
             foreach (var group in settings.groups)
@@ -175,11 +187,15 @@ namespace AddressTeller.Editor
         /// 最初に見つかったグループを採用して処理を継続し、issues にその旨を報告する
         /// （<paramref name="snapshot"/> が実際に参照しているグループ名のみを対象とし、無関係な重複グループについては報告しない）。
         /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> または <paramref name="settings"/> が null。</exception>
         public static IReadOnlyList<string> Restore(
             AddressTellerSnapshot snapshot,
             AddressableAssetSettings settings,
             SnapshotRestoreMode mode = SnapshotRestoreMode.Additive)
         {
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
+
             var issues = new List<string>();
 
             // 重複グループ名の報告対象を、このスナップショットが実際に使うグループ名だけに絞り込む
@@ -268,11 +284,18 @@ namespace AddressTeller.Editor
         /// 誤削除を防ぐ）、Undo Last Apply のように「Apply 直前の状態へ戻す」ことが明確な文脈でのみ、
         /// 呼び出し側が所有権判定（managedGroups）で絞り込んだ GUID を渡してエントリ削除を行う。
         /// </summary>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="snapshot"/>、<paramref name="settings"/>、<paramref name="guidsToRemove"/> のいずれかが null。
+        /// </exception>
         public static IReadOnlyList<string> RestoreExactWithRemoval(
             AddressTellerSnapshot snapshot,
             AddressableAssetSettings settings,
             IEnumerable<string> guidsToRemove)
         {
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
+            if (guidsToRemove == null) throw new ArgumentNullException(nameof(guidsToRemove));
+
             foreach (var guid in guidsToRemove)
             {
                 var entry = settings.FindAssetEntry(guid);
@@ -288,14 +311,19 @@ namespace AddressTeller.Editor
         /// <summary>
         /// Apply を実行せずに、適用後の状態を表すスナップショットを現在の状態との差分として計算する。
         /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> または <paramref name="paths"/> が null。</exception>
         public static DryRunResult BuildPredictedSnapshot(AddressableAssetSettings settings, IEnumerable<string> paths)
             => BuildPredictedSnapshot(settings, paths, RuleCollector.CollectEnabledRules());
 
         /// <summary>
         /// ルール一覧を明示的に指定する版。テストや特定スコープでの dry-run 計算に使う。
         /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> または <paramref name="paths"/> が null。</exception>
         public static DryRunResult BuildPredictedSnapshot(AddressableAssetSettings settings, IEnumerable<string> paths, IReadOnlyList<AddressRuleBase> rules)
         {
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
+            if (paths == null) throw new ArgumentNullException(nameof(paths));
+
             var before = Capture(settings);
             var afterMap = before.Entries.ToDictionary(e => e.Guid);
 
@@ -350,9 +378,16 @@ namespace AddressTeller.Editor
             return new DryRunResult(diff, issues, sortedGroupsToCreate, after);
         }
 
-        /// <summary>2つのスナップショットを GUID 単位で比較し、追加・削除・変更の差分を返す。</summary>
+        /// <summary>
+        /// 2つのスナップショットを GUID 単位で比較し、追加・削除・変更の差分を返す。
+        /// <paramref name="before"/>/<paramref name="after"/> が null の場合は <see cref="ArgumentNullException"/>
+        /// を送出する（利用者が明示的に呼び出す公開APIのエントリポイントであるため）。
+        /// </summary>
         public static SnapshotDiff Diff(AddressTellerSnapshot before, AddressTellerSnapshot after)
         {
+            if (before == null) throw new ArgumentNullException(nameof(before));
+            if (after == null) throw new ArgumentNullException(nameof(after));
+
             var diff = new SnapshotDiff();
             var beforeMap = before.Entries.ToDictionary(e => e.Guid);
             var afterGuids = new HashSet<string>();
@@ -363,32 +398,56 @@ namespace AddressTeller.Editor
 
                 if (!beforeMap.TryGetValue(entry.Guid, out var prev))
                 {
-                    diff.Added.Add(entry);
+                    diff.AddAdded(entry);
                     continue;
                 }
 
                 if (prev.Address != entry.Address
                     || prev.GroupName != entry.GroupName
                     || !prev.Labels.SequenceEqual(entry.Labels))
-                    diff.Changed.Add((prev, entry));
+                    diff.AddChanged(prev, entry);
             }
 
             foreach (var entry in before.Entries)
                 if (!afterGuids.Contains(entry.Guid))
-                    diff.Removed.Add(entry);
+                    diff.AddRemoved(entry);
 
             return diff;
         }
     }
 
-    /// <summary>2つのスナップショット間の差分。</summary>
+    /// <summary>
+    /// 2つのスナップショット間の差分。
+    /// <see cref="Added"/>/<see cref="Removed"/>/<see cref="Changed"/> は読み取り専用のビューであり、
+    /// 内部の可変リストへの追加は <see cref="AddAdded"/>/<see cref="AddRemoved"/>/<see cref="AddChanged"/>
+    /// （同一アセンブリ限定）を通じて行う。
+    /// </summary>
     public sealed class SnapshotDiff
     {
-        public List<SnapshotEntry> Added { get; } = new();
-        public List<SnapshotEntry> Removed { get; } = new();
-        public List<(SnapshotEntry Before, SnapshotEntry After)> Changed { get; } = new();
+        private readonly List<SnapshotEntry> _added = new();
+        private readonly List<SnapshotEntry> _removed = new();
+        private readonly List<(SnapshotEntry Before, SnapshotEntry After)> _changed = new();
 
-        public bool IsEmpty => Added.Count == 0 && Removed.Count == 0 && Changed.Count == 0;
+        /// <summary>
+        /// <see cref="AddressTellerSnapshotService.Diff"/> でのみ構築される。外部からは意味を持たない
+        /// 引数なしインスタンスを作れないよう internal 化している（テストは InternalsVisibleTo 経由で構築可能）。
+        /// </summary>
+        internal SnapshotDiff() { }
+
+        public IReadOnlyList<SnapshotEntry> Added => _added;
+        public IReadOnlyList<SnapshotEntry> Removed => _removed;
+        public IReadOnlyList<(SnapshotEntry Before, SnapshotEntry After)> Changed => _changed;
+
+        public bool IsEmpty => _added.Count == 0 && _removed.Count == 0 && _changed.Count == 0;
+
+        /// <summary>追加差分を1件登録する。<see cref="AddressTellerSnapshotService.Diff"/> 専用。</summary>
+        internal void AddAdded(SnapshotEntry entry) => _added.Add(entry);
+
+        /// <summary>削除差分を1件登録する。<see cref="AddressTellerSnapshotService.Diff"/> 専用。</summary>
+        internal void AddRemoved(SnapshotEntry entry) => _removed.Add(entry);
+
+        /// <summary>変更差分を1件登録する。<see cref="AddressTellerSnapshotService.Diff"/> 専用。</summary>
+        internal void AddChanged(SnapshotEntry before, SnapshotEntry after) => _changed.Add((before, after));
     }
 
     /// <summary>
@@ -413,7 +472,12 @@ namespace AddressTeller.Editor
         /// </summary>
         public AddressTellerSnapshot After { get; }
 
-        public DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues, IReadOnlyList<string> groupsToCreate = null, AddressTellerSnapshot after = null)
+        /// <summary>
+        /// <see cref="AddressTellerSnapshotService.BuildPredictedSnapshot(AddressableAssetSettings, IEnumerable{string})"/>
+        /// でのみ構築される。外部からは意味を持たないインスタンスを組み立てられないよう internal 化している
+        /// （テストは InternalsVisibleTo 経由で構築可能）。
+        /// </summary>
+        internal DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues, IReadOnlyList<string> groupsToCreate = null, AddressTellerSnapshot after = null)
         {
             Diff = diff;
             Issues = issues;

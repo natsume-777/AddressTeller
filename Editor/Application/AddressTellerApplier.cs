@@ -173,7 +173,11 @@ namespace AddressTeller.Editor
                 // (ルールのバグで誤ってエントリを削除しないようにする)。
                 if (resolution.Errors.Count == 0 && !hasConfigureFailures
                     && managedGroups != null && AddressTellerSettings.CleanupStaleEntries)
-                    RemoveStaleEntryIfManaged(context.Guid, settings, managedGroups);
+                {
+                    // 削除されたエントリは RemoveStaleEntryIfManaged 側で個別に Warning ログ済みのため、
+                    // ここでは戻り値（削除内容）を意図的に破棄する。
+                    _ = RemoveStaleEntryIfManaged(context.Guid, settings, managedGroups);
+                }
                 return result;
             }
 
@@ -342,34 +346,44 @@ namespace AddressTeller.Editor
         /// <see cref="Apply"/> の同名パラメータと同じ意図。true の場合、managedGroups が信頼できないため
         /// 削除を行わない。
         /// </param>
-        public static void RemoveEntryForDeletedAsset(
+        /// <returns>削除を実行した場合はその内容。削除しなかった場合は null。</returns>
+        public static ClearedEntry? RemoveEntryForDeletedAsset(
             string guid,
             AddressableAssetSettings settings,
             IReadOnlyCollection<string> managedGroups,
             bool hasConfigureFailures = false)
         {
-            if (managedGroups == null) return;
-            if (!AddressTellerSettings.CleanupStaleEntries) return;
-            if (hasConfigureFailures) return;
+            if (managedGroups == null) return null;
+            if (!AddressTellerSettings.CleanupStaleEntries) return null;
+            if (hasConfigureFailures) return null;
 
-            RemoveStaleEntryIfManaged(guid, settings, managedGroups);
+            return RemoveStaleEntryIfManaged(guid, settings, managedGroups);
         }
 
         /// <summary>
         /// 既存のエントリが AddressTeller 管理下のグループに属している場合のみ削除する。
         /// 管理外グループ（ユーザーが手動で登録したエントリ等）には触れない。
         /// </summary>
-        private static void RemoveStaleEntryIfManaged(
+        /// <returns>削除を実行した場合はその内容。削除しなかった場合は null。</returns>
+        private static ClearedEntry? RemoveStaleEntryIfManaged(
             string guid,
             AddressableAssetSettings settings,
             IReadOnlyCollection<string> managedGroups)
         {
             var entry = settings.FindAssetEntry(guid);
-            if (entry?.parentGroup == null) return;
-            if (!managedGroups.Contains(entry.parentGroup.Name)) return;
+            if (entry?.parentGroup == null) return null;
+            if (!managedGroups.Contains(entry.parentGroup.Name)) return null;
+
+            var cleared = new ClearedEntry(
+                guid,
+                entry.address,
+                entry.parentGroup.Name,
+                entry.labels.OrderBy(l => l, StringComparer.Ordinal).ToList());
 
             Debug.LogWarning($"[AddressTeller] Removing stale entry: guid={guid}, group='{entry.parentGroup.Name}', address='{entry.address}' (no longer matched by any rule).");
             settings.RemoveAssetEntry(guid);
+
+            return cleared;
         }
     }
 }

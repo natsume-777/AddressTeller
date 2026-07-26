@@ -185,8 +185,9 @@ namespace AddressTeller.Editor.Tests
             _settings.CreateOrMoveEntry("guid-other", _otherGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            AddressTellerApplier.RemoveEntryForDeletedAsset("guid-other", _settings, managedGroups);
+            var result = AddressTellerApplier.RemoveEntryForDeletedAsset("guid-other", _settings, managedGroups);
 
+            Assert.IsNull(result);
             Assert.IsNotNull(_settings.FindAssetEntry("guid-other"));
         }
 
@@ -197,8 +198,9 @@ namespace AddressTeller.Editor.Tests
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups);
+            var result = AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups);
 
+            Assert.IsNull(result);
             Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
         }
 
@@ -209,8 +211,9 @@ namespace AddressTeller.Editor.Tests
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups, hasConfigureFailures: true);
+            var result = AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups, hasConfigureFailures: true);
 
+            Assert.IsNull(result);
             Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
         }
 
@@ -222,6 +225,24 @@ namespace AddressTeller.Editor.Tests
 
             Assert.DoesNotThrow(() =>
                 AddressTellerApplier.RemoveEntryForDeletedAsset("guid-unknown", _settings, managedGroups));
+        }
+
+        [Test]
+        public void RemoveEntryForDeletedAsset_RemovesEntry_ClearedEntryLabelsAreOrdinalSorted()
+        {
+            AddressTellerSettings.CleanupStaleEntries = true;
+            var entry = _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            entry.SetAddress("SomeAddress");
+            // 意図的に Ordinal 昇順でない順で付与し、ClearedEntry.Labels が並べ替えられることを検証する。
+            entry.SetLabel("zebra", true);
+            entry.SetLabel("apple", true);
+            entry.SetLabel("Mango", true);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var result = AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups);
+
+            Assert.IsTrue(result.HasValue);
+            CollectionAssert.AreEqual(new[] { "Mango", "apple", "zebra" }, result.Value.Labels);
         }
     }
 }

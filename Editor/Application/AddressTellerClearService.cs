@@ -47,6 +47,11 @@ namespace AddressTeller.Editor
         /// 削除前の各エントリの情報を <see cref="ClearedEntry"/> として GroupName→Guid の Ordinal 昇順で返す。
         /// このメソッド自体はログを出力しない（呼び出し側の責務）。
         /// </summary>
+        /// <remarks>
+        /// 必須引数の null 契約: 本メソッドは利用者が明示的に呼び出す公開APIのエントリポイントであるため、
+        /// <paramref name="settings"/> が null の場合も <see cref="ArgumentNullException"/> を送出する
+        /// （<see cref="AddressTellerSnapshotService"/> の Restore/RestoreExactWithRemoval/Diff と同じ方針）。
+        /// </remarks>
         public static IReadOnlyList<ClearedEntry> Clear(
             AddressableAssetSettings settings,
             ClearScope scope,

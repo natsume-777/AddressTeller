@@ -8,6 +8,19 @@ using UnityEngine;
 
 namespace AddressTeller.Editor
 {
+    /// <summary>
+    /// ルール評価を伴う Apply/Validate/削除追従のエントリポイント群。
+    /// </summary>
+    /// <remarks>
+    /// 必須引数の null 契約: 各メソッドの settings 引数は省略・null 許容であり、省略時は
+    /// <see cref="AddressableAssetSettingsDefaultObject.Settings"/> にフォールバックする（意図的なデフォルト値解決であり、
+    /// 例外は送出しない）。同様に paths（<see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings)"/> 等）・
+    /// deletedGuids（<see cref="RemoveEntriesForDeletedAssets(IEnumerable{string}, AddressableAssetSettings)"/> 等）も
+    /// null が渡された場合は空シーケンスとして扱う（同じフォールバック側の契約）。
+    /// <see cref="AddressTellerSnapshotService.Restore"/> や
+    /// <see cref="AddressTellerClearService.Clear"/> のように利用者が明示的に対象を指定する必要があるエントリポイントとは
+    /// 異なる契約であることに注意。
+    /// </remarks>
     public static class AddressTellerService
     {
         // Menu/CLI から ApplyAll() を呼んだ場合、その内部の Addressables 設定変更が
@@ -158,11 +171,12 @@ namespace AddressTeller.Editor
         /// ただし削除はエントリの所属グループが managedGroups に含まれる場合に限られる（資産単位の所有権判定）ため、
         /// ConfigFolder 内資産が誤って削除される実害はない。
         /// </remarks>
-        public static void RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings = null)
+        /// <returns>実際に削除されたエントリの一覧（削除されたものが無ければ空リスト）。</returns>
+        public static IReadOnlyList<ClearedEntry> RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings = null)
         {
             // ルールの On/Off 設定に関わらず、削除追従の所有権判定（managedGroups）は全ルールを対象にする。
             // 無効化されたルールが過去に作ったエントリも、設定の有無に関係なく一貫して掃除対象として認識する必要があるため。
-            RemoveEntriesForDeletedAssets(deletedGuids, settings, RuleCollector.CollectRules());
+            return RemoveEntriesForDeletedAssets(deletedGuids, settings, RuleCollector.CollectRules());
         }
 
         /// <summary>
@@ -170,11 +184,13 @@ namespace AddressTeller.Editor
         /// 評価対象ルールの注入を追加したオーバーロード。所有権判定（managedGroups）に使うルール一覧を
         /// 呼び出し側がそのまま指定する（テスト等での利用を想定）。収集方法（有効/無効の絞り込み）の判断は行わない。
         /// </summary>
-        public static void RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
+        /// <returns>実際に削除されたエントリの一覧（削除されたものが無ければ空リスト）。</returns>
+        public static IReadOnlyList<ClearedEntry> RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
         {
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
-            if (settings == null) return;
+            if (settings == null) return Array.Empty<ClearedEntry>();
             rules ??= Array.Empty<AddressRuleBase>();
+            deletedGuids ??= Array.Empty<string>();
 
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
@@ -184,11 +200,15 @@ namespace AddressTeller.Editor
             if (hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
                 Debug.LogWarning($"[AddressTeller] Skipping stale entry cleanup for this run because {setup.ConfigureFailures.Count} rule(s) failed to configure.");
 
+            var cleared = new List<ClearedEntry>();
             foreach (var guid in deletedGuids)
             {
                 if (string.IsNullOrEmpty(guid)) continue;
-                AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, setup.ManagedGroups, hasConfigureFailures);
+                var removed = AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, setup.ManagedGroups, hasConfigureFailures);
+                if (removed.HasValue) cleared.Add(removed.Value);
             }
+
+            return cleared;
         }
 
         /// <summary>

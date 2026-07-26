@@ -168,9 +168,10 @@ namespace AddressTeller.Editor
         /// <summary>
         /// 無効化されているルールクラスの完全名（<see cref="System.Type.FullName"/>）一覧。
         /// ここに含まれるルールは Apply/Validate/スナップショット予測/Explain で評価対象から除外される。
+        /// 内部リストの実体ではなく防御的コピーを返すため、呼び出し側で変更しても設定には反映されない。
         /// </summary>
         public static IReadOnlyList<string> DisabledRuleClassNames
-            => AddressTellerSettingsAsset.instance._disabledRuleClassNames;
+            => AddressTellerSettingsAsset.instance._disabledRuleClassNames.ToArray();
 
         /// <summary>
         /// 指定したルールクラスが有効かどうかを返す。<see cref="DisabledRuleClassNames"/> に

@@ -74,6 +74,14 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void DefaultSchemaVersion_IsOne()
+        {
+            // AddressTellerSnapshot.SchemaVersion（未設定時は0）とは異なり、レポートは常に組み立て済みの
+            // 構造化データであるため、素朴に構築した時点での既定値は1にしている。
+            Assert.AreEqual(1, EmptyReport().SchemaVersion);
+        }
+
+        [Test]
         public void ToJson_RoundTrip_PreservesMainFields()
         {
             var report = ReportWithDriftAndIssues();
@@ -191,7 +199,7 @@ namespace AddressTeller.Editor.Tests
 
             try
             {
-                var ok = AddressTellerReportWriter.WriteToFile(path, report, "json");
+                var ok = AddressTellerReportWriter.WriteToFile(path, report, ReportFormat.Json);
 
                 Assert.IsTrue(ok);
                 Assert.IsTrue(File.Exists(path));
@@ -215,7 +223,7 @@ namespace AddressTeller.Editor.Tests
 
             try
             {
-                var ok = AddressTellerReportWriter.WriteToFile(path, report, "junit");
+                var ok = AddressTellerReportWriter.WriteToFile(path, report, ReportFormat.Junit);
 
                 Assert.IsTrue(ok);
                 Assert.IsTrue(File.Exists(path));
@@ -236,8 +244,18 @@ namespace AddressTeller.Editor.Tests
             var report = EmptyReport();
             var path = Path.Combine(Path.GetTempPath(), "AddressTellerReportWriterTests_unknown.txt");
 
+            // 定義域外の値（enum が将来拡張されず switch の default に落ちるケースの防御的分岐を検証する）。
             Assert.Throws<ArgumentException>(() =>
-                AddressTellerReportWriter.WriteToFile(path, report, "yaml"));
+                AddressTellerReportWriter.WriteToFile(path, report, (ReportFormat)99));
+        }
+
+        [Test]
+        public void WriteToFile_NullReport_ThrowsArgumentNullException()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "AddressTellerReportWriterTests_null.json");
+
+            Assert.Throws<ArgumentNullException>(() =>
+                AddressTellerReportWriter.WriteToFile(path, null, ReportFormat.Json));
         }
 
         [Test]
@@ -255,7 +273,7 @@ namespace AddressTeller.Editor.Tests
                 File.WriteAllText(blockingFile, "blocking");
 
                 LogAssert.Expect(LogType.Error, new Regex("Failed to write report"));
-                var ok = AddressTellerReportWriter.WriteToFile(path, report, "json");
+                var ok = AddressTellerReportWriter.WriteToFile(path, report, ReportFormat.Json);
 
                 Assert.IsFalse(ok);
             }

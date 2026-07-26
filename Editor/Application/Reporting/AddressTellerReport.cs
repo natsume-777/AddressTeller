@@ -20,6 +20,13 @@ namespace AddressTeller.Editor
         /// </summary>
         public BundleDistributionReport BundleDistribution;
 
+        /// <summary>
+        /// レポートのスキーマバージョン。<see cref="AddressTellerSnapshot.SchemaVersion"/> と対称の位置づけ。
+        /// <see cref="AddressTellerReportBuilder.Build(DryRunResult)"/> で
+        /// <see cref="AddressTellerReportBuilder.CurrentSchemaVersion"/> が設定される。
+        /// </summary>
+        public int SchemaVersion = AddressTellerReportBuilder.CurrentSchemaVersion;
+
         public string ToJson() => JsonUtility.ToJson(this, true);
 
         public static AddressTellerReport FromJson(string json) => JsonUtility.FromJson<AddressTellerReport>(json);

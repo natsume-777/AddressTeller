@@ -6,7 +6,7 @@ using UnityEditor.AddressableAssets;
 
 namespace AddressTeller.Editor
 {
-    public class AddressTellerPostprocessor : AssetPostprocessor
+    public sealed class AddressTellerPostprocessor : AssetPostprocessor
     {
         // 自身が ApplyAll() で書き込んだ変更が OnPostprocessAllAssets を再トリガーしても
         // 無限ループにならないようにするための再入ガード。
@@ -48,7 +48,10 @@ namespace AddressTeller.Editor
                     var deletedGuids = ResolveDeletedGuids(
                         deletedAssets,
                         p => AssetDatabase.AssetPathToGUID(p, AssetPathToGUIDOptions.IncludeRecentlyDeletedAssets));
-                    AddressTellerService.RemoveEntriesForDeletedAssets(deletedGuids, settings);
+
+                    // 削除された各エントリは AddressTellerApplier 側で個別に Warning ログ済みのため、
+                    // ここでは戻り値（削除済みエントリ一覧）を意図的に破棄する。
+                    _ = AddressTellerService.RemoveEntriesForDeletedAssets(deletedGuids, settings);
                 }
             }
             finally

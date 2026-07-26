@@ -15,11 +15,12 @@ namespace AddressTeller.Editor
         public string ReportPath { get; private set; }
 
         /// <summary>
-        /// レポート形式（"json" または "junit"）。
+        /// レポート形式。
         /// -addressTellerReportFormat が省略された場合は <see cref="ReportPath"/> の拡張子から推定する
-        /// （".xml" → "junit"、それ以外 → "json"）。<see cref="ReportPath"/> も未指定なら null。
+        /// （".xml" → <see cref="AddressTeller.Editor.ReportFormat.Junit"/>、それ以外 → <see cref="ReportFormat.Json"/>）。
+        /// <see cref="ReportPath"/> も未指定なら null。
         /// </summary>
-        public string ReportFormat { get; private set; }
+        public ReportFormat? ReportFormat { get; private set; }
 
         /// <summary>
         /// -addressTellerDisableRules で指定されたルールクラスのフルネーム一覧（カンマ区切り、trim済み、空要素除去）。
@@ -56,8 +57,14 @@ namespace AddressTeller.Editor
             result = null;
             error = null;
 
+            if (args == null)
+            {
+                error = "args must not be null.";
+                return false;
+            }
+
             string reportPath = null;
-            string reportFormat = null;
+            ReportFormat? reportFormat = null;
             IReadOnlyList<string> disableRuleFullNames = Array.Empty<string>();
             var confirmClear = false;
             var clearScope = ClearScope.Managed;
@@ -81,11 +88,18 @@ namespace AddressTeller.Editor
                             error = $"No value specified for {ReportFormatFlag}.";
                             return false;
                         }
-                        reportFormat = args[++i];
-                        if (reportFormat != "json" && reportFormat != "junit")
+                        var reportFormatValue = args[++i];
+                        switch (reportFormatValue)
                         {
-                            error = $"Invalid value for {ReportFormatFlag} (must be 'json' or 'junit'): {reportFormat}";
-                            return false;
+                            case "json":
+                                reportFormat = AddressTeller.Editor.ReportFormat.Json;
+                                break;
+                            case "junit":
+                                reportFormat = AddressTeller.Editor.ReportFormat.Junit;
+                                break;
+                            default:
+                                error = $"Invalid value for {ReportFormatFlag} (must be 'json' or 'junit'): {reportFormatValue}";
+                                return false;
                         }
                         break;
 
@@ -143,11 +157,13 @@ namespace AddressTeller.Editor
             return true;
         }
 
-        /// <summary>拡張子からレポート形式を推定する。".xml" → "junit"、それ以外 → "json"。</summary>
-        private static string InferFormatFromPath(string path)
+        /// <summary>拡張子からレポート形式を推定する。".xml" → <see cref="AddressTeller.Editor.ReportFormat.Junit"/>、それ以外 → <see cref="ReportFormat.Json"/>。</summary>
+        private static ReportFormat InferFormatFromPath(string path)
         {
             var extension = Path.GetExtension(path);
-            return string.Equals(extension, ".xml", StringComparison.OrdinalIgnoreCase) ? "junit" : "json";
+            return string.Equals(extension, ".xml", StringComparison.OrdinalIgnoreCase)
+                ? AddressTeller.Editor.ReportFormat.Junit
+                : AddressTeller.Editor.ReportFormat.Json;
         }
     }
 }

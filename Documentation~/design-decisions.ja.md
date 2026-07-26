@@ -31,14 +31,14 @@ AddressTeller の挙動には、一見不便に見えても意図的に選んで
 
 利用者が触れるべき面を最小に保つため、公開（`public`）にするのは次に限る。それ以外の評価エンジン・Addressables 統合の実装詳細は `internal` とし、将来のリファクタリングで自由に変更できる余地を残す。
 
-公開API:
+公開API（代表例であり、網羅的な一覧ではない）:
 
 - **ルール定義面**: `AddressRuleBase`、`IAddressRuleBuilder`、`IAddressRuleGroupBuilder`、`Match`、`AssetCondition`、`Naming`、`AssetContext`、`AddressRuleEntry`
 - **実行エントリ**: `AddressTellerService`、`AddressTellerSettings`
 - **スナップショット**: `AddressTellerSnapshotService`、`SnapshotRestoreMode`、`SnapshotDiff`、`AddressTellerSnapshot`、`SnapshotEntry`
 - **結果型**: `ValidationResult`、`ValidationStatus`
 - **進捗報告**: `IProgressReporter`、`NullProgressReporter`、`EditorProgressReporter`
-- **レポート**: `AddressTellerReportWriter`、`AddressTellerExplainReport`、`AddressTellerExplainAsset`、`AddressTellerExplainRule` などのレポートDTO群
+- **レポート**: `AddressTellerReportWriter`、`ReportFormat`、`BundleDistributionSerializer`、`DistributionFormat` などのレポートDTO群
 - **CLI・メニューエントリ**: `AddressTellerMenu`、`AddressTellerSnapshotMenu`、`AddressTellerExplainMenu`、`AddressTellerCliArgs`
 - **インポート時自動適用**: `AddressTellerPostprocessor`
 

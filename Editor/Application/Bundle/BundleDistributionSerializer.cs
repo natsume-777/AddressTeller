@@ -5,6 +5,16 @@ using UnityEngine;
 
 namespace AddressTeller.Editor
 {
+    /// <summary>論理バンドル分布のファイル出力形式。</summary>
+    public enum DistributionFormat
+    {
+        /// <summary>CSV 形式。</summary>
+        Csv,
+
+        /// <summary>Markdown 形式。</summary>
+        Markdown,
+    }
+
     /// <summary>
     /// <see cref="BundleDistribution"/> / <see cref="DistributionSummary"/> を CSV / Markdown にシリアライズし、
     /// ファイルへ書き出す。<see cref="AddressTellerReportWriter"/> と同じ流儀（純粋関数 + WriteToFile）。
@@ -99,17 +109,20 @@ namespace AddressTeller.Editor
         /// <param name="path">出力先ファイルパス。</param>
         /// <param name="distribution">論理バンドル分布。</param>
         /// <param name="summary">分布の表示用集計。</param>
-        /// <param name="format">"csv" または "markdown"。それ以外は <see cref="ArgumentException"/>。</param>
+        /// <param name="format">出力形式。未定義の値の場合は <see cref="ArgumentException"/>。</param>
         /// <returns>書き込みに成功したら true。失敗時は false（ログ出力済み）。</returns>
-        public static bool WriteToFile(string path, BundleDistribution distribution, DistributionSummary summary, string format)
+        /// <exception cref="ArgumentNullException"><paramref name="distribution"/> が null。</exception>
+        public static bool WriteToFile(string path, BundleDistribution distribution, DistributionSummary summary, DistributionFormat format)
         {
+            if (distribution == null) throw new ArgumentNullException(nameof(distribution));
+
             string content;
             switch (format)
             {
-                case "csv":
+                case DistributionFormat.Csv:
                     content = ToCsv(distribution, summary);
                     break;
-                case "markdown":
+                case DistributionFormat.Markdown:
                     content = ToMarkdown(distribution, summary);
                     break;
                 default:

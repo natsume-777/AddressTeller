@@ -10,8 +10,10 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 
 ### Added
 
+- `ReportFormat` and `DistributionFormat` enums: new public types representing the format choices for report and distribution exports. `ReportFormat` supports `Json` and `JUnit` (used by `AddressTellerReportWriter.WriteToFile`), while `DistributionFormat` supports `Csv` and `Markdown` (used by `BundleDistributionSerializer.WriteToFile`).
 - `ValidationStatus.RuleConfigureFailed`: returned when a user rule's `Configure()` method throws an exception. The problematic rule is skipped (treated as producing no entries) and evaluation continues; this status helps identify which rule has a configuration problem.
 - Warnings displayed in `Undo Last Apply` dialog and `Explain` window when rule configuration errors exist, so users are aware that reported results are incomplete.
+- `AddressTellerReport.SchemaVersion`: a new field parallel to `AddressTellerSnapshot.SchemaVersion`, defaulting to 1 and set by `AddressTellerReportBuilder.Build`.
 
 ### Fixed
 
@@ -37,6 +39,8 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - Snapshot JSON loading (`LoadFromFile`): extended mandatory field validation to include `GroupName` and `Entries` (in addition to the existing `Guid` check).
 - Project Settings UI: Postprocessor order field now displays the effective clamped value (e.g., 0 becomes 1000) when the user leaves the field or presses Enter.
 - `ExportDistribution`: now displays an error dialog when file write fails, instead of silently suppressing the error.
+- `AddressTellerSnapshotService.Restore`/`RestoreExactWithRemoval`/`Diff` now throw `ArgumentNullException` for missing required arguments instead of an unguarded `NullReferenceException`, matching `AddressTellerClearService.Clear`'s existing contract. The package's null-argument policy (explicit entry points throw; methods with default-value fallback such as `AddressTellerService.*` do not) is now documented in the relevant XML doc comments.
+- `AddressTellerSettings.DisabledRuleClassNames` now returns a defensive copy instead of the internal list instance, so mutating the returned collection can no longer affect the persisted setting.
 
 ### Changed
 
@@ -48,6 +52,14 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - `ApplyAll`, `ValidateAll`, and `BuildPredictedSnapshot` now skip stale-entry cleanup (DeletedAssets tracking) if any rule configuration error is detected, preventing incorrect deletions of entries managed by broken rules.
 - `ApplyAll` / `Apply with Validate` menu operations now cancel instead of continuing when automatic safety snapshot save fails, matching the fail-fast design of `ClearAll`.
 - `ClearAll` menu and `ClearCLI` command now abort when rule configuration errors exist (CLI exits with code 3).
+- **BREAKING**: `AddressTellerReportWriter.WriteToFile` and `BundleDistributionSerializer.WriteToFile` now take `ReportFormat` / `DistributionFormat` enum arguments instead of raw strings (`"json"`/`"junit"` and `"csv"`/`"markdown"`). CLI text arguments (`-addressTellerReportFormat`) are unaffected; only the public API surface changed.
+- **BREAKING**: `SnapshotDiff.Added`/`Removed`/`Changed` are now `IReadOnlyList<T>` instead of `List<T>`. Code that mutated these collections directly must be updated.
+- **BREAKING**: `SnapshotDiff` and `DryRunResult` parameterless public constructors are now `internal`. These types are instantiated only by the library's snapshot and dry-run APIs; tests continue to construct them via `InternalsVisibleTo`.
+- **BREAKING**: `ValidationResult` and `AddressCandidate` public constructors are now `internal`. These types are only ever constructed by the library's own rule evaluation pipeline; tests continue to construct them via `InternalsVisibleTo`.
+- **BREAKING**: `AddressTellerPostprocessor` is now `sealed`.
+- **BREAKING**: `AddressTellerService.RemoveEntriesForDeletedAssets` now returns `IReadOnlyList<ClearedEntry>` (previously `void`), reporting the entries actually removed. This matches the convention already used by `ApplyAll`/`ValidateAll` of surfacing results instead of discarding them.
+- **BREAKING**: `AddressTellerExplainReport`, `AddressTellerExplainAsset`, and `AddressTellerExplainRule` are now `internal` (previously `public`). No supported code path constructs or exposes these types outside the package.
+- **BREAKING**: `AddressTellerCliArgs.ReportFormat` is now `ReportFormat?` instead of `string`. Code that read this property as a raw string (`"json"`/`"junit"`) must be updated to compare against the `ReportFormat` enum.
 
 ### Documentation
 

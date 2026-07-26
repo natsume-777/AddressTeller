@@ -85,6 +85,20 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Capture_NullSettings_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                AddressTellerSnapshotService.Capture(null));
+        }
+
+        [Test]
+        public void Capture_WithComment_NullSettings_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                AddressTellerSnapshotService.Capture(null, "test"));
+        }
+
+        [Test]
         public void LoadFromFile_MissingFile_ReturnsError()
         {
             var path = Path.Combine(Path.GetTempPath(), $"AddressTellerSnapshotTests_Missing_{Guid.NewGuid():N}.json");
@@ -457,6 +471,20 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Restore_NullSnapshot_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                AddressTellerSnapshotService.Restore(null, _settings));
+        }
+
+        [Test]
+        public void Restore_NullSettings_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                AddressTellerSnapshotService.Restore(new AddressTellerSnapshot(), null));
+        }
+
+        [Test]
         public void RestoreExactWithRemoval_RemovesEntriesInRemovalList()
         {
             _settings.CreateOrMoveEntry("guid1", _groupA).SetAddress("Foo");
@@ -466,6 +494,27 @@ namespace AddressTeller.Editor.Tests
             AddressTellerSnapshotService.RestoreExactWithRemoval(snapshot, _settings, new[] { "guid1" });
 
             Assert.IsNull(_settings.FindAssetEntry("guid1"));
+        }
+
+        [Test]
+        public void RestoreExactWithRemoval_NullSnapshot_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                AddressTellerSnapshotService.RestoreExactWithRemoval(null, _settings, Array.Empty<string>()));
+        }
+
+        [Test]
+        public void RestoreExactWithRemoval_NullSettings_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                AddressTellerSnapshotService.RestoreExactWithRemoval(new AddressTellerSnapshot(), null, Array.Empty<string>()));
+        }
+
+        [Test]
+        public void RestoreExactWithRemoval_NullGuidsToRemove_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                AddressTellerSnapshotService.RestoreExactWithRemoval(new AddressTellerSnapshot(), _settings, null));
         }
 
         [Test]
@@ -622,6 +671,20 @@ namespace AddressTeller.Editor.Tests
             var diff = AddressTellerSnapshotService.Diff(snapshot, snapshot);
 
             Assert.IsTrue(diff.IsEmpty);
+        }
+
+        [Test]
+        public void Diff_NullBefore_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                AddressTellerSnapshotService.Diff(null, new AddressTellerSnapshot()));
+        }
+
+        [Test]
+        public void Diff_NullAfter_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                AddressTellerSnapshotService.Diff(new AddressTellerSnapshot(), null));
         }
     }
 }

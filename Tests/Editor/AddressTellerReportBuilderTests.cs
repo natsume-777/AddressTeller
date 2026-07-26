@@ -62,6 +62,17 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Build_SetsSchemaVersionToCurrent()
+        {
+            var diff = new SnapshotDiff();
+            var result = new DryRunResult(diff, new List<ValidationResult>());
+
+            var report = AddressTellerReportBuilder.Build(result);
+
+            Assert.AreEqual(AddressTellerReportBuilder.CurrentSchemaVersion, report.SchemaVersion);
+        }
+
+        [Test]
         public void MixedDrift_ExitCodeIsOne_AndOrderedByPath()
         {
             // Path の Ordinal 順では "Added.prefab" < "Changed.prefab" < "Removed.prefab" になる想定。
@@ -70,24 +81,24 @@ namespace AddressTeller.Editor.Tests
             var removedGuid = CreatePrefab(TestRootFolder + "/Removed.prefab");
 
             var diff = new SnapshotDiff();
-            diff.Added.Add(new SnapshotEntry
+            diff.AddAdded(new SnapshotEntry
             {
                 Guid = addedGuid,
                 Address = "Added",
                 GroupName = "Default",
                 Labels = new List<string> { "alpha" },
             });
-            diff.Removed.Add(new SnapshotEntry
+            diff.AddRemoved(new SnapshotEntry
             {
                 Guid = removedGuid,
                 Address = "Removed",
                 GroupName = "Default",
                 Labels = new List<string>(),
             });
-            diff.Changed.Add((
+            diff.AddChanged(
                 new SnapshotEntry { Guid = changedGuid, Address = "OldAddress", GroupName = "Default", Labels = new List<string>() },
                 new SnapshotEntry { Guid = changedGuid, Address = "NewAddress", GroupName = "Default", Labels = new List<string>() }
-            ));
+            );
 
             var result = new DryRunResult(diff, new List<ValidationResult>());
 
@@ -151,7 +162,7 @@ namespace AddressTeller.Editor.Tests
             var removedGuid = CreatePrefab(TestRootFolder + "/RemovedOnly.prefab");
 
             var diff = new SnapshotDiff();
-            diff.Removed.Add(new SnapshotEntry
+            diff.AddRemoved(new SnapshotEntry
             {
                 Guid = removedGuid,
                 Address = "RemovedOnly",
@@ -250,7 +261,7 @@ namespace AddressTeller.Editor.Tests
             var addedGuid = CreatePrefab(TestRootFolder + "/JsonTarget.prefab");
 
             var diff = new SnapshotDiff();
-            diff.Added.Add(new SnapshotEntry
+            diff.AddAdded(new SnapshotEntry
             {
                 Guid = addedGuid,
                 Address = "JsonTarget",
