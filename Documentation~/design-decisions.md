@@ -41,6 +41,7 @@ Public API (representative examples; not an exhaustive list):
 - **Reports**: `AddressTellerReportWriter`, `ReportFormat`, `BundleDistributionSerializer`, `DistributionFormat`, and other report DTOs
 - **CLI and menu entry points**: `AddressTellerMenu`, `AddressTellerSnapshotMenu`, `AddressTellerExplainMenu`, `AddressTellerCliArgs`
 - **Auto-apply on import**: `AddressTellerPostprocessor`
+- **Rule unit-testing support**: `RuleInspector` (from `AddressTeller.Testing` namespace) — allows inspection of rule configuration without a real Addressables project
 
 Internal implementation (`internal`):
 

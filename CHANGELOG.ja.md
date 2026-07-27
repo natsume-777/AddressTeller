@@ -14,6 +14,7 @@
 - `ValidationStatus.RuleConfigureFailed`: ユーザールールの `Configure()` メソッドが例外を投げた場合に返される。問題のあるルールはスキップされ（エントリ0件として扱われ）、評価は継続される。どのルールに構成問題があるかを特定するのに役立つ。
 - ルール構成エラーが存在する場合、`Undo Last Apply` ダイアログと `Explain` ウィンドウに警告が表示されるため、利用者は報告された結果が不完全であることに気づくことができる。
 - `AddressTellerReport.SchemaVersion`: `AddressTellerSnapshot.SchemaVersion` と対称の新規フィールド。既定値は1で、`AddressTellerReportBuilder.Build` が設定する。
+- `AddressTeller.Testing.RuleInspector`: 実際のAddressablesプロジェクトなしにルール構成結果を検査できる公開API。`Collect()` でルールが登録した全エントリを取得、`IsUnresolvedDefaultGroup()` で未解決の `GroupDefault()` を判定、`DisplayGroupName()` でグループ名を表示形式に整形。ルール単体テストの充実を実現し、`RuleUnitTestHelper` サンプルで従前使われていた独自 Fake ビルダーに置き換わる。
 
 ### Fixed
 
@@ -60,6 +61,7 @@
 - **BREAKING**: `AddressTellerService.RemoveEntriesForDeletedAssets` が `void` ではなく `IReadOnlyList<ClearedEntry>`（実際に削除されたエントリ一覧）を返すようになった。結果を握りつぶさず返す `ApplyAll`/`ValidateAll` の流儀に揃えた。
 - **BREAKING**: `AddressTellerExplainReport`、`AddressTellerExplainAsset`、`AddressTellerExplainRule` が `internal` になった（従前は `public`）。パッケージ外部からこれらの型を構築・取得するサポートされた経路は存在しない。
 - **BREAKING**: `AddressTellerCliArgs.ReportFormat` が `string` ではなく `ReportFormat?` になった。この値を生文字列（`"json"`/`"junit"`）として読んでいたコードは `ReportFormat` enum との比較に修正が必要。
+- `RuleUnitTestHelper` サンプル: `RuleTestHelper.IsDefaultGroup()` が `IsUnresolvedDefaultGroup()` へリネーム、`DefaultGroupSentinel` 定数を削除（`GroupDefault()` ビルダーAPI直接利用に統一）、新規メソッド `DisplayGroupName()` を追加（テスト内でのグループ名表示整形に使用）。
 
 ### Documentation
 

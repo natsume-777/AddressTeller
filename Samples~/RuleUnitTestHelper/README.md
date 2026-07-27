@@ -2,6 +2,14 @@
 
 A minimal helper for unit-testing `AddressRuleBase` subclasses without a live Addressables project.
 
+`RuleTestHelper` is a thin wrapper around the package's own `AddressTeller.Testing.RuleInspector` public API.
+It does not reimplement `IAddressRuleBuilder`, so it always matches the exact builder contract used by the
+package's own evaluation pipeline — including `Where()`/`Address()` throwing `InvalidOperationException`
+when called a second time on the same group. Note that the *handling* of that exception is intentionally
+different here: the package's own evaluation pipeline catches it per-rule and skips the failing rule while
+continuing the rest of evaluation, whereas `RuleTestHelper.Collect(rule)` lets it propagate unchanged so a
+misused builder call fails the test directly (see step 3 below).
+
 ## How to use
 
 1. Import this sample via the Package Manager (Window > Package Manager > AddressTeller > Samples).
@@ -12,6 +20,13 @@ A minimal helper for unit-testing `AddressRuleBase` subclasses without a live Ad
    `AddressRuleBase` won't be visible.
 3. Use `RuleTestHelper.For(...)` to create `AssetContext` instances and
    `RuleTestHelper.Collect(rule)` to inspect the entries produced by `Configure()`.
+   Any exception thrown by `Configure()` propagates out of `Collect(rule)` unchanged, so a
+   misused builder call fails the test directly instead of being silently swallowed.
+4. If a rule uses `GroupDefault()`, check `RuleTestHelper.IsUnresolvedDefaultGroup(entry.GroupName)` rather than
+   comparing against a hard-coded string — the real sentinel value is an internal implementation
+   detail of the package. When you need to show a group name in an assertion message or log output, pass it
+   through `RuleTestHelper.DisplayGroupName(entry.GroupName)` first — the raw sentinel contains unprintable
+   control characters that would otherwise show up garbled in a failed test's output.
 
 ## Requirements
 

@@ -104,3 +104,8 @@ static class AddressTeller.Naming
   Method static System.Func<AddressTeller.AssetContext, System.String> ParentFolderName()
   Method static System.Func<AddressTeller.AssetContext, System.String> RelativePath(System.String root)
 
+static class AddressTeller.Testing.RuleInspector
+  Method static System.Collections.Generic.IReadOnlyList<AddressTeller.AddressRuleEntry> Collect(AddressTeller.AddressRuleBase rule)
+  Method static System.String DisplayGroupName(System.String groupName)
+  Method static System.Boolean IsUnresolvedDefaultGroup(System.String groupName)
+

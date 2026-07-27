@@ -14,6 +14,7 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - `ValidationStatus.RuleConfigureFailed`: returned when a user rule's `Configure()` method throws an exception. The problematic rule is skipped (treated as producing no entries) and evaluation continues; this status helps identify which rule has a configuration problem.
 - Warnings displayed in `Undo Last Apply` dialog and `Explain` window when rule configuration errors exist, so users are aware that reported results are incomplete.
 - `AddressTellerReport.SchemaVersion`: a new field parallel to `AddressTellerSnapshot.SchemaVersion`, defaulting to 1 and set by `AddressTellerReportBuilder.Build`.
+- `AddressTeller.Testing.RuleInspector`: public API for inspecting rule configuration results without a real Addressables project. Provides `Collect()` to retrieve all rule entries registered by the rule, `IsUnresolvedDefaultGroup()` to check for unresolved `GroupDefault()` references, and `DisplayGroupName()` to format group names for display. Enables comprehensive rule unit tests; replaces the custom Fake builders previously used in `RuleUnitTestHelper` samples.
 
 ### Fixed
 
@@ -60,6 +61,7 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - **BREAKING**: `AddressTellerService.RemoveEntriesForDeletedAssets` now returns `IReadOnlyList<ClearedEntry>` (previously `void`), reporting the entries actually removed. This matches the convention already used by `ApplyAll`/`ValidateAll` of surfacing results instead of discarding them.
 - **BREAKING**: `AddressTellerExplainReport`, `AddressTellerExplainAsset`, and `AddressTellerExplainRule` are now `internal` (previously `public`). No supported code path constructs or exposes these types outside the package.
 - **BREAKING**: `AddressTellerCliArgs.ReportFormat` is now `ReportFormat?` instead of `string`. Code that read this property as a raw string (`"json"`/`"junit"`) must be updated to compare against the `ReportFormat` enum.
+- `RuleUnitTestHelper` sample: `RuleTestHelper.IsDefaultGroup()` renamed to `IsUnresolvedDefaultGroup()`; `DefaultGroupSentinel` constant removed (use `GroupDefault()` builder API directly); new `DisplayGroupName()` helper method added for formatted group display in tests.
 
 ### Documentation
 

@@ -32,6 +32,43 @@ namespace AddressTellerSamples
             }
         }
 
+        // A rule that misuses the builder by calling Where() twice on the same group.
+        // Configure() has no explicit throw of its own — the exception is thrown by the builder
+        // object returned by Group(), and Configure() simply lets it propagate.
+        private sealed class WhereCalledTwiceRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                var group = rules.Group("MyGroup").Where(ctx => true);
+                group.Where(ctx => false);
+            }
+        }
+
+        // A rule that misuses the builder by calling Address() twice on the same group. Same shape as
+        // WhereCalledTwiceRule above, but for the "one address per rule" constraint.
+        private sealed class AddressCalledTwiceRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                var group = rules.Group("MyGroup").Address("first");
+                group.Address("second");
+            }
+        }
+
+        // A rule that targets the project's default Addressables group instead of a named group.
+        // The resulting entry's GroupName carries an unresolved sentinel until the real evaluation
+        // pipeline resolves it, so check it with RuleTestHelper.IsUnresolvedDefaultGroup() rather
+        // than comparing against a hard-coded string.
+        private sealed class GroupDefaultRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.GroupDefault()
+                    .Where(ctx => ctx.Path.StartsWith("Assets/Demo/Config/"))
+                    .Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
         private LocalExampleRules _rule;
 
         [SetUp]
@@ -94,6 +131,30 @@ namespace AddressTellerSamples
         {
             var ctx = RuleTestHelper.For("Assets/Demo/Characters/Hero.prefab", typeof(GameObject), "explicit-guid");
             Assert.AreEqual("explicit-guid", ctx.Guid);
+        }
+
+        [Test]
+        public void Collect_WhenWhereCalledTwiceOnSameGroup_PropagatesInvalidOperationException()
+        {
+            Assert.Throws<InvalidOperationException>(() => RuleTestHelper.Collect(new WhereCalledTwiceRule()));
+        }
+
+        [Test]
+        public void Collect_WhenAddressCalledTwiceOnSameGroup_PropagatesInvalidOperationException()
+        {
+            Assert.Throws<InvalidOperationException>(() => RuleTestHelper.Collect(new AddressCalledTwiceRule()));
+        }
+
+        [Test]
+        public void ConfigAsset_MatchesGroupDefaultRule_GroupNameIsUnresolvedDefaultGroup()
+        {
+            var ctx = RuleTestHelper.For("Assets/Demo/Config/Settings.asset", typeof(ScriptableObject));
+            var entries = RuleTestHelper.Collect(new GroupDefaultRule());
+
+            var matched = FindFirst(entries, ctx);
+            Assert.IsNotNull(matched, "No entry matched the config asset.");
+            Assert.IsTrue(RuleTestHelper.IsUnresolvedDefaultGroup(matched.GroupName));
+            Assert.AreEqual("Settings", matched.AddressSelector?.Invoke(ctx));
         }
 
         private static AddressRuleEntry FindFirst(IReadOnlyList<AddressRuleEntry> entries, AssetContext ctx)

@@ -3,7 +3,6 @@
     "rootNamespace": "AddressTellerSamples",
     "references": [
         "AddressTeller.Core",
-        "AddressTeller.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using AddressTeller;
+using AddressTeller.Testing;
 
 namespace AddressTellerSamples
 {
@@ -11,11 +12,21 @@ namespace AddressTellerSamples
     public static class RuleTestHelper
     {
         /// <summary>
-        /// The value placed in <see cref="AddressRuleEntry.GroupName"/> when
-        /// <see cref="IAddressRuleBuilder.GroupDefault"/> was called.
-        /// Use this constant in assertions instead of a hard-coded string.
+        /// Returns true if <paramref name="groupName"/> (the value of <see cref="AddressRuleEntry.GroupName"/>)
+        /// is the unresolved sentinel produced by <see cref="IAddressRuleBuilder.GroupDefault"/>.
+        /// Use this instead of comparing against a hard-coded string; the real sentinel value is an internal
+        /// implementation detail of the package and may change between versions.
         /// </summary>
-        public const string DefaultGroupSentinel = "(Default Group)";
+        public static bool IsUnresolvedDefaultGroup(string groupName) => RuleInspector.IsUnresolvedDefaultGroup(groupName);
+
+        /// <summary>
+        /// Formats <paramref name="groupName"/> for display or diagnostic messages. Converts the unresolved
+        /// <see cref="IAddressRuleBuilder.GroupDefault"/> sentinel into the human-readable placeholder
+        /// "(Default Group)"; any other value is returned unchanged. Use this whenever a group name is
+        /// included in an assertion message or log output, since the raw sentinel contains unprintable
+        /// control characters. This is for display only — do not use it for equality comparisons.
+        /// </summary>
+        public static string DisplayGroupName(string groupName) => RuleInspector.DisplayGroupName(groupName);
 
         /// <summary>
         /// Creates a minimal <see cref="AssetContext"/> for testing.
@@ -29,130 +40,17 @@ namespace AddressTellerSamples
         }
 
         /// <summary>
-        /// Runs <see cref="AddressRuleBase.Configure"/> with a fake builder and returns
-        /// all collected <see cref="AddressRuleEntry"/> objects.
+        /// Runs <see cref="AddressRuleBase.Configure"/> and returns all collected <see cref="AddressRuleEntry"/>
+        /// objects. Delegates to <see cref="RuleInspector.Collect"/>, so it shares the exact same builder
+        /// contract as the package's own evaluation pipeline: calling <c>Where()</c> or <c>Address()</c> a
+        /// second time on the same group throws <see cref="InvalidOperationException"/>. Note that the
+        /// *handling* of that exception differs from the package's own evaluation pipeline
+        /// (<c>RuleEvaluationPipeline</c>), which catches it per-rule and skips the failing rule instead of
+        /// propagating it — here, the exception propagates out of this call unchanged, so a misused builder
+        /// call fails the test directly.
         /// Evaluate entries with <c>entry.Predicate(ctx)</c>, <c>entry.AddressSelector?.Invoke(ctx)</c>,
         /// and <c>entry.LabelSelectors</c>.
         /// </summary>
-        public static IReadOnlyList<AddressRuleEntry> Collect(AddressRuleBase rule)
-        {
-            if (rule == null) throw new ArgumentNullException(nameof(rule));
-            var builder = new FakeBuilder(rule.GetType().Name);
-            rule.Configure(builder);
-            return builder.Build();
-        }
-
-        // --- fake builder implementation ---
-
-        private sealed class FakeBuilder : IAddressRuleBuilder
-        {
-            private readonly string _sourceClass;
-            private readonly List<IEntryBuilder> _builders = new List<IEntryBuilder>();
-
-            internal FakeBuilder(string sourceClass) => _sourceClass = sourceClass;
-
-            internal IReadOnlyList<AddressRuleEntry> Build()
-            {
-                var result = new AddressRuleEntry[_builders.Count];
-                for (int i = 0; i < _builders.Count; i++)
-                    result[i] = _builders[i].Build(i);
-                return result;
-            }
-
-            public IAddressRuleGroupBuilder Group(string groupName)
-            {
-                if (string.IsNullOrEmpty(groupName))
-                    throw new ArgumentException("groupName must not be empty.", nameof(groupName));
-                return AddGroup(groupName);
-            }
-
-            public IAddressRuleGroupBuilder GroupDefault() => AddGroup(DefaultGroupSentinel);
-
-            private IAddressRuleGroupBuilder AddGroup(string groupName)
-            {
-                var b = new FakeGroupBuilder(groupName, _sourceClass);
-                _builders.Add(b);
-                return b;
-            }
-
-            public ILabelRuleBuilder AnyGroup()
-            {
-                var b = new FakeLabelBuilder(_sourceClass);
-                _builders.Add(b);
-                return b;
-            }
-        }
-
-        private interface IEntryBuilder { AddressRuleEntry Build(int index); }
-
-        private sealed class FakeGroupBuilder : IEntryBuilder, IAddressRuleGroupBuilder
-        {
-            private readonly string _groupName;
-            private readonly string _sourceClass;
-            private string _description;
-            private Func<AssetContext, bool> _predicate = _ => true;
-            private bool _whereSet;
-            private Func<AssetContext, string> _addressSelector;
-            private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
-
-            internal FakeGroupBuilder(string groupName, string sourceClass)
-            {
-                _groupName = groupName;
-                _sourceClass = sourceClass;
-            }
-
-            public IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate) => SetWhere(predicate, null);
-            public IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate, string description) => SetWhere(predicate, description);
-            public IAddressRuleGroupBuilder Where(AssetCondition condition) => SetWhere(condition?.Predicate, condition?.Description);
-
-            private IAddressRuleGroupBuilder SetWhere(Func<AssetContext, bool> predicate, string description)
-            {
-                if (_whereSet)
-                    throw new InvalidOperationException($"Where() on Group(\"{_groupName}\") can only be called once.");
-                _predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
-                _description = description;
-                _whereSet = true;
-                return this;
-            }
-
-            public IAddressRuleGroupBuilder Address(Func<AssetContext, string> selector) { _addressSelector = selector; return this; }
-            public IAddressRuleGroupBuilder Address(string address) { _addressSelector = _ => address; return this; }
-            public IAddressRuleGroupBuilder Label(Func<AssetContext, string> selector) { _labelSelectors.Add(selector); return this; }
-            public IAddressRuleGroupBuilder Label(string label) { _labelSelectors.Add(_ => label); return this; }
-
-            public AddressRuleEntry Build(int index) =>
-                new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index);
-        }
-
-        private sealed class FakeLabelBuilder : IEntryBuilder, ILabelRuleBuilder
-        {
-            private readonly string _sourceClass;
-            private string _description;
-            private Func<AssetContext, bool> _predicate = _ => true;
-            private bool _whereSet;
-            private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
-
-            internal FakeLabelBuilder(string sourceClass) => _sourceClass = sourceClass;
-
-            public ILabelRuleBuilder Where(Func<AssetContext, bool> predicate) => SetWhere(predicate, null);
-            public ILabelRuleBuilder Where(Func<AssetContext, bool> predicate, string description) => SetWhere(predicate, description);
-            public ILabelRuleBuilder Where(AssetCondition condition) => SetWhere(condition?.Predicate, condition?.Description);
-
-            private ILabelRuleBuilder SetWhere(Func<AssetContext, bool> predicate, string description)
-            {
-                if (_whereSet)
-                    throw new InvalidOperationException("Where() on AnyGroup() can only be called once.");
-                _predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
-                _description = description;
-                _whereSet = true;
-                return this;
-            }
-
-            public ILabelRuleBuilder Label(Func<AssetContext, string> selector) { _labelSelectors.Add(selector); return this; }
-            public ILabelRuleBuilder Label(string label) { _labelSelectors.Add(_ => label); return this; }
-
-            public AddressRuleEntry Build(int index) =>
-                new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index);
-        }
+        public static IReadOnlyList<AddressRuleEntry> Collect(AddressRuleBase rule) => RuleInspector.Collect(rule);
     }
 }

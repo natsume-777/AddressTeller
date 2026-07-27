@@ -41,6 +41,7 @@ AddressTeller の挙動には、一見不便に見えても意図的に選んで
 - **レポート**: `AddressTellerReportWriter`、`ReportFormat`、`BundleDistributionSerializer`、`DistributionFormat` などのレポートDTO群
 - **CLI・メニューエントリ**: `AddressTellerMenu`、`AddressTellerSnapshotMenu`、`AddressTellerExplainMenu`、`AddressTellerCliArgs`
 - **インポート時自動適用**: `AddressTellerPostprocessor`
+- **ルール単体テスト支援**: `RuleInspector`（`AddressTeller.Testing` namespace）— 実際のAddressablesプロジェクトなしにルール構成結果を検査できる
 
 内部実装（`internal`）:
 
