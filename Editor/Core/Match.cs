@@ -5,13 +5,14 @@ using System.Text.RegularExpressions;
 namespace AddressTeller
 {
     /// <summary>
-    /// Where() に渡す条件を簡潔に組み立てるための静的ヘルパー群。
+    /// Static helpers for building conditions to pass to Where() concisely.
     /// </summary>
     public static class Match
     {
         /// <summary>
-        /// 指定フォルダ配下かどうかを判定する条件を返す。
-        /// recursive=true（既定）の場合は配下を再帰的に含む。recursive=false の場合は直下のみを対象とする。
+        /// Returns a condition that checks whether the asset is under the given folder.
+        /// When recursive=true (default), subfolders are included recursively. When recursive=false,
+        /// only direct children of the folder match.
         /// </summary>
         public static AssetCondition InFolder(string folder, bool recursive = true)
         {
@@ -26,7 +27,7 @@ namespace AddressTeller
             return new AssetCondition(ctx => ctx.Directory.Equals(normalized, StringComparison.OrdinalIgnoreCase), descriptionNonRecursive);
         }
 
-        /// <summary>指定型に代入可能かどうかを判定する条件を返す。</summary>
+        /// <summary>Returns a condition that checks whether the asset's type is assignable to T.</summary>
         public static AssetCondition OfType<T>()
         {
             var targetType = typeof(T);
@@ -35,10 +36,13 @@ namespace AddressTeller
         }
 
         /// <summary>
-        /// glob パターン（"*"=「/」を跨がない任意文字列、"**"=「/」を含む任意文字列、"?"=1文字）でパス全体（大文字小文字無視）を判定する条件を返す。
-        /// 正規表現はこの呼び出し時に1回だけコンパイルし、評価時は再生成しない。
-        /// "**" は「/」で挟まれた中間位置（例: "Assets/**/*.png"）でのみ0階層マッチ（中間フォルダなし）を保証する。
-        /// パターン先頭または末尾の "**"（例: "**/foo", "foo/**"）は1階層以上のマッチを前提とする。
+        /// Returns a condition that matches the full path (case-insensitive) against a glob pattern
+        /// ("*" = any characters not crossing "/", "**" = any characters including "/", "?" = one
+        /// character). The regular expression is compiled once when this method is called and is not
+        /// regenerated at evaluation time.
+        /// "**" only guarantees a zero-segment match (no intermediate folder) when it appears between
+        /// two "/" characters (e.g. "Assets/**/*.png"). A "**" at the start or end of the pattern (e.g.
+        /// "**/foo", "foo/**") requires at least one segment to match.
         /// </summary>
         public static AssetCondition Glob(string pattern)
         {
@@ -48,7 +52,8 @@ namespace AddressTeller
         }
 
         /// <summary>
-        /// 渡された全条件を AND で合成する。0件の場合は常に true を返す条件（Description は null）を返す。
+        /// Combines all given conditions with AND. If none are given, returns a condition that always
+        /// returns true (Description is null).
         /// </summary>
         public static AssetCondition All(params AssetCondition[] conditions)
         {

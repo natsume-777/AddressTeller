@@ -6,18 +6,20 @@ using UnityEditor.AddressableAssets.Settings;
 namespace AddressTeller.Editor
 {
     /// <summary>
-    /// 論理バンドル分布（<see cref="BundleDistribution"/>）の算出と、表示用の集計をまとめる。
-    /// <see cref="Build"/> は Addressables 統合（スナップショット・グループ設定）に依存し、
-    /// <see cref="Summarize"/> は <see cref="BundleDistribution"/> のみを扱う純粋関数。
+    /// Computes the logical bundle distribution (<see cref="BundleDistribution"/>) and its
+    /// display-oriented aggregate.
+    /// <see cref="Build"/> depends on Addressables integration (snapshot, group settings), while
+    /// <see cref="Summarize"/> is a pure function that only handles a <see cref="BundleDistribution"/>.
     /// </summary>
     public static class BundleDistributionSummarizer
     {
         /// <summary>
-        /// 適用後スナップショットと現在の <see cref="AddressableAssetSettings"/> から論理バンドル分布を算出する。
-        /// 呼び出し側で例外を捕捉すること（<see cref="AddressTellerReportBuilder.Build(DryRunResult, AddressableAssetSettings)"/> 参照）。
-        /// <paramref name="warnings"/> には <see cref="BundleModeReader.ReadBundleModes"/> が検出した
-        /// グループ名重複の警告（0件の場合もある）が入る。呼び出し元がログ出力するかどうかを決められるよう、
-        /// ここではログへ直書きしない。
+        /// Computes the logical bundle distribution from the post-apply snapshot and the current
+        /// <see cref="AddressableAssetSettings"/>. Callers must catch exceptions (the internal report
+        /// builder used by <c>CheckCLI</c>/<c>ApplyAllCLI</c>/<c>ApplyWithValidateCLI</c> does so).
+        /// <paramref name="warnings"/> receives any group-name-duplication warnings detected by
+        /// <see cref="BundleModeReader.ReadBundleModes"/> (may be empty). This method does not log
+        /// directly, so the caller can decide whether to log them.
         /// </summary>
         public static BundleDistribution Build(AddressTellerSnapshot after, AddressableAssetSettings settings, out IReadOnlyList<string> warnings)
         {
@@ -31,7 +33,7 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// <see cref="BundleDistribution"/> から表示用の集計値を計算する純粋関数。
+        /// Pure function that computes display-oriented aggregate values from a <see cref="BundleDistribution"/>.
         /// </summary>
         public static DistributionSummary Summarize(BundleDistribution distribution)
         {
@@ -67,15 +69,19 @@ namespace AddressTeller.Editor
         }
     }
 
-    /// <summary>論理バンドル分布の表示用集計結果。</summary>
+    /// <summary>Display-oriented aggregate result for the logical bundle distribution.</summary>
     public sealed class DistributionSummary
     {
+        /// <summary>Total number of logical bundles, excluding Unknown.</summary>
         public int TotalLogicalBundleCount { get; }
+
+        /// <summary>Number of groups whose BundleMode could not be determined (Unknown).</summary>
         public int UnknownGroupCount { get; }
 
-        /// <summary>AssetCount が最大の論理バンドル。<see cref="BundleDistribution.Bundles"/> が0件の場合は null。</summary>
+        /// <summary>The logical bundle with the largest AssetCount. Null if <see cref="BundleDistribution.Bundles"/> is empty.</summary>
         public LargestBundleInfo LargestBundle { get; }
 
+        /// <summary>Creates a DistributionSummary from precomputed aggregate values.</summary>
         public DistributionSummary(int totalLogicalBundleCount, int unknownGroupCount, LargestBundleInfo largestBundle)
         {
             TotalLogicalBundleCount = totalLogicalBundleCount;
@@ -84,14 +90,25 @@ namespace AddressTeller.Editor
         }
     }
 
-    /// <summary>最大集約バンドルの表示に必要な情報。</summary>
+    /// <summary>Information needed to display the largest consolidated bundle.</summary>
     public sealed class LargestBundleInfo
     {
+        /// <summary>Name of the group this bundle belongs to.</summary>
         public string GroupName { get; }
+
+        /// <summary>The group's BundleMode.</summary>
         public BundleModeKind Mode { get; }
+
+        /// <summary>
+        /// Key identifying the split within the group (see <see cref="LogicalBundle.SplitKey"/> for the
+        /// possible fixed values).
+        /// </summary>
         public string SplitKey { get; }
+
+        /// <summary>Number of assets in this bundle.</summary>
         public int AssetCount { get; }
 
+        /// <summary>Creates a LargestBundleInfo describing a single logical bundle.</summary>
         public LargestBundleInfo(string groupName, BundleModeKind mode, string splitKey, int assetCount)
         {
             GroupName = groupName;

@@ -153,7 +153,10 @@ namespace AddressTellerSamples
 
             var matched = FindFirst(entries, ctx);
             Assert.IsNotNull(matched, "No entry matched the config asset.");
-            Assert.IsTrue(RuleTestHelper.IsUnresolvedDefaultGroup(matched.GroupName));
+            // Demonstrates the convention of always routing a group name through DisplayGroupName()
+            // when printing it, since the raw sentinel used by GroupDefault() is not itself legible.
+            Assert.IsTrue(RuleTestHelper.IsUnresolvedDefaultGroup(matched.GroupName),
+                $"Expected the unresolved GroupDefault() sentinel, but got '{RuleTestHelper.DisplayGroupName(matched.GroupName)}'.");
             Assert.AreEqual("Settings", matched.AddressSelector?.Invoke(ctx));
         }
 

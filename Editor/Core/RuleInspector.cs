@@ -29,6 +29,8 @@ namespace AddressTeller.Testing
         public static IReadOnlyList<AddressRuleEntry> Collect(AddressRuleBase rule)
         {
             if (rule == null) throw new ArgumentNullException(nameof(rule));
+            // sourceClass には RuleEvaluationPipeline.GetOrderedEntries と同じ値（rule.GetType().Name）を渡す。
+            // ここは意図的に try/catch しない設計のため共通化はせず、値が食い違わないことをコメントで担保する。
             var builder = new AddressRuleBuilderImpl(rule.GetType().Name);
             rule.Configure(builder);
             // AddressRuleBuilderImpl.Entries の宣言型は IReadOnlyList<AddressRuleEntry>（配列を返すのは
@@ -64,6 +66,8 @@ namespace AddressTeller.Testing
         /// This method is for display purposes only — since a project could legitimately have a group
         /// literally named "(Default Group)", never use its output for equality comparisons; use
         /// <see cref="IsUnresolvedDefaultGroup"/> for that instead.
+        /// For a label-only entry produced by <see cref="IAddressRuleBuilder.AnyGroup"/> (whose
+        /// <see cref="AddressRuleEntry.GroupName"/> is null), this returns null unchanged.
         /// </remarks>
         public static string DisplayGroupName(string groupName) => AddressRuleBuilderImpl.DisplayGroupName(groupName);
     }

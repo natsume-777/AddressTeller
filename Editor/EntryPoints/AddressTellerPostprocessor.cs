@@ -6,6 +6,10 @@ using UnityEditor.AddressableAssets;
 
 namespace AddressTeller.Editor
 {
+    /// <summary>
+    /// When <see cref="AddressTellerSettings.PostprocessEnabled"/> is on, automatically applies rules to
+    /// imported/moved assets and removes entries for deleted assets.
+    /// </summary>
     public sealed class AddressTellerPostprocessor : AssetPostprocessor
     {
         // 自身が ApplyAll() で書き込んだ変更が OnPostprocessAllAssets を再トリガーしても
@@ -14,6 +18,7 @@ namespace AddressTeller.Editor
         // Postprocessor から呼ばれた場合はそちらが false のままのため、両方が必要。
         private static bool s_isApplying;
 
+        /// <summary>Postprocess order, taken from <see cref="AddressTellerSettings.PostprocessOrder"/>.</summary>
         public override int GetPostprocessOrder() => AddressTellerSettings.PostprocessOrder;
 
         static void OnPostprocessAllAssets(

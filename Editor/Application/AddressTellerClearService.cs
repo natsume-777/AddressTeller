@@ -5,24 +5,32 @@ using UnityEditor.AddressableAssets.Settings;
 
 namespace AddressTeller.Editor
 {
-    /// <summary>クリア対象のスコープ。</summary>
+    /// <summary>Scope of entries targeted by a clear operation.</summary>
     public enum ClearScope
     {
-        /// <summary>全 Addressable エントリを対象とする。</summary>
+        /// <summary>Targets every Addressable entry.</summary>
         All,
 
-        /// <summary>AddressTeller が管理するグループ（いずれかのルールが GroupName として参照しているグループ）に属するエントリのみを対象とする。</summary>
+        /// <summary>Targets only entries in groups managed by AddressTeller (groups referenced as GroupName by any rule).</summary>
         Managed,
     }
 
-    /// <summary>クリアによって削除された1エントリの情報。ログ出力・スナップショット説明等に使う。</summary>
+    /// <summary>Information about a single entry removed by a clear operation. Used for logging, snapshot descriptions, etc.</summary>
     public readonly struct ClearedEntry
     {
+        /// <summary>GUID of the removed entry's asset.</summary>
         public string Guid { get; }
+
+        /// <summary>Address the entry had before removal.</summary>
         public string Address { get; }
+
+        /// <summary>Name of the group the entry belonged to.</summary>
         public string GroupName { get; }
+
+        /// <summary>Labels the entry had before removal.</summary>
         public IReadOnlyList<string> Labels { get; }
 
+        /// <summary>Creates a ClearedEntry from the removed entry's pre-removal state.</summary>
         public ClearedEntry(string guid, string address, string groupName, IReadOnlyList<string> labels)
         {
             Guid = guid;
@@ -33,24 +41,27 @@ namespace AddressTeller.Editor
     }
 
     /// <summary>
-    /// Addressables の全エントリ（または AddressTeller 管理下のエントリ）を一括削除する。
-    /// 既定の安全側運用（資産単位の所有権判定・デフォルト OFF）から意図的に逸脱した、
-    /// 公開前パッケージの初期セットアップ用途向けの割り切り機能。
-    /// 呼び出し側で削除前にスナップショットを取得し、戻り値を Warning 以上で個別ログすることを前提とする。
+    /// Bulk-removes every Addressables entry (or every entry managed by AddressTeller).
+    /// This is an intentional exception to the default safe-by-default policy (asset-level ownership
+    /// checks, off by default), aimed at pre-release package initial setup scenarios.
+    /// Callers are expected to take a snapshot before removal and log the return value individually at
+    /// Warning level or above.
     /// </summary>
     public static class AddressTellerClearService
     {
         /// <summary>
-        /// <paramref name="settings"/> から対象エントリを削除する。
-        /// <paramref name="scope"/> が <see cref="ClearScope.Managed"/> の場合、<paramref name="managedGroups"/> は必須
-        /// （null の場合は <see cref="ArgumentNullException"/>）。
-        /// 削除前の各エントリの情報を <see cref="ClearedEntry"/> として GroupName→Guid の Ordinal 昇順で返す。
-        /// このメソッド自体はログを出力しない（呼び出し側の責務）。
+        /// Removes the target entries from <paramref name="settings"/>.
+        /// When <paramref name="scope"/> is <see cref="ClearScope.Managed"/>, <paramref name="managedGroups"/>
+        /// is required (throws <see cref="ArgumentNullException"/> if null).
+        /// Returns information about each removed entry as <see cref="ClearedEntry"/>, sorted by
+        /// GroupName then Guid (both Ordinal ascending).
+        /// This method itself does not log anything (that is the caller's responsibility).
         /// </summary>
         /// <remarks>
-        /// 必須引数の null 契約: 本メソッドは利用者が明示的に呼び出す公開APIのエントリポイントであるため、
-        /// <paramref name="settings"/> が null の場合も <see cref="ArgumentNullException"/> を送出する
-        /// （<see cref="AddressTellerSnapshotService"/> の Restore/RestoreExactWithRemoval/Diff と同じ方針）。
+        /// Null contract for this argument: since this method is a public API entry point that consumers
+        /// call explicitly, it throws <see cref="ArgumentNullException"/> even when <paramref name="settings"/>
+        /// is null (the same policy as Restore/RestoreExactWithRemoval/Diff on
+        /// <see cref="AddressTellerSnapshotService"/>).
         /// </remarks>
         public static IReadOnlyList<ClearedEntry> Clear(
             AddressableAssetSettings settings,

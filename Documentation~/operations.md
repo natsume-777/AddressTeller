@@ -97,3 +97,4 @@ The following samples can be imported from the Package Manager's Samples tab (`S
 - **Basic Rules** — Minimal rule definition example.
 - **Folder-based Rules** — Example that maps folder hierarchy directly to addresses and labels.
 - **Type-based Rules** — Example that routes assets to groups and labels by asset type.
+- **Rule Unit Test Helper** — Helper and NUnit sample for unit-testing `AddressRuleBase` subclasses without a live Addressables project.

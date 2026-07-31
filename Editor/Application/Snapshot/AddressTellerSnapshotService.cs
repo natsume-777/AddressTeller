@@ -7,41 +7,43 @@ using UnityEngine;
 
 namespace AddressTeller.Editor
 {
-    /// <summary>復元時にスナップショットにないラベルをどう扱うか。</summary>
+    /// <summary>How to treat labels that are not present in the snapshot when restoring.</summary>
     public enum SnapshotRestoreMode
     {
-        /// <summary>スナップショットの Address/Label のみ書き込む。スナップショット作成後に付与されたラベルは保持する。</summary>
+        /// <summary>Writes only the Address/Label recorded in the snapshot. Labels added after the snapshot was taken are kept.</summary>
         Additive,
 
-        /// <summary>スナップショットにないラベルを剥がす（ラベルの完全一致）。エントリの削除は行わない。</summary>
+        /// <summary>Strips labels not present in the snapshot (exact label match). Does not remove entries.</summary>
         Exact,
     }
 
     /// <summary>
-    /// AddressableAssetSettings とスナップショット間の状態の収集・書き戻し・差分計算を行う。
+    /// Collects, writes back, and diffs state between AddressableAssetSettings and a snapshot.
     /// </summary>
     /// <remarks>
-    /// 必須引数の null 契約: <see cref="Capture(AddressableAssetSettings)"/>・<see cref="Restore"/>・
-    /// <see cref="RestoreExactWithRemoval"/>・<see cref="BuildPredictedSnapshot(AddressableAssetSettings, IEnumerable{string})"/>・
-    /// <see cref="Diff"/> は利用者が明示的に呼び出す公開APIのエントリポイントであるため、必須引数が null の場合は
-    /// <see cref="ArgumentNullException"/> を送出する（<see cref="AddressTellerClearService.Clear"/> と同じ方針）。
-    /// これに対し <see cref="AddressTellerService"/> の各メソッドが settings 引数に対して行う既定値フォールバック
-    /// （省略時に現在の AddressableAssetSettings を使う）は、意図的に異なる契約であり例外を送出しない。
+    /// Null contract for these arguments: <see cref="Capture(AddressableAssetSettings)"/>,
+    /// <see cref="Restore"/>, <see cref="RestoreExactWithRemoval"/>,
+    /// <see cref="BuildPredictedSnapshot(AddressableAssetSettings, IEnumerable{string})"/>, and
+    /// <see cref="Diff"/> are public API entry points that consumers call explicitly, so they throw
+    /// <see cref="ArgumentNullException"/> when a required argument is null (the same policy as
+    /// <see cref="AddressTellerClearService.Clear"/>). This intentionally differs from the default-value
+    /// fallback that each <see cref="AddressTellerService"/> method applies to its settings argument
+    /// (using the current AddressableAssetSettings when omitted), which does not throw.
     /// </remarks>
     public static class AddressTellerSnapshotService
     {
-        /// <summary>現在サポートしているスナップショットのスキーマバージョン。</summary>
+        /// <summary>Currently supported snapshot schema version.</summary>
         public const int CurrentSchemaVersion = 1;
 
-        /// <summary>現在の Addressables の状態をスナップショットとして収集する。</summary>
-        /// <exception cref="ArgumentNullException"><paramref name="settings"/> が null。</exception>
+        /// <summary>Collects the current Addressables state as a snapshot.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> is null.</exception>
         public static AddressTellerSnapshot Capture(AddressableAssetSettings settings) => Capture(settings, "");
 
         /// <summary>
-        /// 現在の Addressables の状態をスナップショットとして収集する。
-        /// <paramref name="comment"/> はユーザーが付与する任意のコメントとしてそのまま記録される。
+        /// Collects the current Addressables state as a snapshot.
+        /// <paramref name="comment"/> is recorded as-is as a user-supplied free-form comment.
         /// </summary>
-        /// <exception cref="ArgumentNullException"><paramref name="settings"/> が null。</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> is null.</exception>
         public static AddressTellerSnapshot Capture(AddressableAssetSettings settings, string comment)
         {
             if (settings == null) throw new ArgumentNullException(nameof(settings));
@@ -96,8 +98,9 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// スナップショット JSON ファイルを読み込み、<see cref="AddressTellerSnapshot"/> として復元する。
-        /// 読み込み・パース・内容検証のいずれかに失敗した場合は <paramref name="error"/> にメッセージを設定して false を返す。
+        /// Loads a snapshot JSON file and reconstructs it as an <see cref="AddressTellerSnapshot"/>.
+        /// If loading, parsing, or content validation fails, sets a message in <paramref name="error"/>
+        /// and returns false.
         /// </summary>
         public static bool LoadFromFile(string path, out AddressTellerSnapshot snapshot, out string error)
         {
@@ -181,13 +184,14 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// スナップショットの内容を Addressables へ書き戻す。
-        /// スナップショットに記録されたグループが存在しない場合、そのエントリをスキップしメッセージを返す。
-        /// Addressables はグループ名の一意性を保証しないため、復元先グループ名が重複している場合は
-        /// 最初に見つかったグループを採用して処理を継続し、issues にその旨を報告する
-        /// （<paramref name="snapshot"/> が実際に参照しているグループ名のみを対象とし、無関係な重複グループについては報告しない）。
+        /// Writes the snapshot's content back to Addressables.
+        /// If a group recorded in the snapshot does not exist, its entries are skipped and a message is
+        /// returned. Since Addressables does not guarantee group name uniqueness, if the restore target
+        /// group name is duplicated, the first group found is used and processing continues, with the
+        /// duplication reported in issues (only for group names actually referenced by
+        /// <paramref name="snapshot"/>; unrelated duplicate groups are not reported).
         /// </summary>
-        /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> または <paramref name="settings"/> が null。</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> or <paramref name="settings"/> is null.</exception>
         public static IReadOnlyList<string> Restore(
             AddressTellerSnapshot snapshot,
             AddressableAssetSettings settings,
@@ -278,14 +282,16 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// Undo Last Apply 専用の復元処理。<paramref name="guidsToRemove"/> に含まれる GUID のエントリを
-        /// 先に削除してから <see cref="Restore"/> を Exact モードで実行する。
-        /// 汎用の <see cref="Restore"/> はエントリの削除を一切行わないため（意図的な設計。管理外グループへの
-        /// 誤削除を防ぐ）、Undo Last Apply のように「Apply 直前の状態へ戻す」ことが明確な文脈でのみ、
-        /// 呼び出し側が所有権判定（managedGroups）で絞り込んだ GUID を渡してエントリ削除を行う。
+        /// Restore logic dedicated to Undo Last Apply. Removes the entries for the GUIDs in
+        /// <paramref name="guidsToRemove"/> first, then runs <see cref="Restore"/> in Exact mode.
+        /// The general-purpose <see cref="Restore"/> never removes entries (an intentional design choice
+        /// to avoid accidentally removing entries in unmanaged groups), so entry removal is only
+        /// performed here, in a context like Undo Last Apply where "revert to the state immediately
+        /// before Apply" is unambiguous, and only for GUIDs the caller has already filtered by ownership
+        /// (managedGroups).
         /// </summary>
         /// <exception cref="ArgumentNullException">
-        /// <paramref name="snapshot"/>、<paramref name="settings"/>、<paramref name="guidsToRemove"/> のいずれかが null。
+        /// <paramref name="snapshot"/>, <paramref name="settings"/>, or <paramref name="guidsToRemove"/> is null.
         /// </exception>
         public static IReadOnlyList<string> RestoreExactWithRemoval(
             AddressTellerSnapshot snapshot,
@@ -309,16 +315,18 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// Apply を実行せずに、適用後の状態を表すスナップショットを現在の状態との差分として計算する。
+        /// Without executing Apply, computes a snapshot representing the post-apply state as a diff
+        /// against the current state.
         /// </summary>
-        /// <exception cref="ArgumentNullException"><paramref name="settings"/> または <paramref name="paths"/> が null。</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> or <paramref name="paths"/> is null.</exception>
         public static DryRunResult BuildPredictedSnapshot(AddressableAssetSettings settings, IEnumerable<string> paths)
             => BuildPredictedSnapshot(settings, paths, RuleCollector.CollectEnabledRules());
 
         /// <summary>
-        /// ルール一覧を明示的に指定する版。テストや特定スコープでの dry-run 計算に使う。
+        /// Overload that explicitly specifies the rule list. Used for dry-run computation in tests or a
+        /// specific scope.
         /// </summary>
-        /// <exception cref="ArgumentNullException"><paramref name="settings"/> または <paramref name="paths"/> が null。</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> or <paramref name="paths"/> is null.</exception>
         public static DryRunResult BuildPredictedSnapshot(AddressableAssetSettings settings, IEnumerable<string> paths, IReadOnlyList<AddressRuleBase> rules)
         {
             if (settings == null) throw new ArgumentNullException(nameof(settings));
@@ -379,9 +387,9 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 2つのスナップショットを GUID 単位で比較し、追加・削除・変更の差分を返す。
-        /// <paramref name="before"/>/<paramref name="after"/> が null の場合は <see cref="ArgumentNullException"/>
-        /// を送出する（利用者が明示的に呼び出す公開APIのエントリポイントであるため）。
+        /// Compares two snapshots per-GUID and returns the added/removed/changed diff.
+        /// Throws <see cref="ArgumentNullException"/> if <paramref name="before"/>/<paramref name="after"/>
+        /// is null (since this is a public API entry point that consumers call explicitly).
         /// </summary>
         public static SnapshotDiff Diff(AddressTellerSnapshot before, AddressTellerSnapshot after)
         {
@@ -417,10 +425,10 @@ namespace AddressTeller.Editor
     }
 
     /// <summary>
-    /// 2つのスナップショット間の差分。
-    /// <see cref="Added"/>/<see cref="Removed"/>/<see cref="Changed"/> は読み取り専用のビューであり、
-    /// 内部の可変リストへの追加は <see cref="AddAdded"/>/<see cref="AddRemoved"/>/<see cref="AddChanged"/>
-    /// （同一アセンブリ限定）を通じて行う。
+    /// Diff between two snapshots.
+    /// <see cref="Added"/>/<see cref="Removed"/>/<see cref="Changed"/> are read-only views; entries are
+    /// added to the underlying mutable lists only through <see cref="AddAdded"/>/<see cref="AddRemoved"/>/
+    /// <see cref="AddChanged"/> (internal, same-assembly only).
     /// </summary>
     public sealed class SnapshotDiff
     {
@@ -434,10 +442,16 @@ namespace AddressTeller.Editor
         /// </summary>
         internal SnapshotDiff() { }
 
+        /// <summary>Entries present in the after snapshot but not in the before snapshot.</summary>
         public IReadOnlyList<SnapshotEntry> Added => _added;
+
+        /// <summary>Entries present in the before snapshot but not in the after snapshot.</summary>
         public IReadOnlyList<SnapshotEntry> Removed => _removed;
+
+        /// <summary>Entries present in both snapshots whose Address/GroupName/Labels differ, as (Before, After) pairs.</summary>
         public IReadOnlyList<(SnapshotEntry Before, SnapshotEntry After)> Changed => _changed;
 
+        /// <summary>True when there is no <see cref="Added"/>, <see cref="Removed"/>, or <see cref="Changed"/> entry.</summary>
         public bool IsEmpty => _added.Count == 0 && _removed.Count == 0 && _changed.Count == 0;
 
         /// <summary>追加差分を1件登録する。<see cref="AddressTellerSnapshotService.Diff"/> 専用。</summary>
@@ -451,24 +465,29 @@ namespace AddressTeller.Editor
     }
 
     /// <summary>
-    /// <see cref="AddressTellerSnapshotService.BuildPredictedSnapshot"/> の結果。
-    /// Apply を実行した場合の差分と、衝突・グループ未検出・ルール例外などの問題点をまとめて返す。
+    /// Result of <see cref="AddressTellerSnapshotService.BuildPredictedSnapshot"/>.
+    /// Returns the diff that would result from running Apply, together with any problems (conflicts,
+    /// missing groups, rule exceptions, etc.).
     /// </summary>
     public readonly struct DryRunResult
     {
+        /// <summary>Predicted diff between the current state and the post-apply state.</summary>
         public SnapshotDiff Diff { get; }
+
+        /// <summary>Validation results that had a problem, encountered while computing the prediction.</summary>
         public IReadOnlyList<ValidationResult> Issues { get; }
 
         /// <summary>
-        /// AutoCreateMissingGroups が有効な状態で、この dry-run の対象に新規作成予定のグループ名集合。
-        /// Ordinal 順でソート済み。dry-run では実際の作成は行わない（副作用ゼロ）。
+        /// With AutoCreateMissingGroups enabled, the set of group names this dry-run would create.
+        /// Sorted in Ordinal order. The dry-run does not actually create them (zero side effects).
         /// </summary>
         public IReadOnlyList<string> GroupsToCreate { get; }
 
         /// <summary>
-        /// Apply 適用後の予測状態の全エントリ。論理バンドル分布サマリ（<see cref="BundleDistributionCalculator"/>）など、
-        /// 差分だけでなく全アセットの配置情報が必要な派生計算のために保持する。
-        /// dry-run 計算経由でない構築（テスト等）では null になる場合がある。
+        /// All entries of the predicted post-apply state. Kept (not just the diff) for derived
+        /// computations that need the placement of every asset, such as the logical bundle distribution
+        /// summary (<see cref="BundleDistributionCalculator"/>).
+        /// May be null when constructed outside the dry-run computation (e.g. in a test).
         /// </summary>
         public AddressTellerSnapshot After { get; }
 

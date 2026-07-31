@@ -97,3 +97,4 @@ Package Manager の Samples タブから以下をインポートできます（`
 - **Basic Rules** — 最小構成のルール定義例。
 - **Folder-based Rules** — フォルダ階層をそのままアドレス・ラベルに反映する例。
 - **Type-based Rules** — アセットの型ごとにグループ・ラベルを振り分ける例。
+- **Rule Unit Test Helper** — ライブな Addressables プロジェクトなしに `AddressRuleBase` のサブクラスを単体テストするためのヘルパー・NUnit サンプル。

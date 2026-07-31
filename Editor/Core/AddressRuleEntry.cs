@@ -4,27 +4,32 @@ using System.Collections.Generic;
 namespace AddressTeller
 {
     /// <summary>
-    /// Configure() で組み立てられたグループ単位のルール1件。
+    /// One group-scoped rule assembled by Configure().
     /// </summary>
     public sealed class AddressRuleEntry
     {
+        /// <summary>Name of the group this rule targets, or null for a label-only rule from AnyGroup().</summary>
         public string GroupName { get; }
+
+        /// <summary>Condition that determines whether this rule applies to a given asset.</summary>
         public Func<AssetContext, bool> Predicate { get; }
 
-        /// <summary>null の場合はこのルールでアドレスを付与しない。</summary>
+        /// <summary>If null, this rule does not assign an address.</summary>
         public Func<AssetContext, string> AddressSelector { get; }
 
+        /// <summary>Label selectors registered for this rule.</summary>
         public IReadOnlyList<Func<AssetContext, string>> LabelSelectors { get; }
 
-        /// <summary>このエントリを定義した AddressRuleBase サブクラスの名前。</summary>
+        /// <summary>Name of the AddressRuleBase subclass that defined this entry.</summary>
         public string SourceClass { get; }
 
-        /// <summary>Where に渡した説明文。null の場合はインデックスでフォールバック表示される。</summary>
+        /// <summary>Description passed to Where. If null, falls back to an index-based display.</summary>
         public string Description { get; }
 
-        /// <summary>Configure() 内で Group() が呼ばれた順序（0始まり）。エラーメッセージの表示に使う。</summary>
+        /// <summary>Order (zero-based) in which Group() was called within Configure(). Used in error messages.</summary>
         public int RuleIndex { get; }
 
+        /// <summary>Creates an AddressRuleEntry. See the properties above for each parameter's meaning.</summary>
         public AddressRuleEntry(
             string groupName,
             Func<AssetContext, bool> predicate,
@@ -45,7 +50,7 @@ namespace AddressTeller
         }
 
         /// <summary>
-        /// SourceClass / Description / RuleIndex から、エラーメッセージ表示用の識別文字列を組み立てる。
+        /// Builds an identifier string for error messages from SourceClass / Description / RuleIndex.
         /// </summary>
         public static string DescribeSource(string sourceClass, string description, int ruleIndex)
         {

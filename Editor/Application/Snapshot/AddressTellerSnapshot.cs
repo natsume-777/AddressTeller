@@ -5,45 +5,56 @@ using UnityEngine;
 namespace AddressTeller.Editor
 {
     /// <summary>
-    /// Addressables のアドレス／ラベル／グループ割り当ての状態を表すスナップショット。
-    /// JsonUtility でシリアライズするため public フィールドで構成する。
+    /// Snapshot of the Addressables address/label/group assignment state.
+    /// Composed of public fields since it is serialized with JsonUtility.
     /// </summary>
     [Serializable]
     public sealed class AddressTellerSnapshot
     {
+        /// <summary>Per-asset entries captured at snapshot time.</summary>
         public List<SnapshotEntry> Entries = new();
 
-        /// <summary>取得日時（UTC、ISO 8601 形式）。旧形式の JSON では空文字になる。</summary>
+        /// <summary>Capture timestamp (UTC, ISO 8601 format). Empty string for older-format JSON.</summary>
         public string CapturedAtIso = "";
 
-        /// <summary>ユーザーが付与する任意のコメント。</summary>
+        /// <summary>Optional free-form comment supplied by the user.</summary>
         public string Comment = "";
 
-        /// <summary>取得時の Unity バージョン（<see cref="Application.unityVersion"/>）。</summary>
+        /// <summary>Unity version at capture time (<see cref="Application.unityVersion"/>).</summary>
         public string UnityVersion = "";
 
-        /// <summary>取得時の AddressTeller パッケージバージョン。取得できない場合は空文字。</summary>
+        /// <summary>AddressTeller package version at capture time. Empty string if it could not be determined.</summary>
         public string PackageVersion = "";
 
         /// <summary>
-        /// スナップショットのスキーマバージョン。<see cref="AddressTellerSnapshotService.Capture"/> で
-        /// <see cref="AddressTellerSnapshotService.CurrentSchemaVersion"/> が設定される。
-        /// このフィールドが存在しない旧形式の JSON を読み込んだ場合や、初期化直後は 0 になる。
+        /// Schema version of this snapshot. Set to <see cref="AddressTellerSnapshotService.CurrentSchemaVersion"/>
+        /// by <see cref="AddressTellerSnapshotService.Capture"/>.
+        /// Reads back as 0 when loading older-format JSON that lacks this field, or immediately after
+        /// initialization.
         /// </summary>
         public int SchemaVersion = 0;
 
+        /// <summary>Serializes this snapshot to pretty-printed JSON via <see cref="JsonUtility"/>.</summary>
         public string ToJson() => JsonUtility.ToJson(this, true);
 
+        /// <summary>Deserializes a snapshot previously produced by <see cref="ToJson"/>.</summary>
         public static AddressTellerSnapshot FromJson(string json) => JsonUtility.FromJson<AddressTellerSnapshot>(json);
     }
 
-    /// <summary>スナップショット中の1アセット分のエントリ。</summary>
+    /// <summary>A single asset's entry within a snapshot.</summary>
     [Serializable]
     public sealed class SnapshotEntry
     {
+        /// <summary>GUID of the asset this entry is about.</summary>
         public string Guid;
+
+        /// <summary>Address assigned to the asset.</summary>
         public string Address;
+
+        /// <summary>Name of the group the asset belongs to.</summary>
         public string GroupName;
+
+        /// <summary>Labels assigned to the asset.</summary>
         public List<string> Labels = new();
     }
 }

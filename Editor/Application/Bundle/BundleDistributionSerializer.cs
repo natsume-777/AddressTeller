@@ -5,27 +5,29 @@ using UnityEngine;
 
 namespace AddressTeller.Editor
 {
-    /// <summary>論理バンドル分布のファイル出力形式。</summary>
+    /// <summary>File output format for the logical bundle distribution.</summary>
     public enum DistributionFormat
     {
-        /// <summary>CSV 形式。</summary>
+        /// <summary>CSV format.</summary>
         Csv,
 
-        /// <summary>Markdown 形式。</summary>
+        /// <summary>Markdown format.</summary>
         Markdown,
     }
 
     /// <summary>
-    /// <see cref="BundleDistribution"/> / <see cref="DistributionSummary"/> を CSV / Markdown にシリアライズし、
-    /// ファイルへ書き出す。<see cref="AddressTellerReportWriter"/> と同じ流儀（純粋関数 + WriteToFile）。
-    /// 入力は <see cref="BundleDistributionSummarizer"/> で算出済みのものを渡す想定で、ここでは再計算しない。
+    /// Serializes a <see cref="BundleDistribution"/> / <see cref="DistributionSummary"/> to CSV / Markdown
+    /// and writes it to a file. Follows the same approach as <see cref="AddressTellerReportWriter"/> (pure
+    /// functions + WriteToFile). Inputs are expected to already be computed by
+    /// <see cref="BundleDistributionSummarizer"/>; this class does not recompute them.
     /// </summary>
     public static class BundleDistributionSerializer
     {
         /// <summary>
-        /// 論理バンドル分布を CSV に変換する。
-        /// 各行は GroupName,Mode,SplitKey,AssetCount。末尾にサマリと免責文言をコメント行（# 始まり）で付与する。
-        /// <paramref name="distribution"/> / <paramref name="summary"/> が null の場合は空文字列を返す。
+        /// Converts the logical bundle distribution to CSV.
+        /// Each row is GroupName,Mode,SplitKey,AssetCount. The summary and disclaimer are appended as
+        /// comment lines (starting with #) at the end.
+        /// Returns an empty string if <paramref name="distribution"/> / <paramref name="summary"/> is null.
         /// </summary>
         public static string ToCsv(BundleDistribution distribution, DistributionSummary summary)
         {
@@ -62,9 +64,9 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 論理バンドル分布を Markdown に変換する。
-        /// サマリ・分布テーブル・免責文言（引用ブロック）の順に出力する。
-        /// <paramref name="distribution"/> / <paramref name="summary"/> が null の場合は空文字列を返す。
+        /// Converts the logical bundle distribution to Markdown.
+        /// Outputs the summary, the distribution table, and the disclaimer (as a blockquote), in that order.
+        /// Returns an empty string if <paramref name="distribution"/> / <paramref name="summary"/> is null.
         /// </summary>
         public static string ToMarkdown(BundleDistribution distribution, DistributionSummary summary)
         {
@@ -104,14 +106,14 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 分布をファイルに書き出す。出力先ディレクトリが無ければ作成する。
+        /// Writes the distribution to a file. Creates the destination directory if it does not exist.
         /// </summary>
-        /// <param name="path">出力先ファイルパス。</param>
-        /// <param name="distribution">論理バンドル分布。</param>
-        /// <param name="summary">分布の表示用集計。</param>
-        /// <param name="format">出力形式。未定義の値の場合は <see cref="ArgumentException"/>。</param>
-        /// <returns>書き込みに成功したら true。失敗時は false（ログ出力済み）。</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="distribution"/> が null。</exception>
+        /// <param name="path">Destination file path.</param>
+        /// <param name="distribution">The logical bundle distribution.</param>
+        /// <param name="summary">Display-oriented aggregate for the distribution.</param>
+        /// <param name="format">Output format. Throws <see cref="ArgumentException"/> for an undefined value.</param>
+        /// <returns>True if the write succeeded; false on failure (a message is already logged).</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="distribution"/> is null.</exception>
         public static bool WriteToFile(string path, BundleDistribution distribution, DistributionSummary summary, DistributionFormat format)
         {
             if (distribution == null) throw new ArgumentNullException(nameof(distribution));

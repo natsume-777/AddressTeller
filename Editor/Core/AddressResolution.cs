@@ -4,16 +4,23 @@ using System.Collections.Generic;
 namespace AddressTeller
 {
     /// <summary>
-    /// アドレス候補1件（グループ名 + アドレス文字列）。
+    /// One address candidate (group name + address string).
     /// </summary>
     public readonly struct AddressCandidate
     {
+        /// <summary>Name of the group this candidate targets.</summary>
         public string GroupName { get; }
+
+        /// <summary>The address string produced by the matching rule.</summary>
         public string Address { get; }
+
+        /// <summary>Name of the AddressRuleBase subclass that produced this candidate.</summary>
         public string SourceClass { get; }
+
+        /// <summary>Description passed to Where, or null if none was given.</summary>
         public string Description { get; }
 
-        /// <summary>Configure() 内で Group() が呼ばれた順序（0始まり）。</summary>
+        /// <summary>Order (zero-based) in which Group() was called within Configure().</summary>
         public int RuleIndex { get; }
 
         /// <summary>
@@ -29,7 +36,7 @@ namespace AddressTeller
             RuleIndex = ruleIndex;
         }
 
-        /// <summary>エラーメッセージ表示用の識別文字列（"{SourceClass} > \"{Description}\"" など）。</summary>
+        /// <summary>Identifier string for error messages, e.g. <c>MyRule &gt; "InFolder(Assets/Characters)"</c>.</summary>
         public string DescribeSource() => AddressRuleEntry.DescribeSource(SourceClass, Description, RuleIndex);
     }
 

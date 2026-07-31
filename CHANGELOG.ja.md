@@ -10,7 +10,7 @@
 
 ### Added
 
-- `ReportFormat` と `DistributionFormat` enum: レポート・分布サマリのエクスポート形式を表現する新規公開型。`ReportFormat` は `Json` と `JUnit` に対応し（`AddressTellerReportWriter.WriteToFile` で使用）、`DistributionFormat` は `Csv` と `Markdown` に対応する（`BundleDistributionSerializer.WriteToFile` で使用）。
+- `ReportFormat` と `DistributionFormat` enum: レポート・分布サマリのエクスポート形式を表現する新規公開型。`ReportFormat` は `Json` と `Junit` に対応し（`AddressTellerReportWriter.WriteToFile` で使用）、`DistributionFormat` は `Csv` と `Markdown` に対応する（`BundleDistributionSerializer.WriteToFile` で使用）。
 - `ValidationStatus.RuleConfigureFailed`: ユーザールールの `Configure()` メソッドが例外を投げた場合に返される。問題のあるルールはスキップされ（エントリ0件として扱われ）、評価は継続される。どのルールに構成問題があるかを特定するのに役立つ。
 - ルール構成エラーが存在する場合、`Undo Last Apply` ダイアログと `Explain` ウィンドウに警告が表示されるため、利用者は報告された結果が不完全であることに気づくことができる。
 - `AddressTellerReport.SchemaVersion`: `AddressTellerSnapshot.SchemaVersion` と対称の新規フィールド。既定値は1で、`AddressTellerReportBuilder.Build` が設定する。
@@ -68,10 +68,15 @@
 - README.md および Documentation~ 配下の全ファイルに英語版を追加した。元の日本語版は `.ja.md` ファイル（例: `README.ja.md`、`architecture.ja.md`）として保存し、各ファイル冒頭に言語切替リンクを追記した。
 - `CONTRIBUTING.md` を英語版に書き換え、日本語版を `CONTRIBUTING.ja.md` として保存した。
 - `CHANGELOG.md` を英語版に書き換え、日本語版を `CHANGELOG.ja.md` として保存した。
+- `writing-rules.md`: テスティングセクションを追加し、`RuleInspector` API と `RuleUnitTestHelper` サンプルを使ったルールクラスの単体テスト方法を解説。
+- `operations.md`: Samples 一覧に `RuleUnitTestHelper` を追記。
+- `AddressTellerSettings.CleanupStaleEntries` のXML docと `design-decisions.md`: ラベルは削除されないという誤った記述を訂正した。stale entry削除時に、アドレスとラベルの両方が削除されることを明記。
+- 全公開API XMLドキュメントコメントを英語に統一・変換し、これまでドキュメントのなかった公開メンバー（IntelliSense表示）へのドキュメントを新規付与しました。
 
 ### 検証
 
-- Addressables 2.8.1〜3.1.0 での動作確認済み。コンパイルエラー・警告 0 件、EditMode テスト全件 green（353 pass / 0 fail / 2 skip）。最低要件は 2.8.1 のまま変更なし。
+- Addressables 2.8.1〜3.1.0 との互換性確認は事前に実施済み（その時点では 353 件の EditMode テストで実施）。
+- 現在の EditMode テストスイート: 489 pass / 0 fail / 2 skip。最低 Addressables バージョン要件は 2.8.1 のまま変更なし。
 
 ---
 

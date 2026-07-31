@@ -3,25 +3,25 @@ using System;
 namespace AddressTeller
 {
     /// <summary>
-    /// Address()/Label() に渡すアドレス生成式を簡潔に組み立てるための静的ヘルパー群。
+    /// Static helpers for building address-generating expressions to pass to Address()/Label() concisely.
     /// </summary>
     public static class Naming
     {
-        /// <summary>ファイル名（拡張子あり）を返す式。</summary>
+        /// <summary>Expression that returns the file name including extension.</summary>
         public static Func<AssetContext, string> FileName()
         {
             return ctx => ctx.FileName;
         }
 
-        /// <summary>拡張子なしのファイル名を返す式。</summary>
+        /// <summary>Expression that returns the file name without extension.</summary>
         public static Func<AssetContext, string> FileNameWithoutExtension()
         {
             return ctx => ctx.FileNameWithoutExtension;
         }
 
         /// <summary>
-        /// ファイルが直接置かれている親フォルダ名（1つ）を返す式。
-        /// ルート直下（Assets/Foo.prefab のように親フォルダがない場合）は "Assets" を返す。
+        /// Expression that returns the name of the folder directly containing the file.
+        /// At the root (e.g. Assets/Foo.prefab, which has no parent folder), returns "Assets".
         /// </summary>
         public static Func<AssetContext, string> ParentFolderName()
         {
@@ -35,7 +35,7 @@ namespace AddressTeller
             };
         }
 
-        /// <summary>root 配下なら root からの相対パスを返す式（ctx.RelativePathFrom への委譲）。</summary>
+        /// <summary>Expression that returns the path relative to root, if under root (delegates to ctx.RelativePathFrom).</summary>
         public static Func<AssetContext, string> RelativePath(string root)
         {
             return ctx => ctx.RelativePathFrom(root);

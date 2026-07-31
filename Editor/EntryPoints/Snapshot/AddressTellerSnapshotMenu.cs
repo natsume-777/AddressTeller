@@ -7,9 +7,10 @@ using UnityEngine;
 
 namespace AddressTeller.Editor
 {
-    /// <summary>Tools/AddressTeller/Snapshot 以下のメニュー。スナップショットの保存・復元・比較を行う。</summary>
+    /// <summary>Menu items under Tools/AddressTeller/Snapshot. Saves, restores, and compares snapshots.</summary>
     public static class AddressTellerSnapshotMenu
     {
+        /// <summary>Captures the current Addressables state and writes it to a timestamped file under SnapshotFolder.</summary>
         [MenuItem("Tools/AddressTeller/Snapshot/Save Snapshot")]
         public static void SaveSnapshot()
         {
@@ -76,11 +77,13 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 最新の自動スナップショット（Apply All / Apply with Validate メニューの実行直前に保存されたもの）から、
-        /// Addressables の状態を復元する。Apply によるアドレス変更・ラベル付与に加え、Apply が新規追加した
-        /// エントリの削除まで含めて Undo する（AddressTeller 管理下のグループのエントリに限る。管理外グループの
-        /// 手動エントリは所有権判定により削除対象から除外し、確認ダイアログにも件数を明示する）。
-        /// エントリ削除を伴う専用パス（<see cref="AddressTellerSnapshotService.RestoreExactWithRemoval"/>）を使う。
+        /// Restores the Addressables state from the latest automatic snapshot (saved immediately before
+        /// running the Apply All / Apply with Validate menu items). Undoes address changes and label
+        /// assignments made by Apply, as well as removing entries that Apply newly added (limited to
+        /// entries in groups managed by AddressTeller; manually created entries in unmanaged groups are
+        /// excluded from removal by the ownership check, and their count is shown in the confirmation
+        /// dialog). Uses the dedicated path that also removes entries
+        /// (<see cref="AddressTellerSnapshotService.RestoreExactWithRemoval"/>).
         /// </summary>
         [MenuItem("Tools/AddressTeller/Undo Last Apply")]
         public static void UndoLastApply()

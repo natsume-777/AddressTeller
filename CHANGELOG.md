@@ -10,7 +10,7 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 
 ### Added
 
-- `ReportFormat` and `DistributionFormat` enums: new public types representing the format choices for report and distribution exports. `ReportFormat` supports `Json` and `JUnit` (used by `AddressTellerReportWriter.WriteToFile`), while `DistributionFormat` supports `Csv` and `Markdown` (used by `BundleDistributionSerializer.WriteToFile`).
+- `ReportFormat` and `DistributionFormat` enums: new public types representing the format choices for report and distribution exports. `ReportFormat` supports `Json` and `Junit` (used by `AddressTellerReportWriter.WriteToFile`), while `DistributionFormat` supports `Csv` and `Markdown` (used by `BundleDistributionSerializer.WriteToFile`).
 - `ValidationStatus.RuleConfigureFailed`: returned when a user rule's `Configure()` method throws an exception. The problematic rule is skipped (treated as producing no entries) and evaluation continues; this status helps identify which rule has a configuration problem.
 - Warnings displayed in `Undo Last Apply` dialog and `Explain` window when rule configuration errors exist, so users are aware that reported results are incomplete.
 - `AddressTellerReport.SchemaVersion`: a new field parallel to `AddressTellerSnapshot.SchemaVersion`, defaulting to 1 and set by `AddressTellerReportBuilder.Build`.
@@ -68,10 +68,15 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - Added English versions of README.md and all Documentation~ files. The original Japanese content is preserved as `.ja.md` files (e.g., `README.ja.md`, `architecture.ja.md`). Each file includes a language switch link at the top.
 - Converted CONTRIBUTING.md to English; Japanese version saved as CONTRIBUTING.ja.md.
 - Converted CHANGELOG.md to English; Japanese version saved as CHANGELOG.ja.md.
+- `writing-rules.md`: added Testing section with guidance on using `RuleInspector` API and the `RuleUnitTestHelper` sample for unit-testing rule classes.
+- `operations.md`: added `RuleUnitTestHelper` to the Samples section.
+- `AddressTellerSettings.CleanupStaleEntries` XML doc and `design-decisions.md`: corrected misleading text that incorrectly stated "labels are not deleted." Both addresses and labels are removed from stale entries.
+- Converted all public API XML documentation comments to English, and documented previously undocumented public members (IntelliSense text is now English).
 
 ### Verified
 
-- Confirmed compatibility with Addressables 2.8.1 through 3.1.0: no compile errors or warnings, all EditMode tests pass (353 pass / 0 fail / 2 skip). The minimum requirement remains 2.8.1.
+- Addressables 2.8.1 through 3.1.0 compatibility was confirmed in prior work (353 EditMode tests at that time).
+- Current EditMode test suite: 489 pass / 0 fail / 2 skip. The minimum Addressables requirement remains 2.8.1.
 
 ---
 

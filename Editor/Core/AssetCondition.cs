@@ -3,28 +3,32 @@ using System;
 namespace AddressTeller
 {
     /// <summary>
-    /// 説明文付きの条件式。Where() に渡してエラーメッセージ表示を分かりやすくするためのラッパー。
+    /// A condition paired with a description. Wrap a predicate with this and pass it to Where() to
+    /// make error messages easier to read.
     /// </summary>
     public sealed class AssetCondition
     {
-        /// <summary>判定に使う述語。</summary>
+        /// <summary>The predicate used for matching.</summary>
         public Func<AssetContext, bool> Predicate { get; }
 
-        /// <summary>エラーメッセージ等で使う説明文。未指定の場合は null。</summary>
+        /// <summary>Description used in error messages, etc. Null if not specified.</summary>
         public string Description { get; }
 
+        /// <summary>Creates an AssetCondition from a predicate and an optional description.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="predicate"/> is null.</exception>
         public AssetCondition(Func<AssetContext, bool> predicate, string description = null)
         {
             Predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
             Description = description;
         }
 
-        /// <summary>Predicate を実行する。</summary>
+        /// <summary>Evaluates Predicate.</summary>
         public bool Test(AssetContext ctx) => Predicate(ctx);
 
         /// <summary>
-        /// この条件と other を短絡AND評価する新しい条件を返す。
-        /// Description は両方非nullなら "A AND B" 形式で連結し、一方のみ非nullならその方を使う。
+        /// Returns a new condition that short-circuit ANDs this condition with <paramref name="other"/>.
+        /// If both Descriptions are non-null they are joined as "A AND B"; if only one is non-null, that
+        /// one is used.
         /// </summary>
         public AssetCondition And(AssetCondition other)
         {
@@ -33,8 +37,8 @@ namespace AddressTeller
         }
 
         /// <summary>
-        /// この条件と生の述語 other を短絡AND評価する新しい条件を返す。
-        /// Description の連結ルールは And(AssetCondition) と同じ。
+        /// Returns a new condition that short-circuit ANDs this condition with the raw predicate
+        /// <paramref name="other"/>. Description joining follows the same rule as And(AssetCondition).
         /// </summary>
         public AssetCondition And(Func<AssetContext, bool> other, string description = null)
         {
@@ -56,7 +60,7 @@ namespace AddressTeller
             return a ?? b;
         }
 
-        /// <summary>Where(Func&lt;AssetContext,bool&gt;) との互換のため、Predicate への暗黙変換を提供する。</summary>
+        /// <summary>Implicit conversion to Predicate, for compatibility with Where(Func&lt;AssetContext,bool&gt;).</summary>
         public static implicit operator Func<AssetContext, bool>(AssetCondition condition)
         {
             if (condition == null) throw new ArgumentNullException(nameof(condition));

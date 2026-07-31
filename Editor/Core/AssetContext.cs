@@ -6,34 +6,40 @@ using System.Linq;
 namespace AddressTeller
 {
     /// <summary>
-    /// ルール評価に渡すアセット1件分の情報。
+    /// Information about a single asset passed to rule evaluation.
     /// </summary>
     public sealed class AssetContext
     {
-        /// <summary>アセットの GUID。</summary>
+        /// <summary>The asset's GUID.</summary>
         public string Guid { get; }
 
-        /// <summary>Assets/ 起点の前進スラッシュ区切りパス（例: "Assets/Game/Player.prefab"）。</summary>
+        /// <summary>Forward-slash path rooted at Assets/ (e.g. "Assets/Game/Player.prefab").</summary>
         public string Path { get; }
 
-        /// <summary>アセットの型。</summary>
+        /// <summary>The asset's type.</summary>
         public Type Type { get; }
 
-        /// <summary>拡張子なしのファイル名（例: "Player"）。</summary>
+        /// <summary>File name without extension (e.g. "Player").</summary>
         public string FileNameWithoutExtension => System.IO.Path.GetFileNameWithoutExtension(Path);
 
-        /// <summary>ファイル名（拡張子あり）（例: "Player.prefab"）。</summary>
+        /// <summary>File name including extension (e.g. "Player.prefab").</summary>
         public string FileName => System.IO.Path.GetFileName(Path);
 
-        /// <summary>Assets/ 起点のディレクトリパス（例: "Assets/Game"）。</summary>
+        /// <summary>Directory path rooted at Assets/ (e.g. "Assets/Game").</summary>
         public string Directory => System.IO.Path.GetDirectoryName(Path)?.Replace('\\', '/') ?? string.Empty;
 
-        /// <summary>小文字化した拡張子（例: ".png"）。拡張子なしの場合は空文字。</summary>
+        /// <summary>Lowercased extension (e.g. ".png"). Empty string if there is no extension.</summary>
         public string Extension => System.IO.Path.GetExtension(Path).ToLower(CultureInfo.InvariantCulture);
 
-        /// <summary>Path を "/" で分割したセグメント配列。空セグメントは除去し、大文字小文字・表記は変換しない。</summary>
+        /// <summary>Path split on "/". Empty segments are removed; casing and content are otherwise unchanged.</summary>
         public string[] PathSegments { get; }
 
+        /// <summary>Creates an AssetContext for a single asset.</summary>
+        /// <param name="guid">The asset's GUID.</param>
+        /// <param name="path">Asset path rooted at Assets/. Backslashes are normalized to forward slashes.</param>
+        /// <param name="type">The asset's type.</param>
+        /// <exception cref="ArgumentException"><paramref name="guid"/> or <paramref name="path"/> is null or empty.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="type"/> is null.</exception>
         public AssetContext(string guid, string path, Type type)
         {
             if (string.IsNullOrEmpty(guid)) throw new ArgumentException("guid must not be empty.", nameof(guid));
@@ -49,14 +55,17 @@ namespace AddressTeller
             PathSegments = Path.Split('/').Where(s => s.Length > 0).ToArray();
         }
 
-        /// <summary>指定フォルダ配下（再帰的に含む）かどうかを判定する。</summary>
+        /// <summary>Returns whether this asset is under the given folder (recursively).</summary>
         public bool IsInFolder(string folder)
         {
             var normalized = NormalizeFolder(folder);
             return Path.StartsWith(normalized + "/", StringComparison.OrdinalIgnoreCase);
         }
 
-        /// <summary>root 配下なら root からの相対パス（先頭 "/" なし）を返す。配下でない場合は Path をそのまま返す。</summary>
+        /// <summary>
+        /// If this asset is under <paramref name="root"/>, returns the path relative to root (no
+        /// leading "/"). Otherwise returns Path unchanged.
+        /// </summary>
         public string RelativePathFrom(string root)
         {
             var normalized = NormalizeFolder(root);

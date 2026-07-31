@@ -5,35 +5,41 @@ using UnityEditor;
 namespace AddressTeller.Editor
 {
     /// <summary>
-    /// ApplyAll/ValidateAll の進捗を呼び出し元に通知するためのインターフェース。
+    /// Interface used to notify the caller of ApplyAll/ValidateAll progress.
     /// </summary>
     public interface IProgressReporter
     {
         /// <summary>
-        /// 処理の進捗を報告する。false を返した場合、呼び出し元はその時点までの結果を返して処理を中断する。
+        /// Reports progress. If this returns false, the caller returns the results accumulated so far
+        /// and aborts processing.
         /// </summary>
         bool Report(int current, int total, string description);
     }
 
     /// <summary>
-    /// 何もしない <see cref="IProgressReporter"/>。常に true を返す。
-    /// progress 引数を省略した従来の呼び出しを内部的にこれに差し替える。
+    /// A no-op <see cref="IProgressReporter"/> that always returns true.
+    /// Used internally in place of callers that omit the progress argument.
     /// </summary>
     public sealed class NullProgressReporter : IProgressReporter
     {
+        /// <summary>The shared singleton instance.</summary>
         public static readonly NullProgressReporter Instance = new NullProgressReporter();
 
         private NullProgressReporter()
         {
         }
 
+        /// <summary>No-op; always returns true (never aborts processing).</summary>
         public bool Report(int current, int total, string description) => true;
     }
 
     /// <summary>
-    /// EditorUtility.DisplayCancelableProgressBar を使ってプログレスバーを表示する <see cref="IProgressReporter"/>。
-    /// using で生存期間を管理し、Dispose でプログレスバーを閉じる想定。
-    /// 1回の処理につき新しいインスタンスを生成すること（<see cref="WasCancelled"/> は再利用不可）。
+    /// An <see cref="IProgressReporter"/> that displays a progress bar via
+    /// EditorUtility.DisplayCancelableProgressBar. Manage its lifetime with <c>using</c>; disposing it
+    /// closes the progress bar. If not disposed, the progress bar remains visible and blocks the Editor
+    /// UI, so callers must always dispose an instance (typically via <c>using</c>) once they are done
+    /// with it, including on exception paths.
+    /// Create a new instance per operation (<see cref="WasCancelled"/> cannot be reused).
     /// </summary>
     public sealed class EditorProgressReporter : IProgressReporter, IDisposable
     {
@@ -45,15 +51,21 @@ namespace AddressTeller.Editor
         private readonly Stopwatch _stopwatch;
         private bool _hasReportedOnce;
 
-        /// <summary>ユーザーがプログレスバーをキャンセルした場合 true。</summary>
+        /// <summary>True if the user cancelled the progress bar.</summary>
         public bool WasCancelled { get; private set; }
 
+        /// <summary>Creates a reporter that shows a cancelable progress bar titled <paramref name="title"/>.</summary>
         public EditorProgressReporter(string title)
         {
             _title = title;
             _stopwatch = Stopwatch.StartNew();
         }
 
+        /// <summary>
+        /// Updates the progress bar, throttled to at most once per <c>100 ms</c>
+        /// (the first and last call are always drawn). Returns false, and sets <see cref="WasCancelled"/>,
+        /// if the user cancelled the progress bar.
+        /// </summary>
         public bool Report(int current, int total, string description)
         {
             if (WasCancelled) return false;
@@ -76,6 +88,7 @@ namespace AddressTeller.Editor
             return true;
         }
 
+        /// <summary>Closes the progress bar. Must be called (typically via <c>using</c>) once the caller is done, including on exception paths.</summary>
         public void Dispose()
         {
             EditorUtility.ClearProgressBar();

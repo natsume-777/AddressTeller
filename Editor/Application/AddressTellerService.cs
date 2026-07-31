@@ -9,17 +9,17 @@ using UnityEngine;
 namespace AddressTeller.Editor
 {
     /// <summary>
-    /// ルール評価を伴う Apply/Validate/削除追従のエントリポイント群。
+    /// Entry points for Apply/Validate and deletion follow-up, all backed by rule evaluation.
     /// </summary>
     /// <remarks>
-    /// 必須引数の null 契約: 各メソッドの settings 引数は省略・null 許容であり、省略時は
-    /// <see cref="AddressableAssetSettingsDefaultObject.Settings"/> にフォールバックする（意図的なデフォルト値解決であり、
-    /// 例外は送出しない）。同様に paths（<see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings)"/> 等）・
-    /// deletedGuids（<see cref="RemoveEntriesForDeletedAssets(IEnumerable{string}, AddressableAssetSettings)"/> 等）も
-    /// null が渡された場合は空シーケンスとして扱う（同じフォールバック側の契約）。
-    /// <see cref="AddressTellerSnapshotService.Restore"/> や
-    /// <see cref="AddressTellerClearService.Clear"/> のように利用者が明示的に対象を指定する必要があるエントリポイントとは
-    /// 異なる契約であることに注意。
+    /// Null contract for these arguments: each method's settings argument is optional/nullable, and
+    /// falls back to <see cref="AddressableAssetSettingsDefaultObject.Settings"/> when omitted
+    /// (an intentional default resolution — it does not throw). Likewise, paths
+    /// (<see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings)"/> etc.) and
+    /// deletedGuids (<see cref="RemoveEntriesForDeletedAssets(IEnumerable{string}, AddressableAssetSettings)"/>
+    /// etc.) are treated as an empty sequence when null is passed (the same fallback-style contract).
+    /// Note that this differs from entry points such as <see cref="AddressTellerSnapshotService.Restore"/>
+    /// or <see cref="AddressTellerClearService.Clear"/>, where the caller must explicitly specify the target.
     /// </remarks>
     public static class AddressTellerService
     {
@@ -31,13 +31,16 @@ namespace AddressTeller.Editor
         private static bool s_isApplying;
 
         /// <summary>
-        /// 収集した全ルールをプロジェクト全アセットに適用し、問題のあった結果（衝突・グループ未検出・ルール例外など）を返す。
-        /// settings が null の場合はプロジェクトのデフォルト設定を使う。Addressables 未設定の場合は空リストを返す。
+        /// Applies all collected rules to every asset in the project and returns the results that had a
+        /// problem (conflicts, missing groups, rule exceptions, etc.).
+        /// If settings is null, the project's default settings are used. Returns an empty list if
+        /// Addressables is not set up.
         /// </summary>
         /// <remarks>
-        /// 戻り値には <see cref="ValidationStatus.GroupWillBeCreated"/>（IsOk=true、AutoCreateMissingGroups による
-        /// グループ作成予定・実施の提示）が情報提供として含まれる場合がある。Apply の中止判定など「問題」として扱う場合は
-        /// <c>!result.IsOk</c> でフィルタすること。
+        /// The return value may include <see cref="ValidationStatus.GroupWillBeCreated"/> entries
+        /// (IsOk=true; informational notices about a group that AutoCreateMissingGroups will create or
+        /// has created). When treating the result as a "problem" (e.g. deciding whether to abort Apply),
+        /// filter with <c>!result.IsOk</c>.
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(AddressableAssetSettings settings = null)
         {
@@ -45,12 +48,13 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// <see cref="ApplyAll(AddressableAssetSettings)"/> に進捗報告とキャンセルを追加したオーバーロード。
-        /// progress が false を返した時点までの結果を返して中断する。
+        /// Overload of <see cref="ApplyAll(AddressableAssetSettings)"/> that adds progress reporting and
+        /// cancellation. Returns the results accumulated up to the point where progress returns false and
+        /// stops there.
         /// </summary>
         /// <remarks>
-        /// キャンセル時、その時点までに処理済みのアセットへの書き込みは既に完了している（部分適用）。
-        /// 中断後に Addressables の状態を巻き戻すことはしない。
+        /// On cancellation, writes for assets already processed up to that point have already completed
+        /// (partial apply). Addressables state is not rolled back after cancellation.
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(AddressableAssetSettings settings, IProgressReporter progress)
         {
@@ -58,15 +62,16 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 収集した全ルールを <paramref name="paths"/> で指定したアセットのみに適用し、
-        /// 問題のあった結果（衝突・グループ未検出・ルール例外など）を返す。
-        /// settings が null の場合はプロジェクトのデフォルト設定を使う。Addressables 未設定の場合は空リストを返す。
+        /// Applies all collected rules only to the assets specified by <paramref name="paths"/>, and
+        /// returns the results that had a problem (conflicts, missing groups, rule exceptions, etc.).
+        /// If settings is null, the project's default settings are used. Returns an empty list if
+        /// Addressables is not set up.
         /// </summary>
         /// <remarks>
-        /// 「どのルールにもマッチしなくなった」エントリのクリーンアップ判定は、
-        /// このメソッドに渡されたアセット自身が変更された場合のみ行われる。
-        /// プロジェクト全体の整合性チェックは引数なしの <see cref="ApplyAll(AddressableAssetSettings)"/>
-        /// （Menu/CLI のフル走査）が引き続き担う。
+        /// Cleanup of entries that "no longer match any rule" is only performed for assets that were
+        /// themselves passed to this method. Project-wide consistency checks remain the responsibility of
+        /// the parameterless <see cref="ApplyAll(AddressableAssetSettings)"/> (the full scan used by
+        /// Menu/CLI).
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings = null)
         {
@@ -74,12 +79,13 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// <see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings)"/> に進捗報告とキャンセルを追加したオーバーロード。
-        /// progress が false を返した時点までの結果を返して中断する。
+        /// Overload of <see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings)"/> that adds
+        /// progress reporting and cancellation. Returns the results accumulated up to the point where
+        /// progress returns false and stops there.
         /// </summary>
         /// <remarks>
-        /// キャンセル時、その時点までに処理済みのアセットへの書き込みは既に完了している（部分適用）。
-        /// 中断後に Addressables の状態を巻き戻すことはしない。
+        /// On cancellation, writes for assets already processed up to that point have already completed
+        /// (partial apply). Addressables state is not rolled back after cancellation.
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress)
         {
@@ -87,10 +93,10 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// <see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings, IProgressReporter)"/> に
-        /// 評価対象ルールの注入を追加したオーバーロード。リフレクションによるルール収集
-        /// （<see cref="RuleCollector.CollectEnabledRules()"/>）を経由せず、呼び出し側が用意した
-        /// ルール一覧をそのまま評価に使う（テスト等での利用を想定）。
+        /// Overload of <see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings, IProgressReporter)"/>
+        /// that adds injection of the rules to evaluate. Does not go through reflection-based rule
+        /// collection (<c>RuleCollector.CollectEnabledRules()</c>); instead it evaluates the exact
+        /// rule list the caller supplies (intended for use in tests, etc.).
         /// </summary>
         public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules)
         {
@@ -162,16 +168,19 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 削除されたアセットの GUID（<see cref="AssetPathToGUIDOptions.IncludeRecentlyDeletedAssets"/> で取得したもの）に対応する
-        /// エントリが AddressTeller 管理下のグループに属している場合のみ削除する。ルール評価は行わない。
-        /// settings が null の場合はプロジェクトのデフォルト設定を使う。Addressables 未設定の場合は何もしない。
+        /// Removes entries corresponding to deleted asset GUIDs (as obtained via
+        /// <see cref="AssetPathToGUIDOptions.IncludeRecentlyDeletedAssets"/>), but only when the entry
+        /// belongs to a group managed by AddressTeller. Rule evaluation is not performed.
+        /// If settings is null, the project's default settings are used. Does nothing if Addressables is
+        /// not set up.
         /// </summary>
         /// <remarks>
-        /// ConfigFolder 配下のパスはここでは除外していない（削除済みのため判定材料がパスでなく GUID のみ）。
-        /// ただし削除はエントリの所属グループが managedGroups に含まれる場合に限られる（資産単位の所有権判定）ため、
-        /// ConfigFolder 内資産が誤って削除される実害はない。
+        /// Paths under ConfigFolder are not excluded here (since the asset is already deleted, the only
+        /// thing available to judge by is the GUID, not the path). However, removal is limited to entries
+        /// whose group is in managedGroups (asset-level ownership check), so there is no practical risk of
+        /// an asset inside ConfigFolder being removed by mistake.
         /// </remarks>
-        /// <returns>実際に削除されたエントリの一覧（削除されたものが無ければ空リスト）。</returns>
+        /// <returns>The entries that were actually removed (empty list if none were removed).</returns>
         public static IReadOnlyList<ClearedEntry> RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings = null)
         {
             // ルールの On/Off 設定に関わらず、削除追従の所有権判定（managedGroups）は全ルールを対象にする。
@@ -180,11 +189,12 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// <see cref="RemoveEntriesForDeletedAssets(IEnumerable{string}, AddressableAssetSettings)"/> に
-        /// 評価対象ルールの注入を追加したオーバーロード。所有権判定（managedGroups）に使うルール一覧を
-        /// 呼び出し側がそのまま指定する（テスト等での利用を想定）。収集方法（有効/無効の絞り込み）の判断は行わない。
+        /// Overload of <see cref="RemoveEntriesForDeletedAssets(IEnumerable{string}, AddressableAssetSettings)"/>
+        /// that adds injection of the rules to evaluate. The caller supplies the exact rule list used for
+        /// ownership determination (managedGroups) as-is (intended for use in tests, etc.). No decision
+        /// about how rules were collected (e.g. enabled/disabled filtering) is made here.
         /// </summary>
-        /// <returns>実際に削除されたエントリの一覧（削除されたものが無ければ空リスト）。</returns>
+        /// <returns>The entries that were actually removed (empty list if none were removed).</returns>
         public static IReadOnlyList<ClearedEntry> RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
         {
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
@@ -212,13 +222,15 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 全ルールを全アセットに対して検証し、問題のある結果を返す。
-        /// settings が null の場合はプロジェクトのデフォルト設定を使う。Addressables 未設定の場合は空リストを返す。
+        /// Validates all rules against every asset and returns the results that had a problem.
+        /// If settings is null, the project's default settings are used. Returns an empty list if
+        /// Addressables is not set up.
         /// </summary>
         /// <remarks>
-        /// 戻り値には <see cref="ValidationStatus.GroupWillBeCreated"/>（IsOk=true、AutoCreateMissingGroups による
-        /// グループ作成予定の提示）が情報提供として含まれる場合がある。Apply の中止判定など「問題」として扱う場合は
-        /// <c>!result.IsOk</c> でフィルタすること。
+        /// The return value may include <see cref="ValidationStatus.GroupWillBeCreated"/> entries
+        /// (IsOk=true; informational notices about a group that AutoCreateMissingGroups will create).
+        /// When treating the result as a "problem" (e.g. deciding whether to abort Apply), filter with
+        /// <c>!result.IsOk</c>.
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings = null)
         {
@@ -226,9 +238,9 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// <see cref="ValidateAll(AddressableAssetSettings)"/> に進捗報告とキャンセルを追加したオーバーロード。
-        /// progress が false を返した時点までの結果を返して中断する（Validate は書き込みを行わないため、
-        /// 中断による副作用はない）。
+        /// Overload of <see cref="ValidateAll(AddressableAssetSettings)"/> that adds progress reporting
+        /// and cancellation. Returns the results accumulated up to the point where progress returns false
+        /// and stops there (Validate performs no writes, so cancellation has no side effects).
         /// </summary>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings, IProgressReporter progress)
         {
@@ -236,10 +248,10 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// <see cref="ValidateAll(AddressableAssetSettings, IProgressReporter)"/> に
-        /// 評価対象ルールの注入を追加したオーバーロード。リフレクションによるルール収集
-        /// （<see cref="RuleCollector.CollectEnabledRules()"/>）を経由せず、呼び出し側が用意した
-        /// ルール一覧をそのまま評価に使う（テスト等での利用を想定）。
+        /// Overload of <see cref="ValidateAll(AddressableAssetSettings, IProgressReporter)"/> that adds
+        /// injection of the rules to evaluate. Does not go through reflection-based rule collection
+        /// (<c>RuleCollector.CollectEnabledRules()</c>); instead it evaluates the exact rule list
+        /// the caller supplies (intended for use in tests, etc.).
         /// </summary>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules)
         {

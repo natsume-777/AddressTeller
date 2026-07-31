@@ -4,9 +4,10 @@ using UnityEditor.AddressableAssets;
 
 namespace AddressTeller.Editor
 {
-    /// <summary>Project ウィンドウのコンテキストメニューから Explain ウィンドウ・プレビューを開く。</summary>
+    /// <summary>Opens the Explain window / preview from the Project window's context menu.</summary>
     public static class AddressTellerExplainMenu
     {
+        /// <summary>Opens the Explain window showing which rule (if any) matched each selected asset, and why.</summary>
         [MenuItem("Assets/AddressTeller/Explain")]
         public static void Explain()
         {
@@ -15,6 +16,7 @@ namespace AddressTeller.Editor
             AddressTellerExplainWindow.ShowWindow(explanations, configureFailures);
         }
 
+        /// <summary>Unity menu validate function for <see cref="Explain"/>: enabled only when at least one asset is selected.</summary>
         [MenuItem("Assets/AddressTeller/Explain", true)]
         public static bool ExplainValidate()
         {
@@ -23,8 +25,8 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 選択アセット（フォルダ含む）に有効な全ルールを適用した場合の dry-run プレビューを表示する。
-        /// 即時 Apply は行わない（ResultWindow から手動で Apply All / Validate を実行する）。
+        /// Shows a dry-run preview of applying all enabled rules to the selected assets (including
+        /// folders). Does not Apply immediately (run Apply All / Validate manually from the ResultWindow).
         /// </summary>
         [MenuItem("Assets/AddressTeller/Preview (Apply Preview)")]
         public static void Preview()
@@ -40,6 +42,7 @@ namespace AddressTeller.Editor
             AddressTellerScopedPreview.RunAssetPreview(settings, paths);
         }
 
+        /// <summary>Unity menu validate function for <see cref="Preview"/>: enabled only when at least one asset is selected.</summary>
         [MenuItem("Assets/AddressTeller/Preview (Apply Preview)", true)]
         public static bool PreviewValidate()
         {

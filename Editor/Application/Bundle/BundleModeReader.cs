@@ -7,14 +7,14 @@ using UnityEngine;
 namespace AddressTeller.Editor
 {
     /// <summary>
-    /// <see cref="AddressableAssetGroup"/> の BundleMode（PackTogether/PackSeparately/PackTogetherByLabel）を
-    /// <see cref="BundleModeKind"/> に正規化する薄い読み取り専用ヘルパー。
+    /// Thin read-only helper that normalizes an <see cref="AddressableAssetGroup"/>'s BundleMode
+    /// (PackTogether/PackSeparately/PackTogetherByLabel) into a <see cref="BundleModeKind"/>.
     /// </summary>
     public static class BundleModeReader
     {
         /// <summary>
-        /// グループの BundleMode を読み取る。
-        /// <see cref="BundledAssetGroupSchema"/> が付与されていないグループは <see cref="BundleModeKind.Unknown"/> を返す。
+        /// Reads a group's BundleMode.
+        /// Returns <see cref="BundleModeKind.Unknown"/> for a group with no <see cref="BundledAssetGroupSchema"/> attached.
         /// </summary>
         public static BundleModeKind ReadBundleMode(AddressableAssetGroup group)
         {
@@ -38,13 +38,15 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 複数グループの BundleMode をまとめて読み取り、グループ名→BundleMode の辞書を返す。
-        /// グループ名は Addressables 上で一意性が保証されていない（UI からは一意性が強制されるが、
-        /// API 直接操作・アセット複製・別フォルダ配置等では重複しうる）ため、ToDictionary（重複キーで例外）は使わず、
-        /// 重複を検出した場合は最初に見つかったグループを採用して処理を継続する。重複が見つかった場合の警告は
-        /// ログへ直書きせず <paramref name="warnings"/> として返す（呼び出し元がレポート・ResultWindow 等、
-        /// 経路ごとに重複してログ出力しないようにするため）。同一グループ名についての警告は1件のみ返す
-        /// （3件以上重複していても警告は1回にまとめる）。
+        /// Reads the BundleMode for multiple groups at once and returns a group name -> BundleMode
+        /// dictionary. Since group names are not guaranteed unique in Addressables (the UI enforces
+        /// uniqueness, but direct API manipulation, asset duplication, placement in another folder, etc.
+        /// can produce duplicates), this does not use ToDictionary (which throws on a duplicate key);
+        /// instead, when a duplicate is found, the first group found is used and processing continues.
+        /// Warnings for duplicates are not logged directly; they are returned via
+        /// <paramref name="warnings"/> so the caller (report, ResultWindow, etc.) can decide whether to
+        /// log them, avoiding duplicate logging per call site. At most one warning is returned per
+        /// duplicated group name (three or more duplicates still produce a single warning).
         /// </summary>
         public static IReadOnlyDictionary<string, BundleModeKind> ReadBundleModes(IEnumerable<AddressableAssetGroup> groups, out IReadOnlyList<string> warnings)
         {

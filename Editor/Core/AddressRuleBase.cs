@@ -3,88 +3,142 @@ using System;
 namespace AddressTeller
 {
     /// <summary>
-    /// ルール定義の基底クラス。利用者はこれを継承し、C# でアドレス／ラベル付与ルールを記述する。
+    /// Base class for rule definitions. Consumers derive from this to describe address/label
+    /// assignment rules in C#.
     /// </summary>
     public abstract class AddressRuleBase
     {
-        /// <summary>評価順序。小さいほど先に評価される。</summary>
+        /// <summary>Evaluation order. Lower values are evaluated first.</summary>
         public virtual int Order => 0;
 
-        /// <summary>ルールを組み立てる。</summary>
+        /// <summary>Builds the rules for this class.</summary>
         public abstract void Configure(IAddressRuleBuilder rules);
     }
 
     /// <summary>
-    /// ルール組み立て用ビルダー。Group() でグループルールを追加する。
+    /// Builder used to assemble rules. Call Group() to add a group rule.
     /// </summary>
     public interface IAddressRuleBuilder
     {
+        /// <summary>Adds a rule scoped to the Addressables group named <paramref name="groupName"/>.</summary>
+        /// <exception cref="ArgumentException"><paramref name="groupName"/> is null or empty.</exception>
         IAddressRuleGroupBuilder Group(string groupName);
 
         /// <summary>
-        /// Addressables の DefaultGroup にアドレス／ラベルを付与する。グループ名は評価時に
-        /// AddressableAssetSettings.DefaultGroup から解決されるため、DefaultGroup をリネームしても
-        /// 追従する。Where / Address / Label は <see cref="Group(string)"/> と同様にチェーンできる。
+        /// Assigns an address/label to the Addressables DefaultGroup. The group name is resolved from
+        /// <c>AddressableAssetSettings.DefaultGroup</c> at evaluation time, so renaming the DefaultGroup
+        /// is followed automatically. Where / Address / Label can be chained the same way as
+        /// <see cref="Group(string)"/>.
         /// </summary>
         IAddressRuleGroupBuilder GroupDefault();
 
         /// <summary>
-        /// グループに属さないラベル専用ルールを追加する。
-        /// アドレスを持つアセットにパスなどの条件でラベルを付与したい場合に使う。
+        /// Adds a label-only rule that is not scoped to any group.
+        /// Use this to attach labels (by path or other conditions) to assets that already have an
+        /// address assigned elsewhere. Labels are only actually written when the asset's existing entry
+        /// belongs to a group managed by AddressTeller (a group referenced by at least one rule); entries
+        /// in unmanaged groups are left untouched.
         /// </summary>
         ILabelRuleBuilder AnyGroup();
     }
 
     /// <summary>
-    /// <see cref="IAddressRuleBuilder.AnyGroup"/> から返されるラベル専用ビルダー。
-    /// Address() は存在せず、Where / Label のみ指定できる。
+    /// Label-only builder returned by <see cref="IAddressRuleBuilder.AnyGroup"/>.
+    /// There is no Address(); only Where / Label can be specified.
     /// </summary>
     public interface ILabelRuleBuilder
     {
+        /// <summary>
+        /// Restricts this rule to assets matching <paramref name="predicate"/>.
+        /// May be called at most once per <see cref="IAddressRuleBuilder.AnyGroup"/> call. Combine multiple
+        /// conditions into a single lambda using &amp;&amp;. A second call throws
+        /// <see cref="InvalidOperationException"/>.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="predicate"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Where() has already been called once for this rule.</exception>
         ILabelRuleBuilder Where(Func<AssetContext, bool> predicate);
+
+        /// <summary>
+        /// Restricts this rule to assets matching <paramref name="predicate"/>. <paramref name="description"/>
+        /// is used in error messages to identify which Where condition matched.
+        /// May be called at most once per <see cref="IAddressRuleBuilder.AnyGroup"/> call (shared limit with
+        /// the other Where() overloads). A second call throws <see cref="InvalidOperationException"/>.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="predicate"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Where() has already been called once for this rule.</exception>
         ILabelRuleBuilder Where(Func<AssetContext, bool> predicate, string description);
+
+        /// <summary>
+        /// Restricts this rule using an <see cref="AssetCondition"/> (predicate + description).
+        /// May be called at most once per <see cref="IAddressRuleBuilder.AnyGroup"/> call (shared limit with
+        /// the other Where() overloads). A second call throws <see cref="InvalidOperationException"/>.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="condition"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Where() has already been called once for this rule.</exception>
         ILabelRuleBuilder Where(AssetCondition condition);
+
+        /// <summary>Adds a label produced by <paramref name="selector"/> for each matching asset.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="selector"/> is null.</exception>
         ILabelRuleBuilder Label(Func<AssetContext, string> selector);
+
+        /// <summary>Adds the fixed label <paramref name="label"/> for each matching asset.</summary>
+        /// <exception cref="ArgumentException"><paramref name="label"/> is null or empty.</exception>
         ILabelRuleBuilder Label(string label);
     }
 
     /// <summary>
-    /// グループ単位のルール設定。Where / Address / Label をチェーンで記述する。
+    /// Per-group rule configuration. Where / Address / Label are chained to describe the rule.
     /// </summary>
     public interface IAddressRuleGroupBuilder
     {
         /// <summary>
-        /// 1グループにつき1回のみ呼び出し可能。複数の条件は1つのラムダ式に && でまとめること。
-        /// 2回目の呼び出しは InvalidOperationException をスローする。
+        /// May be called at most once per group. Combine multiple conditions into a single lambda
+        /// using &amp;&amp;. A second call throws <see cref="InvalidOperationException"/>.
         /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="predicate"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Where() has already been called once for this group.</exception>
         IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate);
 
         /// <summary>
-        /// 1グループにつき1回のみ呼び出し可能（もう一方の Where() オーバーロードと合わせて1回）。
-        /// description はエラーメッセージで「どの Where 条件にマッチしたか」を示すために使われる。
-        /// 2回目の呼び出しは InvalidOperationException をスローする。
+        /// May be called at most once per group (shared limit with the other Where() overload).
+        /// <paramref name="description"/> is used in error messages to identify which Where condition
+        /// matched. A second call throws <see cref="InvalidOperationException"/>.
         /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="predicate"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Where() has already been called once for this group.</exception>
         IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate, string description);
 
         /// <summary>
-        /// AssetCondition を使った Where 指定。Predicate と Description を condition から引き継ぐ。
-        /// 1グループにつき1回のみ呼び出し可能（他の Where() オーバーロードと合わせて1回）。
-        /// 2回目の呼び出しは InvalidOperationException をスローする。
+        /// Where specified via an <see cref="AssetCondition"/>; its Predicate and Description are used
+        /// as-is. May be called at most once per group (shared limit with the other Where() overloads).
+        /// A second call throws <see cref="InvalidOperationException"/>.
         /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="condition"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Where() has already been called once for this group.</exception>
         IAddressRuleGroupBuilder Where(AssetCondition condition);
 
         /// <summary>
-        /// 1グループにつき1回のみ呼び出し可能（もう一方の Address() オーバーロードと合わせて1回）。
-        /// 2回目の呼び出しは InvalidOperationException をスローする（黙って上書きしない）。
+        /// May be called at most once per group (shared limit with the other Address() overload).
+        /// A second call throws <see cref="InvalidOperationException"/> instead of silently overwriting.
         /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="selector"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Address() has already been called once for this group.</exception>
         IAddressRuleGroupBuilder Address(Func<AssetContext, string> selector);
 
         /// <summary>
-        /// 1グループにつき1回のみ呼び出し可能（もう一方の Address() オーバーロードと合わせて1回）。
-        /// 2回目の呼び出しは InvalidOperationException をスローする（黙って上書きしない）。
+        /// May be called at most once per group (shared limit with the other Address() overload).
+        /// A second call throws <see cref="InvalidOperationException"/> instead of silently overwriting.
         /// </summary>
+        /// <exception cref="ArgumentException"><paramref name="address"/> is null or empty.</exception>
+        /// <exception cref="InvalidOperationException">Address() has already been called once for this group.</exception>
         IAddressRuleGroupBuilder Address(string address);
+
+        /// <summary>Adds a label produced by <paramref name="selector"/> for each matching asset.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="selector"/> is null.</exception>
         IAddressRuleGroupBuilder Label(Func<AssetContext, string> selector);
+
+        /// <summary>Adds the fixed label <paramref name="label"/> for each matching asset.</summary>
+        /// <exception cref="ArgumentException"><paramref name="label"/> is null or empty.</exception>
         IAddressRuleGroupBuilder Label(string label);
     }
 }

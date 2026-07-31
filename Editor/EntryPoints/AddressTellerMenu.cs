@@ -8,8 +8,10 @@ using UnityEngine;
 
 namespace AddressTeller.Editor
 {
+    /// <summary>Menu items under Tools/AddressTeller for the interactive Apply/Validate/Clear workflow, plus their CLI counterparts.</summary>
     public static class AddressTellerMenu
     {
+        /// <summary>Applies all enabled rules to every asset in the project without a preceding Validate pass.</summary>
         [MenuItem("Tools/AddressTeller/Apply All")]
         public static void ApplyAll()
         {
@@ -24,9 +26,9 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 指定グループの現メンバー起点で、有効な全ルールを適用した場合の dry-run プレビューを表示する。
-        /// 即時 Apply は行わない（ResultWindow から手動で Apply All / Validate を実行する）。
-        /// グループ選択はメニュー直下のドロップダウンで行う。
+        /// Shows a dry-run preview, starting from the current members of the selected group, of applying
+        /// all enabled rules. Does not Apply immediately (run Apply All / Validate manually from the
+        /// ResultWindow). The group is chosen from the dropdown shown directly under the menu item.
         /// </summary>
         [MenuItem("Tools/AddressTeller/Preview Group...")]
         public static void PreviewGroup()
@@ -74,14 +76,16 @@ namespace AddressTeller.Editor
             EditorUtility.DisplayDialog("AddressTeller - Clear All Addresses & Labels", message, "OK");
 
         /// <summary>
-        /// AddressTeller が管理するグループ（いずれかのルールが GroupName として参照しているグループ）のエントリ
-        /// （アドレス・グループ割り当て・ラベル）を削除する。
-        /// 既定の安全側運用（資産単位の所有権判定・デフォルト OFF）から意図的に逸脱した、
-        /// 公開前パッケージの初期セットアップ用途向けの割り切り機能。実行前に専用スナップショット
-        /// （SnapshotFolder/Clear 以下、ローテーション対象外）を必須で保存し、確認ダイアログを経て実行する。
-        /// 全エントリを対象にする場合は <see cref="ClearCLI"/> の -addressTellerClearScope all を使う。
-        /// ルールの Configure() が1件でも失敗している場合、managedGroups（所有権判定）が信頼できないため
-        /// 確認ダイアログを出す前に中止する（<see cref="ClearCLI"/> が exit code 3 で中止するのと対称）。
+        /// Removes entries (address, group assignment, and labels) from groups managed by AddressTeller
+        /// (any group referenced as a rule's GroupName).
+        /// This is an intentional exception to the default safe-by-default policy (asset-level ownership
+        /// checks, off by default), aimed at pre-release package initial setup scenarios. After the
+        /// confirmation dialog is accepted, a dedicated snapshot (under SnapshotFolder/Clear, excluded
+        /// from rotation) is saved immediately before the removal; if saving fails, the clear is aborted.
+        /// To target every entry, use -addressTellerClearScope all with <see cref="ClearCLI"/>.
+        /// If even one rule's Configure() has failed, managedGroups (the ownership check) cannot be
+        /// trusted, so this aborts before showing the confirmation dialog (mirroring how
+        /// <see cref="ClearCLI"/> aborts with exit code 3).
         /// </summary>
         [MenuItem("Tools/AddressTeller/Clear All Addresses & Labels...")]
         public static void ClearAll()
@@ -173,15 +177,18 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// CI 向け。-executeMethod AddressTeller.Editor.AddressTellerMenu.ClearCLI で実行。
-        /// 確認フラグ <c>-addressTellerConfirmClear</c> が無い場合は意図的な拒否として exit code 4 で終了する
-        /// （ダイアログを出せない CLI での誤実行防止）。
-        /// <c>-addressTellerClearScope all|managed</c> でクリア対象を切り替える（既定 managed）。
-        /// scope=managed の場合、ルールの Configure() が1件でも失敗していれば managedGroups（所有権判定）が
-        /// 信頼できないため、スナップショットを保存する前に exit code 3 で中止する（何も削除していないのに
-        /// スナップショットだけが残る事態を避けるため）。実行前に専用スナップショット（SnapshotFolder/Clear 以下）の
-        /// 保存を必須とし、失敗時も exit code 3 で中止する。
-        /// exit code: 0=完了、3=実行環境エラー（ルール構成エラー・スナップショット保存失敗を含む）、4=確認フラグ未指定。
+        /// For CI. Run via -executeMethod AddressTeller.Editor.AddressTellerMenu.ClearCLI.
+        /// If the confirmation flag <c>-addressTellerConfirmClear</c> is absent, this is treated as an
+        /// intentional refusal and exits with code 4 (to prevent accidental execution in a CLI
+        /// environment where no dialog can be shown).
+        /// <c>-addressTellerClearScope all|managed</c> switches the clear target (default managed).
+        /// For scope=managed, if even one rule's Configure() has failed, managedGroups (the ownership
+        /// check) cannot be trusted, so this aborts with exit code 3 before saving the snapshot (to avoid
+        /// a snapshot being left behind with nothing actually removed). Saving a dedicated snapshot
+        /// (under SnapshotFolder/Clear) before running is required, and a failure to save also aborts
+        /// with exit code 3.
+        /// Exit codes: 0 = completed, 3 = environment error (including rule configuration errors and
+        /// snapshot save failures), 4 = confirmation flag not specified.
         /// </summary>
         public static void ClearCLI()
         {
@@ -239,6 +246,10 @@ namespace AddressTeller.Editor
             EditorApplication.Exit(0);
         }
 
+        /// <summary>
+        /// Runs all enabled rules against every asset in the project without writing anything, and logs
+        /// any problems found. Opens the result window when at least one issue (IsOk=false) is detected.
+        /// </summary>
         [MenuItem("Tools/AddressTeller/Validate")]
         public static void Validate()
         {
@@ -302,13 +313,13 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// CI 向け。-executeMethod AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI で実行。
-        /// 自動スナップショット（<see cref="AddressTellerSettings.AutoSnapshotBeforeApplyAll"/>）は
-        /// 対話メニュー（Apply All / Apply with Validate）のみが対象であり、
-        /// ビルド時間とディスク I/O を避けるため CLI/CI では実行しない。
-        /// -addressTellerReport &lt;path&gt; / -addressTellerReportFormat json|junit でレポートをファイル出力できる
-        /// （Apply 実行前の dry-run 結果を基にレポート化する）。
-        /// exit code: 0=差分なし・問題なし、1=ドリフトあり、2=Validation エラーあり、3=実行環境エラー。
+        /// For CI. Run via -executeMethod AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI.
+        /// The automatic snapshot (<see cref="AddressTellerSettings.AutoSnapshotBeforeApplyAll"/>) only
+        /// applies to the interactive menu items (Apply All / Apply with Validate); it is not taken from
+        /// the CLI/CI, to avoid extra build time and disk I/O.
+        /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
+        /// -addressTellerReportFormat json|junit (built from the dry-run result computed before Apply runs).
+        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment error.
         /// </summary>
         public static void ApplyAllCLI()
         {
@@ -344,7 +355,7 @@ namespace AddressTeller.Editor
             ExitWithReport(dryRun, applyIssues, cliArgs, settings);
         }
 
-        /// <summary>Validate で問題が見つかった場合は Apply を中止する。</summary>
+        /// <summary>Aborts Apply if Validate finds a problem.</summary>
         [MenuItem("Tools/AddressTeller/Apply with Validate")]
         public static void ApplyWithValidate()
         {
@@ -359,13 +370,14 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// CI 向け。-executeMethod AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI で実行。
-        /// 自動スナップショット（<see cref="AddressTellerSettings.AutoSnapshotBeforeApplyAll"/>）は
-        /// 対話メニュー（Apply All / Apply with Validate）のみが対象であり、
-        /// ビルド時間とディスク I/O を避けるため CLI/CI では実行しない。
-        /// -addressTellerReport &lt;path&gt; / -addressTellerReportFormat json|junit でレポートをファイル出力できる
-        /// （Validate で問題が見つかった場合は Apply 前の dry-run 結果、それ以外は Apply 実行前の dry-run 結果を基にレポート化する）。
-        /// exit code: 0=差分なし・問題なし、1=ドリフトあり、2=Validation エラーあり、3=実行環境エラー。
+        /// For CI. Run via -executeMethod AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI.
+        /// The automatic snapshot (<see cref="AddressTellerSettings.AutoSnapshotBeforeApplyAll"/>) only
+        /// applies to the interactive menu items (Apply All / Apply with Validate); it is not taken from
+        /// the CLI/CI, to avoid extra build time and disk I/O.
+        /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
+        /// -addressTellerReportFormat json|junit (built from the pre-Apply dry-run result if Validate
+        /// found a problem, or from the dry-run result computed before Apply runs otherwise).
+        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment error.
         /// </summary>
         public static void ApplyWithValidateCLI()
         {
@@ -466,10 +478,12 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// CI 向け。-executeMethod AddressTeller.Editor.AddressTellerMenu.CheckCLI で実行。
-        /// Apply を行わない dry-run（読み取り専用）で、ルール適用後の状態と現在の状態の差分・問題を検出する。
-        /// -addressTellerReport &lt;path&gt; / -addressTellerReportFormat json|junit でレポートをファイル出力できる。
-        /// exit code: 0=差分なし・問題なし、1=ドリフトあり、2=Validation エラーあり、3=実行環境エラー。
+        /// For CI. Run via -executeMethod AddressTeller.Editor.AddressTellerMenu.CheckCLI.
+        /// Performs a read-only dry-run (no Apply) and detects the diff/problems between the current
+        /// state and the state after rules would be applied.
+        /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
+        /// -addressTellerReportFormat json|junit.
+        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment error.
         /// </summary>
         public static void CheckCLI()
         {

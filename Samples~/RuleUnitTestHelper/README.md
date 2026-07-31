@@ -13,7 +13,7 @@ misused builder call fails the test directly (see step 3 below).
 ## How to use
 
 1. Import this sample via the Package Manager (Window > Package Manager > AddressTeller > Samples).
-2. Add your own test file to `Assets/Samples/AddressTeller/.../RuleUnitTestHelper/Tests/`
+2. Add your own test file to `Assets/Samples/AddressTeller/<version>/Rule Unit Test Helper/Tests/`
    (or create a new asmdef that references `AddressTellerSamples.RuleUnitTestHelper.Tests`).
    Asmdef references are not transitive, so if you go the "new asmdef" route, also add an
    explicit reference to `AddressTeller.Core` — otherwise types like `AssetContext` and

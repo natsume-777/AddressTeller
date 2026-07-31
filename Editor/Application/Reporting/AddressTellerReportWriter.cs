@@ -8,28 +8,28 @@ using UnityEngine;
 
 namespace AddressTeller.Editor
 {
-    /// <summary>レポートのファイル出力形式。</summary>
+    /// <summary>File output format for a report.</summary>
     public enum ReportFormat
     {
-        /// <summary>JSON 形式。</summary>
+        /// <summary>JSON format.</summary>
         Json,
 
-        /// <summary>JUnit 形式の XML。</summary>
+        /// <summary>JUnit-style XML.</summary>
         Junit,
     }
 
     /// <summary>
-    /// <see cref="AddressTellerReport"/> を JSON / JUnit XML にシリアライズし、ファイルへ書き出す。
-    /// CLI から呼ばれる想定で、Addressables には依存しない。
+    /// Serializes an <see cref="AddressTellerReport"/> to JSON / JUnit XML and writes it to a file.
+    /// Intended to be called from the CLI; does not depend on Addressables.
     /// </summary>
     public static class AddressTellerReportWriter
     {
-        /// <summary>レポートを JSON 文字列に変換する。</summary>
+        /// <summary>Converts the report to a JSON string.</summary>
         public static string ToJson(AddressTellerReport report) => report.ToJson();
 
         /// <summary>
-        /// レポートを JUnit 形式の XML 文字列に変換する。
-        /// testcase の粒度は観点ごと: drift 全体で1件、ValidationStatus 種別ごとに1件。
+        /// Converts the report to a JUnit-style XML string.
+        /// Testcase granularity is per aspect: one for drift as a whole, and one per ValidationStatus kind.
         /// </summary>
         public static string ToJUnitXml(AddressTellerReport report)
         {
@@ -98,13 +98,13 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// レポートをファイルに書き出す。出力先ディレクトリが無ければ作成する。
+        /// Writes the report to a file. Creates the destination directory if it does not exist.
         /// </summary>
-        /// <param name="path">出力先ファイルパス。</param>
-        /// <param name="report">出力するレポート。</param>
-        /// <param name="format">出力形式。未定義の値の場合は <see cref="ArgumentException"/>。</param>
-        /// <returns>書き込みに成功したら true。失敗時は false（ログ出力済み）。</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="report"/> が null。</exception>
+        /// <param name="path">Destination file path.</param>
+        /// <param name="report">The report to write.</param>
+        /// <param name="format">Output format. Throws <see cref="ArgumentException"/> for an undefined value.</param>
+        /// <returns>True if the write succeeded; false on failure (a message is already logged).</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="report"/> is null.</exception>
         public static bool WriteToFile(string path, AddressTellerReport report, ReportFormat format)
         {
             if (report == null) throw new ArgumentNullException(nameof(report));
