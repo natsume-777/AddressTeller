@@ -61,7 +61,7 @@
 - **BREAKING**: `AddressTellerService.RemoveEntriesForDeletedAssets` が `void` ではなく `IReadOnlyList<ClearedEntry>`（実際に削除されたエントリ一覧）を返すようになった。結果を握りつぶさず返す `ApplyAll`/`ValidateAll` の流儀に揃えた。
 - **BREAKING**: `AddressTellerExplainReport`、`AddressTellerExplainAsset`、`AddressTellerExplainRule` が `internal` になった（従前は `public`）。パッケージ外部からこれらの型を構築・取得するサポートされた経路は存在しない。
 - **BREAKING**: `AddressTellerCliArgs.ReportFormat` が `string` ではなく `ReportFormat?` になった。この値を生文字列（`"json"`/`"junit"`）として読んでいたコードは `ReportFormat` enum との比較に修正が必要。
-- `RuleUnitTestHelper` サンプル: `RuleTestHelper.IsDefaultGroup()` が `IsUnresolvedDefaultGroup()` へリネーム、`DefaultGroupSentinel` 定数を削除（`GroupDefault()` ビルダーAPI直接利用に統一）、新規メソッド `DisplayGroupName()` を追加（テスト内でのグループ名表示整形に使用）。
+- `RuleUnitTestHelper` サンプル: `DefaultGroupSentinel` 定数を削除。`Collect()` がパッケージ本体の `RuleInspector` 公開API に委譲するようになり、パッケージ本体と同じビルダーコントラクトを保証。同一グループへの `Where()`/`Address()` 2回目呼び出しが `InvalidOperationException` を投げるようになった。新規ヘルパーメソッド `IsUnresolvedDefaultGroup()` / `DisplayGroupName()` をテスト内での未解決デフォルトグループセンチネルの判定・表示用に追加。
 
 ### Documentation
 

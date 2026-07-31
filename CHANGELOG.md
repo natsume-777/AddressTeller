@@ -61,7 +61,7 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - **BREAKING**: `AddressTellerService.RemoveEntriesForDeletedAssets` now returns `IReadOnlyList<ClearedEntry>` (previously `void`), reporting the entries actually removed. This matches the convention already used by `ApplyAll`/`ValidateAll` of surfacing results instead of discarding them.
 - **BREAKING**: `AddressTellerExplainReport`, `AddressTellerExplainAsset`, and `AddressTellerExplainRule` are now `internal` (previously `public`). No supported code path constructs or exposes these types outside the package.
 - **BREAKING**: `AddressTellerCliArgs.ReportFormat` is now `ReportFormat?` instead of `string`. Code that read this property as a raw string (`"json"`/`"junit"`) must be updated to compare against the `ReportFormat` enum.
-- `RuleUnitTestHelper` sample: `RuleTestHelper.IsDefaultGroup()` renamed to `IsUnresolvedDefaultGroup()`; `DefaultGroupSentinel` constant removed (use `GroupDefault()` builder API directly); new `DisplayGroupName()` helper method added for formatted group display in tests.
+- `RuleUnitTestHelper` sample: `DefaultGroupSentinel` constant removed; `Collect()` now delegates to the package's own `RuleInspector` public API, ensuring the exact same builder contract (calling `Where()`/`Address()` a second time on the same group now throws `InvalidOperationException`). New helper methods `IsUnresolvedDefaultGroup()` and `DisplayGroupName()` added for checking and displaying unresolved default group sentinels in tests.
 
 ### Documentation
 
