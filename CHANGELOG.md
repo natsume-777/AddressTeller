@@ -8,6 +8,8 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-01
+
 ### Added
 
 - `ReportFormat` and `DistributionFormat` enums: new public types representing the format choices for report and distribution exports. `ReportFormat` supports `Json` and `Junit` (used by `AddressTellerReportWriter.WriteToFile`), while `DistributionFormat` supports `Csv` and `Markdown` (used by `BundleDistributionSerializer.WriteToFile`).

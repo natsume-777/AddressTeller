@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-01
+
 ### Added
 
 - `ReportFormat` と `DistributionFormat` enum: レポート・分布サマリのエクスポート形式を表現する新規公開型。`ReportFormat` は `Json` と `Junit` に対応し（`AddressTellerReportWriter.WriteToFile` で使用）、`DistributionFormat` は `Csv` と `Markdown` に対応する（`BundleDistributionSerializer.WriteToFile` で使用）。
