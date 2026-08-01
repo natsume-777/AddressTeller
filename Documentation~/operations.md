@@ -11,7 +11,7 @@
 | `Tools/AddressTeller/Validate` | Outputs conflicts, missing groups, and other issues to the Console without writing any changes. |
 | `Tools/AddressTeller/Apply with Validate` | Runs Validate first and aborts Apply if any issues are found. |
 | `Assets/AddressTeller/Explain` (right-click menu in the Project window) | Evaluates all rules against the selected asset and displays the results in a confirmation window. Shows matched rules, unmatched rules (with their `Where` description), and rule exceptions. Rules using `Match` helpers display auto-generated descriptions (e.g., `InFolder(Assets/Characters) AND OfType<GameObject>`), making behavior verification more efficient than raw lambdas. |
-| `Tools/AddressTeller/Clear All Addresses & Labels...` | Removes all Addressable entries (addresses, group assignments, and labels) in the project. Requires saving a dedicated snapshot (`SnapshotFolder/Clear`, excluded from rotation) before execution, followed by a confirmation dialog. Intended as a pragmatic tool for initial setup of a pre-release package. Deleted entries are logged individually (Warning) to the Console and can be restored via Snapshot Restore. |
+| `Tools/AddressTeller/Clear All Addresses & Labels...` | Removes Addressable entries (addresses, group assignments, and labels) from AddressTeller-managed groups only. Requires saving a dedicated snapshot (`SnapshotFolder/Clear`, excluded from rotation) before execution, followed by a confirmation dialog. Intended as a pragmatic tool for initial setup of a pre-release package. Deleted entries are logged individually (Warning) to the Console and can be restored via Snapshot Restore. |
 
 ## CI Integration
 
@@ -20,7 +20,7 @@ The following methods can be invoked via `-executeMethod`:
 - `AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI`
 - `AddressTeller.Editor.AddressTellerMenu.ApplyWithValidateCLI` (runs Validate first and aborts Apply if any issues are found)
 - `AddressTeller.Editor.AddressTellerMenu.CheckCLI` (dry-run without Apply — detects drift and issues in read-only mode)
-- `AddressTeller.Editor.AddressTellerMenu.ClearCLI` (removes all Addressable entries, or only entries in AddressTeller-managed groups with `-addressTellerClearScope managed`; requires `-addressTellerConfirmClear`)
+- `AddressTeller.Editor.AddressTellerMenu.ClearCLI` (removes entries from AddressTeller-managed groups by default; pass `-addressTellerClearScope all` to remove all Addressable entries in the project instead; requires `-addressTellerConfirmClear`)
 
 Specifying `-addressTellerReport <path>` / `-addressTellerReportFormat json|junit` outputs a structured report file: `CheckCLI` reports its dry-run results; `ApplyAllCLI` / `ApplyWithValidateCLI` report the pre-apply diff (dry-run). If `-addressTellerReportFormat` is omitted, the format is `junit` when the extension is `.xml`, otherwise `json`.
 

@@ -121,7 +121,7 @@ SchemaVersion                                         (System.Int32)
 - `SplitKey`（`Bundles[]` 内）: `PackTogether` の場合は固定文字列 `"all"`。`Unknown` の場合は固定文字列 `"(unknown)"`（`BundleDistributionCalculator.UnknownSplitKey`）。`PackTogetherByLabel` の場合は、そのバンドルに属するアセットにラベルが無ければ固定文字列 `"(no labels)"`（`BundleDistributionCalculator.NoLabelsSplitKey`）、そうでなければアセットのラベルを Ordinal でソートして `|` で連結したもの。`PackSeparately` の場合はアセット識別子（この固定語彙には含まれません）。
 - `Bundles[]` の順序: `GroupName`（Ordinal）→ `Mode` の基底の数値（文字列比較ではない）→ `SplitKey`（Ordinal）の順でソートされます。`BundleModeKind` に新しいメンバーを、既存メンバーの数値の間に挟まる値で追加するとこの並び順が変わります（[Enum](#enum)参照）。
 
-**`SchemaVersion`**: 現在は `1`（`AddressTellerReportBuilder.CurrentSchemaVersion`）。上記の形状が、JSON を構造的にパースする消費者にとって暗黙に後方非互換になる変更を行うたびにインクリメントします（新規の任意フィールドを読むだけの場合は対象外）。パッケージ自身はレポートを読み戻す際に未知の `SchemaVersion` を拒否しません（現状レポートファイルを再読込するCLI経路が無いため）が、これらのレポートをパースする外部ツールは、自分が理解しているバージョンより大きい値を「この形状を知らない」として扱うべきです。
+**`SchemaVersion`**: 現在は `1`（`AddressTellerReport.CurrentSchemaVersion`）。上記の形状が、JSON を構造的にパースする消費者にとって暗黙に後方非互換になる変更を行うたびにインクリメントします（新規の任意フィールドを読むだけの場合は対象外）。`AddressTellerReport.FromJson` は、現在サポートしているバージョンより大きい `SchemaVersion` を拒否し、`null` を返して警告ログを出力します（このログにはバージョン番号のみが含まれ、読み込み元のファイルパスは含まれません）。対称なのはこの拒否ポリシーのみです。`LoadFromFile` と異なり、`FromJson` はそれ以外の内容検証を一切行わず、内部で呼び出している `JsonUtility` が投げる例外もキャッチしません。不正な形式のJSONを渡した場合、戻り値ではなく `JsonUtility` が投げる例外がそのまま伝播します。`SchemaVersion` キー自体を含まないJSON（手動編集ファイル、またはこのフィールドが追加される前に生成されたレポート）を読み込んだ場合、`SchemaVersion` は `AddressTellerReport.CurrentSchemaVersion` として読み込まれます。`JsonUtility.FromJson` は新規構築したインスタンスに対してJSON上に存在するフィールドのみを上書きする実装のため、キーが欠落している場合はその型のゼロ値ではなくフィールド初期化子の値が残るためです。現状 `FromJson` を呼んでレポートファイルを再読込するCLI経路は無いものの、これらのレポートを直接パースする外部ツールも同じ「より大きい値は未対応として扱う」ルールを適用すべきであり、またキー欠落を「バージョン不明」の意味だと決め付けるべきではありません。
 
 **JUnit XML**（`AddressTellerReportWriter.ToJUnitXml`）:
 
@@ -148,7 +148,7 @@ CapturedAtIso, Comment, UnityVersion, PackageVersion   (System.String)
 SchemaVersion                             (System.Int32)
 ```
 
-**`SchemaVersion`**: 現在は `1`（`AddressTellerSnapshotService.CurrentSchemaVersion`）。レポート形式と異なり、スナップショットの読み込みはこれを積極的に検証します。`LoadFromFile` は `SchemaVersion` が現在サポートしている値より大きいファイルを拒否します。値が `0` の場合は「このフィールドが存在する前の旧形式JSON、または初期化直後のインスタンス」を意味し、受け入れられます。
+**`SchemaVersion`**: 現在は `1`（`AddressTellerSnapshotService.CurrentSchemaVersion`）。スナップショット形式・レポート形式のいずれも、現在サポートしているバージョンより大きい `SchemaVersion` を拒否します（[レポート出力](#5-レポート出力json--junit-xml)参照）。両者が異なるのは次の2点です。(a) `0` の扱い — スナップショットでは `0` は「このフィールドが存在する前の旧形式JSON、または初期化直後のインスタンス」を意味し受け入れられます（`AddressTellerSnapshot.SchemaVersion` のフィールド初期化子自体が `0` であり CLR の既定値と同じであるため、このキーを欠くスナップショットJSONも同様に `0` として読み込まれます）。レポート形式にはこれに相当する `0` の意味付けはありません。`AddressTellerReport.SchemaVersion` のフィールド初期化子は `AddressTellerReport.CurrentSchemaVersion`（現在は `1` であり `0` ではありません）だからです（キーを欠くレポートJSONがどう読み込まれるかは[レポート出力](#5-レポート出力json--junit-xml)参照）。(b) 検証が行われる層 — スナップショットはサービス層（`LoadFromFile`）で検証し、ファイルの他の内容（重複GUID・空GUID等）も検証したうえで、ログではなく `out error` で失敗を返します。レポートは DTO 型自身（`AddressTellerReport.FromJson`）が検証を行い、それ以外の内容検証は行いません。
 
 **フォルダ構成**: スナップショットは `AddressTellerSettings.SnapshotFolder`（設定変更可能、既定はプロジェクトルート直下の `AddressTellerSnapshots/`）以下に書き出されます。契約上の意味を持つ予約サブフォルダが2つあります。
 

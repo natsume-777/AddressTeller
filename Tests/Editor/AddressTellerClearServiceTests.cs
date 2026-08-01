@@ -32,6 +32,16 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void ClearScope_DefaultValue_IsManaged()
+        {
+            // ClearScope の数値割り当て（Managed = 0, All = 1）の回帰確認。「破壊的操作はデフォルト安全側」の
+            // 原則から、default(ClearScope) は常に安全側の Managed を指す必要がある。
+            Assert.AreEqual(ClearScope.Managed, default(ClearScope));
+            Assert.AreEqual(0, (int)ClearScope.Managed);
+            Assert.AreEqual(1, (int)ClearScope.All);
+        }
+
+        [Test]
         public void Clear_All_RemovesAllEntriesFromAllGroups()
         {
             var entryA = _settings.CreateOrMoveEntry("guid1", _groupA);

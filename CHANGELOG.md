@@ -14,6 +14,7 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 - `ValidationStatus.RuleConfigureFailed`: returned when a user rule's `Configure()` method throws an exception. The problematic rule is skipped (treated as producing no entries) and evaluation continues; this status helps identify which rule has a configuration problem.
 - Warnings displayed in `Undo Last Apply` dialog and `Explain` window when rule configuration errors exist, so users are aware that reported results are incomplete.
 - `AddressTellerReport.SchemaVersion`: a new field parallel to `AddressTellerSnapshot.SchemaVersion`, defaulting to 1 and set by `AddressTellerReportBuilder.Build`.
+- `AddressTellerReport.CurrentSchemaVersion`: a new public constant (`= 1`) exposing the schema version `AddressTellerReport.SchemaVersion` defaults to and `FromJson` compares against. Previously this value existed only as an internal constant on `AddressTellerReportBuilder`, which meant it wasn't covered by the public API approval baseline; `AddressTellerReportBuilder` now reads this new public constant instead of defining its own.
 - `AddressTeller.Testing.RuleInspector`: public API for inspecting rule configuration results without a real Addressables project. Provides `Collect()` to retrieve all rule entries registered by the rule, `IsUnresolvedDefaultGroup()` to check for unresolved `GroupDefault()` references, and `DisplayGroupName()` to format group names for display. Enables comprehensive rule unit tests; replaces the custom Fake builders previously used in `RuleUnitTestHelper` samples.
 
 ### Fixed
@@ -64,6 +65,8 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 - `RuleUnitTestHelper` sample: `DefaultGroupSentinel` constant removed; `Collect()` now delegates to the package's own `RuleInspector` public API, ensuring the exact same builder contract (calling `Where()`/`Address()` a second time on the same group now throws `InvalidOperationException`). New helper methods `IsUnresolvedDefaultGroup()` and `DisplayGroupName()` added for checking and displaying unresolved default group sentinels in tests.
 - **BREAKING**: `LogicalBundleDto` renamed to `BundleDistributionReportEntry`. This is a C# API-only rename; the JSON report output (field names) is unchanged.
 - Enum members of `ValidationStatus`, `ClearScope`, `ReportFormat`, `DistributionFormat`, `SnapshotRestoreMode`, and `BundleModeKind` now carry explicit numeric values in source. This doesn't by itself enforce the member-to-number freeze described in [Compatibility Policy](Documentation~/compatibility.md#enums) — nothing prevents a future edit from renumbering — but the public API approval baseline now records each member's name and value, so `PublicApiApprovalTests` catches an accidental rename, removal, or renumbering. No behavior change (the implicit numbering was already sequential from 0).
+- **BREAKING**: `ClearScope` enum values swapped: `Managed` is now `0` and `All` is now `1` (previously `All = 0`, `Managed = 1`). This aligns `default(ClearScope)` with the package's "destructive operations default to the safe side" principle. Code that reads `ClearScope` by its underlying numeric value (rather than by member name) must be updated; code that only refers to `ClearScope.All`/`ClearScope.Managed` by name is unaffected. No CLI or menu entry point had a reachable code path that relied on the previous `default(ClearScope)` value.
+- **BREAKING**: `AddressTellerReport.FromJson` now rejects a report whose `SchemaVersion` is greater than `AddressTellerReport.CurrentSchemaVersion`, returning `null` and logging a warning instead of returning a report of an unrecognized shape. Callers must now null-check the result. Only this rejection policy mirrors `AddressTellerSnapshotService.LoadFromFile`'s existing rejection of snapshots from a newer schema — unlike `LoadFromFile`, `FromJson` does not validate the JSON's content and does not catch exceptions from the underlying `JsonUtility` call (see [Compatibility Policy](Documentation~/compatibility.md#5-report-output-json--junit-xml) for the precise differences).
 
 ### Documentation
 
@@ -85,7 +88,7 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 ### Verified
 
 - Addressables 2.8.1 through 3.1.0 compatibility was confirmed in prior work (353 EditMode tests at that time).
-- Current EditMode test suite: 498 pass / 0 fail / 2 skip (500 total). The minimum Addressables requirement remains 2.8.1.
+- Current EditMode test suite: 502 pass / 0 fail / 2 skip (504 total). The minimum Addressables requirement remains 2.8.1.
 
 ---
 

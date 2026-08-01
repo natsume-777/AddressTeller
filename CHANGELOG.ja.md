@@ -14,6 +14,7 @@
 - `ValidationStatus.RuleConfigureFailed`: ユーザールールの `Configure()` メソッドが例外を投げた場合に返される。問題のあるルールはスキップされ（エントリ0件として扱われ）、評価は継続される。どのルールに構成問題があるかを特定するのに役立つ。
 - ルール構成エラーが存在する場合、`Undo Last Apply` ダイアログと `Explain` ウィンドウに警告が表示されるため、利用者は報告された結果が不完全であることに気づくことができる。
 - `AddressTellerReport.SchemaVersion`: `AddressTellerSnapshot.SchemaVersion` と対称の新規フィールド。既定値は1で、`AddressTellerReportBuilder.Build` が設定する。
+- `AddressTellerReport.CurrentSchemaVersion`: 新規公開定数（`= 1`）。`AddressTellerReport.SchemaVersion` の既定値であり `FromJson` が比較に使う値そのもの。従前はこの値が `AddressTellerReportBuilder` 側の internal 定数としてのみ存在しており、公開APIの承認テストベースラインの対象外だった。`AddressTellerReportBuilder` は自前の定数を持たず、この新しい公開定数を参照するようになった。
 - `AddressTeller.Testing.RuleInspector`: 実際のAddressablesプロジェクトなしにルール構成結果を検査できる公開API。`Collect()` でルールが登録した全エントリを取得、`IsUnresolvedDefaultGroup()` で未解決の `GroupDefault()` を判定、`DisplayGroupName()` でグループ名を表示形式に整形。ルール単体テストの充実を実現し、`RuleUnitTestHelper` サンプルで従前使われていた独自 Fake ビルダーに置き換わる。
 
 ### Fixed
@@ -64,6 +65,8 @@
 - `RuleUnitTestHelper` サンプル: `DefaultGroupSentinel` 定数を削除。`Collect()` がパッケージ本体の `RuleInspector` 公開API に委譲するようになり、パッケージ本体と同じビルダーコントラクトを保証。同一グループへの `Where()`/`Address()` 2回目呼び出しが `InvalidOperationException` を投げるようになった。新規ヘルパーメソッド `IsUnresolvedDefaultGroup()` / `DisplayGroupName()` をテスト内での未解決デフォルトグループセンチネルの判定・表示用に追加。
 - **BREAKING**: `LogicalBundleDto` を `BundleDistributionReportEntry` にリネームした。C# API のみの変更であり、JSON レポート出力（フィールド名）は変わらない。
 - `ValidationStatus`・`ClearScope`・`ReportFormat`・`DistributionFormat`・`SnapshotRestoreMode`・`BundleModeKind` の各enumメンバーに、ソースコード上で明示的な数値を付与した。これ自体は[互換性ポリシー](Documentation~/compatibility.ja.md#enum)で定めるメンバー・数値対応の凍結を強制するものではなく、将来のソース変更で数値がずれることを防ぐ仕組みではない。ただし承認テストのベースラインが各メンバーの名前と数値を記録するようになったため、意図しないリネーム・削除・数値ずれは `PublicApiApprovalTests` が検知する。挙動は変わらない（暗黙の連番も従来から0始まりの連番と一致していたため）。
+- **BREAKING**: `ClearScope` enum の数値を入れ替えた。`Managed` が `0`、`All` が `1`（従前は `All = 0`、`Managed = 1`）。「破壊的操作はデフォルト安全側」というこのパッケージの原則と `default(ClearScope)` の向きを一致させるための変更。`ClearScope` を（メンバー名ではなく）数値そのもので読んでいるコードは修正が必要。`ClearScope.All`/`ClearScope.Managed` をメンバー名で参照しているだけのコードは影響を受けない。従前の `default(ClearScope)` に依存する到達可能な経路はCLI・メニューいずれにも存在しなかった。
+- **BREAKING**: `AddressTellerReport.FromJson` が、`SchemaVersion` が `AddressTellerReport.CurrentSchemaVersion` より大きいレポートを拒否するようになった。未知の形状のレポートをそのまま返す代わりに `null` を返し警告ログを出力する。呼び出し側は戻り値の null チェックが必要になった。対称なのはこの拒否ポリシーのみで、`AddressTellerSnapshotService.LoadFromFile` とは異なり `FromJson` はJSONの内容検証を行わず、内部で使用する `JsonUtility` が投げる例外もキャッチしない（正確な違いは[互換性ポリシー](Documentation~/compatibility.ja.md#5-レポート出力json--junit-xml)参照）。
 
 ### Documentation
 
@@ -85,7 +88,7 @@
 ### 検証
 
 - Addressables 2.8.1〜3.1.0 との互換性確認は事前に実施済み（その時点では 353 件の EditMode テストで実施）。
-- 現在の EditMode テストスイート: 498 pass / 0 fail / 2 skip（計500件）。最低 Addressables バージョン要件は 2.8.1 のまま変更なし。
+- 現在の EditMode テストスイート: 502 pass / 0 fail / 2 skip（計504件）。最低 Addressables バージョン要件は 2.8.1 のまま変更なし。
 
 ---
 

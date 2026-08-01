@@ -69,7 +69,7 @@ namespace AddressTeller.Editor.Tests
 
             var report = AddressTellerReportBuilder.Build(result);
 
-            Assert.AreEqual(AddressTellerReportBuilder.CurrentSchemaVersion, report.SchemaVersion);
+            Assert.AreEqual(AddressTellerReport.CurrentSchemaVersion, report.SchemaVersion);
         }
 
         [Test]

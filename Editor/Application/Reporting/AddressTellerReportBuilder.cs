@@ -13,9 +13,6 @@ namespace AddressTeller.Editor
     /// </summary>
     internal static class AddressTellerReportBuilder
     {
-        /// <summary>現在サポートしているレポートのスキーマバージョン。<see cref="AddressTellerReport.SchemaVersion"/> 参照。</summary>
-        public const int CurrentSchemaVersion = 1;
-
         /// <summary>
         /// 論理バンドル分布サマリに付与する固定の注記文言。
         /// この分布が Predict 結果と BundleMode から算出した論理推定であり、実ビルドのバンドル数を保証しないことを明記する。
@@ -95,7 +92,7 @@ namespace AddressTeller.Editor
             report.Summary.Changed = diff.Changed.Count;
             report.Summary.Issues = result.Issues.Count;
             report.Summary.ExitCode = DetermineExitCode(result);
-            report.SchemaVersion = CurrentSchemaVersion;
+            report.SchemaVersion = AddressTellerReport.CurrentSchemaVersion;
 
             return report;
         }

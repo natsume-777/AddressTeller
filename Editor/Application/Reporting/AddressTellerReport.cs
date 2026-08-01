@@ -33,18 +33,44 @@ namespace AddressTeller.Editor
         /// </summary>
         public BundleDistributionReport BundleDistribution;
 
+        /// <summary>Currently supported report schema version. See <see cref="SchemaVersion"/>.</summary>
+        public const int CurrentSchemaVersion = 1;
+
         /// <summary>
         /// Schema version of this report, mirroring <see cref="AddressTellerSnapshot.SchemaVersion"/>.
-        /// Set to the current schema version constant by the internal report builder used by
+        /// Set to <see cref="CurrentSchemaVersion"/> by the internal report builder used by
         /// <c>CheckCLI</c>/<c>ApplyAllCLI</c>/<c>ApplyWithValidateCLI</c>.
         /// </summary>
-        public int SchemaVersion = AddressTellerReportBuilder.CurrentSchemaVersion;
+        public int SchemaVersion = CurrentSchemaVersion;
 
         /// <summary>Serializes this report to pretty-printed JSON via <see cref="JsonUtility"/>.</summary>
         public string ToJson() => JsonUtility.ToJson(this, true);
 
-        /// <summary>Deserializes a report previously produced by <see cref="ToJson"/>.</summary>
-        public static AddressTellerReport FromJson(string json) => JsonUtility.FromJson<AddressTellerReport>(json);
+        /// <summary>
+        /// Deserializes a report previously produced by <see cref="ToJson"/>. Returns <c>null</c> when the
+        /// deserialized <see cref="SchemaVersion"/> is greater than <see cref="CurrentSchemaVersion"/> (a
+        /// schema this version of the package does not know how to interpret) — in that case, a warning
+        /// is logged that includes only the offending version numbers, not the source file path (the caller
+        /// is best positioned to add that context, e.g. when reading a specific report file).
+        /// Only the <see cref="SchemaVersion"/> rejection policy mirrors
+        /// <see cref="AddressTellerSnapshotService.LoadFromFile"/>'s rejection of snapshots from a newer
+        /// schema; unlike <c>LoadFromFile</c>, this method does not validate the JSON's content and does
+        /// not catch exceptions from the underlying <see cref="JsonUtility"/> call — a malformed
+        /// <paramref name="json"/> string propagates as whatever exception <c>JsonUtility</c> throws.
+        /// </summary>
+        public static AddressTellerReport FromJson(string json)
+        {
+            var report = JsonUtility.FromJson<AddressTellerReport>(json);
+            if (report == null) return null;
+
+            if (report.SchemaVersion > CurrentSchemaVersion)
+            {
+                Debug.LogWarning($"[AddressTeller] Report schema version ({report.SchemaVersion}) is not supported (current: {CurrentSchemaVersion}).");
+                return null;
+            }
+
+            return report;
+        }
     }
 
     /// <summary>Aggregate counts for the whole report.</summary>

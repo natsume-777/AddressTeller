@@ -34,6 +34,7 @@ sealed class AddressTeller.Editor.AddressTellerPostprocessor : UnityEditor.Asset
 sealed class AddressTeller.Editor.AddressTellerReport
   Constructor ()
   Field AddressTeller.Editor.BundleDistributionReport BundleDistribution
+  Field static const System.Int32 CurrentSchemaVersion = 1
   Field System.Collections.Generic.List<AddressTeller.Editor.AddressTellerReportDrift> Drift
   Field System.Collections.Generic.List<AddressTeller.Editor.AddressTellerReportIssue> Issues
   Field System.Int32 SchemaVersion
@@ -155,8 +156,8 @@ static class AddressTeller.Editor.BundleModeReader
   Method static System.Collections.Generic.IReadOnlyDictionary<System.String, AddressTeller.BundleModeKind> ReadBundleModes(System.Collections.Generic.IEnumerable<UnityEditor.AddressableAssets.Settings.AddressableAssetGroup> groups, out System.Collections.Generic.IReadOnlyList<System.String> warnings)
 
 enum AddressTeller.Editor.ClearScope
-  EnumMember All = 0
-  EnumMember Managed = 1
+  EnumMember All = 1
+  EnumMember Managed = 0
 
 struct AddressTeller.Editor.ClearedEntry
   Constructor (System.String guid, System.String address, System.String groupName, System.Collections.Generic.IReadOnlyList<System.String> labels)

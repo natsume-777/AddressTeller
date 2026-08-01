@@ -134,6 +134,50 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(report.Issues[0].Message, restored.Issues[0].Message);
         }
 
+        [Test]
+        public void FromJson_FutureSchemaVersion_ReturnsNull()
+        {
+            // AddressTellerSnapshotService.LoadFromFile の SchemaVersion 拒否（未来バージョンは拒否）と対称の
+            // 挙動を AddressTellerReport.FromJson 側でも確認する。
+            var report = ReportWithDriftAndIssues();
+            report.SchemaVersion = AddressTellerReport.CurrentSchemaVersion + 1;
+            var json = AddressTellerReportWriter.ToJson(report);
+
+            LogAssert.Expect(LogType.Warning, new Regex("Report schema version"));
+            var restored = AddressTellerReport.FromJson(json);
+
+            Assert.IsNull(restored);
+        }
+
+        [Test]
+        public void FromJson_CurrentSchemaVersion_ReturnsReport()
+        {
+            var report = ReportWithDriftAndIssues();
+            var json = AddressTellerReportWriter.ToJson(report);
+
+            var restored = AddressTellerReport.FromJson(json);
+
+            Assert.IsNotNull(restored);
+            Assert.AreEqual(AddressTellerReport.CurrentSchemaVersion, restored.SchemaVersion);
+        }
+
+        [Test]
+        public void FromJson_MissingSchemaVersionKey_ReadsAsCurrentSchemaVersion()
+        {
+            // "SchemaVersion" キー自体を含まない JSON（このフィールドが存在する前の旧形式レポート、または
+            // 手動編集でキーを削除した入力を模する）。JsonUtility.FromJson<T> は対象の既定コンストラクタで
+            // インスタンスを構築してから JSON に存在するキーだけを上書きする（未知/欠落キーはフィールド
+            // 初期化子の値のまま）挙動をする、というのがこのテストの前提。AddressTellerSnapshot.SchemaVersion
+            // の初期化子は 0（CLR既定値と同じ）でこの区別がつかないため、初期化子が非既定値
+            // （AddressTellerReport.CurrentSchemaVersion = 1）であるこちらで実測結果として固定する。
+            const string json = "{\"Summary\":{\"Added\":0,\"Removed\":0,\"Changed\":0,\"Issues\":0,\"ExitCode\":0},\"Drift\":[],\"Issues\":[]}";
+
+            var restored = AddressTellerReport.FromJson(json);
+
+            Assert.IsNotNull(restored);
+            Assert.AreEqual(AddressTellerReport.CurrentSchemaVersion, restored.SchemaVersion);
+        }
+
         // 以下は Documentation~/compatibility.md で「互換性契約」として文書化した JSON のキー名を固定するゴールデンテスト。
         // ToJson_RoundTrip_PreservesMainFields はC#オブジェクトを経由した値の再現性しか見ておらず、
         // フィールド名を一括リネームしても検出できないため、生成された JSON 文字列に対して直接キー名の有無を検証する。
