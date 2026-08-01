@@ -8,6 +8,32 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-02
+
+### Documentation
+
+- README.md and README.ja.md: clarified that an asset matched by a rule is moved
+  into that rule's group regardless of its current group, while deletions and
+  label additions are limited to groups referenced by at least one rule.
+- README.md and README.ja.md: added an Addressables primer (address / label /
+  group, initializing Addressables) and expanded Quick Start with notes on entry
+  creation and moving, managed-group scoping, and auto-apply on import —
+  including that auto-apply also deletes entries that no longer match any rule
+  (`CleanupStaleEntries`).
+- Documentation~/operations.md and .ja.md: added a non-interactive CLI section
+  covering the four CLI entry points' exit behavior, a batch-mode example for CI,
+  and the fact that `Tools/AddressTeller/Clear All Addresses & Labels...` always
+  shows a confirmation dialog with no dry-run gate.
+- Documentation~/operations.md and .ja.md: added the previously undocumented
+  `Tools/AddressTeller/Preview Group...` and
+  `Assets/AddressTeller/Preview (Apply Preview)` entries to the Apply Methods table.
+- Documentation~/operations.md and .ja.md: documented the per-rule preview
+  ("Validate/Apply this rule only" button in Project Settings), including that it
+  can predict `Removed` for entries owned by another rule targeting the same
+  group, because only the selected rule is in evaluation scope.
+- AddressTellerScopedPreview.cs XML doc comment: removed an inaccurate mention of
+  sub-assets from the folder-expansion note on `RunGroupPreview`.
+
 ## [0.4.0] - 2026-08-01
 
 ### Added

@@ -8,6 +8,17 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-02
+
+### Documentation
+
+- README.md/README.ja.md: ルールにマッチしたアセットは現在の所属グループに関わらずそのルールのグループへ移動されること、削除とラベル加算はいずれかのルールが参照しているグループに限定されることを明記。
+- README.md/README.ja.md: Addressablesの用語解説（アドレス・ラベル・グループ、Addressablesの初期化）を追加し、Quick Startにエントリの作成・移動、管理グループの範囲、インポート時自動適用（`CleanupStaleEntries` によりマッチしなくなったエントリも削除されることを含む）に関する説明を追記。
+- Documentation~/operations.md/.ja.md: 4つのCLIエントリポイントの終了挙動、CI向け batchmode 実行例、`Tools/AddressTeller/Clear All Addresses & Labels...` が常に確認ダイアログを表示し dry-run ゲートを持たないことをまとめた「コマンドラインからの非対話実行」節を追加。
+- Documentation~/operations.md/.ja.md: これまで未記載だった `Tools/AddressTeller/Preview Group...` と `Assets/AddressTeller/Preview (Apply Preview)` を Apply Methods 表に追加。
+- Documentation~/operations.md/.ja.md: 単独ルールプレビュー（Project Settings の「Validate/Apply this rule only」ボタン）について、評価スコープが選択した1ルールのみに限定されるため、同じグループを対象とする他ルールが管理するエントリを `Removed` と予測しうることを明記。
+- AddressTellerScopedPreview.cs のXMLドキュメントコメント: `RunGroupPreview` のフォルダ展開に関する説明から、誤ったサブアセットへの言及を削除。
+
 ## [0.4.0] - 2026-08-01
 
 ### Added
