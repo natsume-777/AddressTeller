@@ -30,6 +30,8 @@ Or add it directly to `Packages/manifest.json`:
 
 ## Quick Start
 
+New to Addressables? An **address** is the string key used to load an asset at runtime (`Addressables.LoadAssetAsync<GameObject>("Player")`), a **label** is a freeform tag for filtering/grouping assets across addresses, and a **group** is an Addressables container that controls how its assets are bundled. Installing AddressTeller pulls in `com.unity.addressables` as a package dependency, but Addressables itself still needs to be initialized once per project: open `Window > Asset Management > Addressables > Groups` and create the settings if prompted.
+
 Create a class that inherits `AddressRuleBase` and place it under an `Editor` folder — it will be collected automatically via reflection.
 Define rules by chaining `Group().Where().Address().Label()` inside `Configure()`.
 
@@ -52,8 +54,12 @@ public sealed class GameAddressRules : AddressRuleBase
 }
 ```
 
-Run `Tools/AddressTeller/Apply All` to assign addresses and labels to matching assets.
-The `Characters` group must be created in the Addressable Groups window beforehand (a missing group name is treated as an error).
+Run `Tools/AddressTeller/Apply All` to assign addresses and labels to matching assets. `Apply All` creates or moves the underlying Addressable entry itself — you don't need to mark each asset Addressable by hand first. The `Characters` group must already exist, though: create it beforehand in `Window > Asset Management > Addressables > Groups` (a missing group name is treated as an error, not auto-created by default).
+
+As long as your `Where()` conditions don't match assets outside the groups you intend to hand over, AddressTeller only **deletes entries or adds labels** in groups referenced by at least one of your rules, so you can adopt it for one group at a time without affecting the rest of an existing Addressables setup. Any asset a rule *does* match, however, is unconditionally **moved** into that rule's group regardless of which group it currently belongs to (even a manually managed one) — so scope your `Where()` conditions to the assets you actually want AddressTeller to own. See [Design Decisions](Documentation~/design-decisions.md#deletions-are-determined-by-per-asset-ownership) for details.
+
+By default, an `AssetPostprocessor` also re-runs rule evaluation automatically whenever an asset is imported, moved, or deleted ("Auto-apply on import", ON by default) — so once a rule is in place, routine asset imports can trigger it without running `Apply All` manually. This includes deleting entries that no longer match any rule (`CleanupStaleEntries`, also ON by default); see [Design Decisions](Documentation~/design-decisions.md#deletions-are-determined-by-per-asset-ownership). Both settings can be turned off in Project Settings; see [Apply & Operations](Documentation~/operations.md) for all apply methods and these settings.
+
 To assign to the Addressables DefaultGroup, use `GroupDefault()` instead of `Group("name")` — it follows DefaultGroup renames automatically. See [Writing Rules](Documentation~/writing-rules.md#groupdefault) for details.
 
 If you define rule classes in a custom assembly, ensure your asmdef's `references` includes both `AddressTeller.Core` and `AddressTeller.Editor` (the public APIs expose types from both assemblies).
@@ -64,7 +70,7 @@ If you define rule classes in a custom assembly, ensure your asmdef's `reference
 - [Apply & Operations](Documentation~/operations.md) — apply methods, CI integration, Project Settings, snapshots, samples
 - [Design Decisions](Documentation~/design-decisions.md) — why addresses, labels, and groups behave the way they do
 - [Architecture](Documentation~/architecture.md) — layer structure, folder responsibilities, rule evaluation flow
-- [Compatibility Policy](Documentation~/compatibility.md) — what is and isn't covered by SemVer guarantees
+- [Compatibility Policy](Documentation~/compatibility.md) — what is and isn't covered by SemVer guarantees (worth reading once you're integrating in CI or upgrading versions; safe to skip while you're just trying AddressTeller out)
 - [Contributing](CONTRIBUTING.md)
 
 ## Background

@@ -8,9 +8,11 @@
 |---|---|
 | インポート時自動適用 | `AssetPostprocessor` により、アセットのインポート・移動・削除のたびに自動で `Apply All` 相当が実行されます。Project Settings でオフにできます。 |
 | `Tools/AddressTeller/Apply All` | プロジェクト全体に手動でルールを適用します。 |
+| `Tools/AddressTeller/Preview Group...` | 既存グループのドロップダウンを表示し、選択したグループの現メンバー（フォルダは展開済み）を起点に有効な全ルールの dry-run を実行し、結果ウィンドウ（Diff/Issuesタブ、算出できた場合は Distribution タブも）を開きます。書き込みは行いません。Apply All や Validate は別途手動で実行する必要があります。 |
 | `Tools/AddressTeller/Validate` | 書き込みは行わず、競合・グループ未検出などの問題だけを Console に出力します。 |
 | `Tools/AddressTeller/Apply with Validate` | 先に Validate を実行し、問題があれば Apply を中止します。 |
 | `Assets/AddressTeller/Explain`（Project ウィンドウの右クリックメニュー） | 選択したアセットに対して全ルールを評価し、その結果を確認ウィンドウで表示します。マッチしたルール・マッチしなかったルール（その `Where` 説明付き）・ルール例外を一覧で見ることができます。`Match` ヘルパーを使用したルールは自動生成された説明（例: `InFolder(Assets/Characters) AND OfType<GameObject>`）が表示されるため、生ラムダよりもルールの動作確認が効率的です。 |
+| `Assets/AddressTeller/Preview (Apply Preview)`（Project ウィンドウの右クリックメニュー） | 選択したアセット（フォルダは再帰展開）に対して有効な全ルールの dry-run を実行し、`Preview Group...` と同じ結果ウィンドウを開きます。書き込みは行いません。 |
 | `Tools/AddressTeller/Clear All Addresses & Labels...` | AddressTeller が管理するグループのみを対象に、Addressable エントリ（アドレス・グループ割り当て・ラベル）を削除します。実行前に専用スナップショット（`SnapshotFolder/Clear` 以下、ローテーション対象外）を必須で保存し、確認ダイアログを経て実行します。公開前パッケージの初期セットアップ用途を想定した割り切り機能です。削除したエントリは Console に個別ログ（Warning）され、Snapshot Restore で復元できます。 |
 
 ## CI 連携
@@ -41,6 +43,21 @@ exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 | 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗） |
 | 4 | `-addressTellerConfirmClear` が指定されていないため実行を拒否（意図的な拒否） |
 
+### コマンドラインからの非対話実行
+
+上記4つの CLI エントリポイントはいずれも確認ダイアログを出さず、入力待ちで止まることもありません。引数を解析し、実行し、結果をログ出力した後、それぞれが自分自身で必ず `EditorApplication.Exit(<code>)` を呼んで終了します。これは破壊的操作を行う `ClearCLI` でも同様で、確認ダイアログの代わりに必須の `-addressTellerConfirmClear` フラグ（上記 exit code 表を参照）で意思確認を行い、入力待ちにはなりません。（対話メニュー版と比較すると次の違いがあります。`Apply All` / `Apply with Validate` は先に dry-run を行い、適用すべき差分がある場合に限り確認ダイアログを表示します。dry-run の結果、差分も問題も無ければダイアログを出さずにそのまま戻ります（`AddressTellerApplyFlow`）。一方 `Clear All Addresses & Labels...` は dry-run を行わず、削除対象が0件であっても常に確認ダイアログを表示します。ダイアログを出さずに中止するのは、ルール構成エラーにより管理グループの所有権判定が信頼できない場合のみです。[適用方法](#適用方法) を参照。）
+
+例: `ApplyAllCLI` をヘッドレスで実行し、JSON レポートを出力した上で、プロセスの exit code から成否を判定する場合。
+
+```
+"<Unity実行ファイルへのパス>" -batchmode -quit -projectPath "<プロジェクトへのパス>" -executeMethod AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI -addressTellerReport report.json -logFile -
+```
+
+- `-batchmode` は Unity をヘッドレスで起動します。`-quit` は `-executeMethod` が返った時点で終了する Unity 標準の起動オプションですが、実際には上記の各 CLI メソッド自身が返る前に `EditorApplication.Exit(<code>)` を呼んで終了するため（前述の通り）、`-quit` はその呼び出しが何らかの理由でスキップされた場合の保険として付けている程度の意味合いです。
+- `-logFile -` は Editor ログをファイルではなく標準出力へ流します。この機能が出力する `Debug.Log` / `Debug.LogError` を CI で捕捉するのに便利です。
+- 必要に応じて `CheckCLI`・`ApplyWithValidateCLI`・`ClearCLI`（こちらは `-addressTellerConfirmClear` が別途必須。`-addressTellerClearScope all` も任意で指定可）に差し替えてください。
+- ビルドを失敗させるかどうかは、上記の exit code 表と照らし合わせて判定してください。
+
 ### 論理バンドル分布サマリ
 
 `json` 形式のレポートには `BundleDistribution` セクションが含まれます（`JsonUtility` は大文字小文字の変換を一切行わないため、JSON のキー名は C# のフィールド名とそのまま一致します）。これは dry-run の Predict 結果（アセット→グループ/ラベル）と各グループの BundleMode（PackTogether/PackSeparately/PackTogetherByLabel）から算出した、ビルド前の論理バンドル単位の個数・分布の概算です。「ルール設計が意図せず巨大バンドル1個や数百分割を生んでいないか」を検知するための目安であり、**実 Addressables ビルドのバンドル数を一致させることを保証しません**。
@@ -64,7 +81,7 @@ exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 
 これらの設定値は `ProjectSettings/AddressTellerSettings.asset` に保存されます。プロジェクト単位の設定としてバージョン管理に含めることができ、チームメンバー間で共有されます。
 
-登録されているルールクラス（`AddressRuleBase` 継承クラス）の一覧と、`Order` 値も同じ画面で確認できます。各ルールクラスの横には有効/無効を切り替えるトグルがあり、デバッグ・動作確認時に特定のルールだけを無効化することができます。無効化したルールは `Apply All` / `Validate` / `Apply with Validate` / `Explain` / スナップショットの dry-run 予測の評価対象から除外されます。
+登録されているルールクラス（`AddressRuleBase` 継承クラス）の一覧と、`Order` 値も同じ画面で確認できます。各ルールクラスの横には有効/無効を切り替えるトグルがあり、デバッグ・動作確認時に特定のルールだけを無効化することができます。無効化したルールは `Apply All` / `Validate` / `Apply with Validate` / `Explain` / スナップショットの dry-run 予測の評価対象から除外されます。各ルール行には「Validate/Apply this rule only」ボタンもあり、そのルール1件だけをプロジェクト内の全アセットに対して dry-run し、結果ウィンドウを開きます。1ルールのみのスコープであるため、他ルールが管理するエントリの削除予測は表示されません（結果ウィンドウにその旨の注意文が表示されます）。逆に、同じグループを他のルールも参照している場合、そのルールにしかマッチしないアセットがこの単独ルールプレビューでは「Removed」と表示されることがあります（`Apply All` は全ルールをまとめて評価するため、実際には削除されません）。全ルールを横断した最終結果を確認するには、別途 `Apply All` や `Validate` を実行してください。このボタンは有効/無効トグルを無視するため、無効化中のルールでも明示的にクリックすれば単独で dry-run できます。
 
 ただし資産削除時のエントリ削除追従（`CleanupStaleEntries` 等）は、ルールの有効/無効に関わらず全ルールを対象に行われます。これは、無効化中のルールであっても過去にそのルールが管理していたエントリを正しく追跡し、オーファンエントリが残り続けないようにするための設計です。
 

@@ -54,7 +54,7 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// 指定グループの現メンバー起点で、有効な全ルールを適用した場合の dry-run プレビューを表示する。
-        /// グループにフォルダ・サブアセットのエントリが含まれる場合も <see cref="AddressTellerScopeBuilder.ExpandFolders"/> で
+        /// グループにフォルダのエントリが含まれる場合も <see cref="AddressTellerScopeBuilder.ExpandFolders"/> で
         /// 配下アセットへ安全に展開する。
         /// </summary>
         public static void RunGroupPreview(AddressableAssetSettings settings, AddressableAssetGroup group)
