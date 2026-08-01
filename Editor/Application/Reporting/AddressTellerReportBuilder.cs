@@ -103,7 +103,10 @@ namespace AddressTeller.Editor
         /// <summary>
         /// <see cref="Build(DryRunResult)"/> に加えて、<paramref name="settings"/> から各グループの BundleMode を読み取り、
         /// 論理バンドル分布サマリ（<see cref="AddressTellerReport.BundleDistribution"/>）を算出して格納する。
-        /// <see cref="DryRunResult.After"/> が null（テスト構築等）の場合は分布サマリを付与しない。
+        /// <see cref="DryRunResult.After"/> が null（テスト構築等）の場合、<paramref name="settings"/> が null の場合、
+        /// または算出処理自体が例外を投げた場合（内部でキャッチし警告ログのみ出力）は、
+        /// <see cref="AddressTellerReport.BundleDistribution"/> は null のまま代入されない
+        /// （JsonUtility の制約上、JSON 出力上は全フィールドが既定値のオブジェクトとして現れる）。
         /// </summary>
         public static AddressTellerReport Build(DryRunResult result, AddressableAssetSettings settings)
         {
@@ -122,7 +125,7 @@ namespace AddressTeller.Editor
             }
             catch (Exception ex)
             {
-                UnityEngine.Debug.LogWarning($"[AddressTeller] Failed to calculate logical bundle distribution summary; it will be omitted from the report: {ex.Message}");
+                UnityEngine.Debug.LogWarning($"[AddressTeller] Failed to calculate logical bundle distribution summary; report.BundleDistribution will remain null (serialized as an all-defaults object in the JSON output): {ex.Message}");
             }
 
             return report;
@@ -132,7 +135,7 @@ namespace AddressTeller.Editor
         private static BundleDistributionReport ToBundleDistributionReport(BundleDistribution distribution)
         {
             var bundles = distribution.Bundles
-                .Select(b => new LogicalBundleDto
+                .Select(b => new BundleDistributionReportEntry
                 {
                     GroupName = b.GroupName,
                     Mode = b.Mode.ToString(),

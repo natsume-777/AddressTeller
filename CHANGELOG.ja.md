@@ -4,7 +4,7 @@
 
 このファイルの形式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に従い、
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) に従います。
-`0.x` 系のため、SemVer 上は破壊的変更もマイナーバージョン内で扱います。
+`0.x` の間は、破壊的変更がマイナーリリースに含まれることがあります（含まれる場合は以下で **BREAKING** と明記します）。`1.0.0` 以降は [互換性ポリシー](Documentation~/compatibility.ja.md) の保証が適用され、破壊的変更はメジャーリリースに限定され、対象APIを `[Obsolete]` にするリリースを少なくとも1回挟んでから行われます。
 
 ## [Unreleased]
 
@@ -62,6 +62,8 @@
 - **BREAKING**: `AddressTellerExplainReport`、`AddressTellerExplainAsset`、`AddressTellerExplainRule` が `internal` になった（従前は `public`）。パッケージ外部からこれらの型を構築・取得するサポートされた経路は存在しない。
 - **BREAKING**: `AddressTellerCliArgs.ReportFormat` が `string` ではなく `ReportFormat?` になった。この値を生文字列（`"json"`/`"junit"`）として読んでいたコードは `ReportFormat` enum との比較に修正が必要。
 - `RuleUnitTestHelper` サンプル: `DefaultGroupSentinel` 定数を削除。`Collect()` がパッケージ本体の `RuleInspector` 公開API に委譲するようになり、パッケージ本体と同じビルダーコントラクトを保証。同一グループへの `Where()`/`Address()` 2回目呼び出しが `InvalidOperationException` を投げるようになった。新規ヘルパーメソッド `IsUnresolvedDefaultGroup()` / `DisplayGroupName()` をテスト内での未解決デフォルトグループセンチネルの判定・表示用に追加。
+- **BREAKING**: `LogicalBundleDto` を `BundleDistributionReportEntry` にリネームした。C# API のみの変更であり、JSON レポート出力（フィールド名）は変わらない。
+- `ValidationStatus`・`ClearScope`・`ReportFormat`・`DistributionFormat`・`SnapshotRestoreMode`・`BundleModeKind` の各enumメンバーに、ソースコード上で明示的な数値を付与した。これ自体は[互換性ポリシー](Documentation~/compatibility.ja.md#enum)で定めるメンバー・数値対応の凍結を強制するものではなく、将来のソース変更で数値がずれることを防ぐ仕組みではない。ただし承認テストのベースラインが各メンバーの名前と数値を記録するようになったため、意図しないリネーム・削除・数値ずれは `PublicApiApprovalTests` が検知する。挙動は変わらない（暗黙の連番も従来から0始まりの連番と一致していたため）。
 
 ### Documentation
 
@@ -72,11 +74,18 @@
 - `operations.md`: Samples 一覧に `RuleUnitTestHelper` を追記。
 - `AddressTellerSettings.CleanupStaleEntries` のXML docと `design-decisions.md`: ラベルは削除されないという誤った記述を訂正した。stale entry削除時に、アドレスとラベルの両方が削除されることを明記。
 - 全公開API XMLドキュメントコメントを英語に統一・変換し、これまでドキュメントのなかった公開メンバー（IntelliSense表示）へのドキュメントを新規付与しました。
+- [互換性ポリシー](Documentation~/compatibility.ja.md) を新設した。公開C# API・CLIエントリポイント/引数・exit code・レポート/スナップショット/設定ファイルの形式・メニューパス・ルール記述の挙動のうち、SemVerで保証される範囲を一覧化し、`ValidationStatus` 等の open enum としての契約も明記した。
+- `CONTRIBUTING.md`: 型命名に関するセクションを追加し、公開型に `AddressTeller` プレフィックスを付ける基準（エントリポイントとシリアライズ成果物のルート型のみ）と、ルール記述用DSL（`Match`・`Naming` 等）における命名上の例外を明文化した。
+- `operations.md`: `BundleDistribution` JSONセクションの説明にあった誤ったキー名の大文字小文字表記（`bundleDistribution`・`totalLogicalBundleCount`・`unknownGroupCount`）を修正した。`JsonUtility` は大文字小文字の変換を一切行わないため、実際の出力はC#のフィールド名そのまま（`BundleDistribution`・`TotalLogicalBundleCount`・`UnknownGroupCount`）になる。旧来の（誤った）表記を前提にCIパーサを書いていた場合は修正が必要。
+- `operations.md`: `PostprocessOrder` の `0` が「未設定」を表す予約値であり、明示的に `0` を指定しても既定値の `1000` として扱われることを明記した。
+- `writing-rules.md`: `System.Text.RegularExpressions` も使用するルールファイルでは、2つの `Match` 型を区別するため `using Match = AddressTeller.Match;` を追加するとよい旨を追記した。
+- `operations.md`: `-addressTellerDisableRules`/`ClearCLI` に追加された exit code 3 の2条件（`-addressTellerDisableRules` への未知のルールクラス名指定、および `ClearCLI` の `scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー）を記載した。
+- [互換性ポリシー](Documentation~/compatibility.ja.md) に、`BundleDistribution` レポートセクションの「常に存在する」という意味論を明記した。このフィールドは省略されることも JSON の `null` になることもない。算出できなかった場合（`DryRunResult.After` が無い・`AddressableAssetSettings` が渡されなかった・算出処理自体が例外を投げた）は、省略されるのではなく全フィールドがC#の既定値（`Bundles: []`・件数0・空の `Disclaimer`）のオブジェクトとして出力される。
 
 ### 検証
 
 - Addressables 2.8.1〜3.1.0 との互換性確認は事前に実施済み（その時点では 353 件の EditMode テストで実施）。
-- 現在の EditMode テストスイート: 489 pass / 0 fail / 2 skip。最低 Addressables バージョン要件は 2.8.1 のまま変更なし。
+- 現在の EditMode テストスイート: 498 pass / 0 fail / 2 skip（計500件）。最低 Addressables バージョン要件は 2.8.1 のまま変更なし。
 
 ---
 

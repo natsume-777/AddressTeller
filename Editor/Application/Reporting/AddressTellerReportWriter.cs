@@ -12,10 +12,10 @@ namespace AddressTeller.Editor
     public enum ReportFormat
     {
         /// <summary>JSON format.</summary>
-        Json,
+        Json = 0,
 
         /// <summary>JUnit-style XML.</summary>
-        Junit,
+        Junit = 1,
     }
 
     /// <summary>

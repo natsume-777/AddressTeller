@@ -11,10 +11,10 @@ namespace AddressTeller.Editor
     public enum SnapshotRestoreMode
     {
         /// <summary>Writes only the Address/Label recorded in the snapshot. Labels added after the snapshot was taken are kept.</summary>
-        Additive,
+        Additive = 0,
 
         /// <summary>Strips labels not present in the snapshot (exact label match). Does not remove entries.</summary>
-        Exact,
+        Exact = 1,
     }
 
     /// <summary>

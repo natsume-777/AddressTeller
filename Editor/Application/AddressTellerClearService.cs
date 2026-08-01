@@ -9,10 +9,10 @@ namespace AddressTeller.Editor
     public enum ClearScope
     {
         /// <summary>Targets every Addressable entry.</summary>
-        All,
+        All = 0,
 
         /// <summary>Targets only entries in groups managed by AddressTeller (groups referenced as GroupName by any rule).</summary>
-        Managed,
+        Managed = 1,
     }
 
     /// <summary>Information about a single entry removed by a clear operation. Used for logging, snapshot descriptions, etc.</summary>

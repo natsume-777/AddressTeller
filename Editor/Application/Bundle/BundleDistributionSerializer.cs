@@ -9,10 +9,10 @@ namespace AddressTeller.Editor
     public enum DistributionFormat
     {
         /// <summary>CSV format.</summary>
-        Csv,
+        Csv = 0,
 
         /// <summary>Markdown format.</summary>
-        Markdown,
+        Markdown = 1,
     }
 
     /// <summary>

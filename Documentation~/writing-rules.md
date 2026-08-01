@@ -71,6 +71,8 @@ Key methods:
 - `Match.All()` — always true (unconditional rule)
 - `condition.And(otherCondition)` — combines conditions with AND
 
+If your rule file also uses `System.Text.RegularExpressions`, add `using Match = AddressTeller.Match;` to disambiguate the two `Match` types.
+
 ### Naming Static Class
 
 Common patterns for generating address values. Handles path normalization details so you don't have to.

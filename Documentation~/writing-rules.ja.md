@@ -71,6 +71,8 @@ rules.Group("Characters")
 - `Match.All()` — 常に真（条件なしルール）
 - `condition.And(otherCondition)` — 条件を AND 合成
 
+同じルールファイルで `System.Text.RegularExpressions` も使う場合は、2つの `Match` 型を区別するため `using Match = AddressTeller.Match;` を追加してください。
+
 ### Naming 静的クラス
 
 アドレス値を生成する頻出パターン。パス正規化の細部を気にせずに記述できます。

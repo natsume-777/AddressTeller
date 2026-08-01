@@ -4,7 +4,7 @@
 
 This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 Versioning follows [Semantic Versioning](https://semver.org/).
-As this is a `0.x` release, breaking changes may occur within minor versions under SemVer.
+While the version is `0.x`, breaking changes may land in a minor release; each one is marked **BREAKING** below. From `1.0.0` onward the guarantees in [Compatibility Policy](Documentation~/compatibility.md) apply: breaking changes are limited to major releases and are preceded by at least one release marking the affected API `[Obsolete]`.
 
 ## [Unreleased]
 
@@ -62,6 +62,8 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - **BREAKING**: `AddressTellerExplainReport`, `AddressTellerExplainAsset`, and `AddressTellerExplainRule` are now `internal` (previously `public`). No supported code path constructs or exposes these types outside the package.
 - **BREAKING**: `AddressTellerCliArgs.ReportFormat` is now `ReportFormat?` instead of `string`. Code that read this property as a raw string (`"json"`/`"junit"`) must be updated to compare against the `ReportFormat` enum.
 - `RuleUnitTestHelper` sample: `DefaultGroupSentinel` constant removed; `Collect()` now delegates to the package's own `RuleInspector` public API, ensuring the exact same builder contract (calling `Where()`/`Address()` a second time on the same group now throws `InvalidOperationException`). New helper methods `IsUnresolvedDefaultGroup()` and `DisplayGroupName()` added for checking and displaying unresolved default group sentinels in tests.
+- **BREAKING**: `LogicalBundleDto` renamed to `BundleDistributionReportEntry`. This is a C# API-only rename; the JSON report output (field names) is unchanged.
+- Enum members of `ValidationStatus`, `ClearScope`, `ReportFormat`, `DistributionFormat`, `SnapshotRestoreMode`, and `BundleModeKind` now carry explicit numeric values in source. This doesn't by itself enforce the member-to-number freeze described in [Compatibility Policy](Documentation~/compatibility.md#enums) — nothing prevents a future edit from renumbering — but the public API approval baseline now records each member's name and value, so `PublicApiApprovalTests` catches an accidental rename, removal, or renumbering. No behavior change (the implicit numbering was already sequential from 0).
 
 ### Documentation
 
@@ -72,11 +74,18 @@ As this is a `0.x` release, breaking changes may occur within minor versions und
 - `operations.md`: added `RuleUnitTestHelper` to the Samples section.
 - `AddressTellerSettings.CleanupStaleEntries` XML doc and `design-decisions.md`: corrected misleading text that incorrectly stated "labels are not deleted." Both addresses and labels are removed from stale entries.
 - Converted all public API XML documentation comments to English, and documented previously undocumented public members (IntelliSense text is now English).
+- Added [Compatibility Policy](Documentation~/compatibility.md), listing the public C# API, CLI entry points/arguments, exit codes, report/snapshot/settings file formats, menu paths, and rule-authoring behavior covered by SemVer guarantees, along with the open-enum contract for `ValidationStatus` and friends.
+- `CONTRIBUTING.md`: added a Type Naming section documenting when public types take the `AddressTeller` prefix (entry points and serialized artifact roots only) and the naming exception for the rule-authoring DSL (`Match`, `Naming`, etc.).
+- `operations.md`: fixed the `BundleDistribution` JSON section description, which previously showed the key names in the wrong casing (`bundleDistribution`, `totalLogicalBundleCount`, `unknownGroupCount`) — `JsonUtility` does not apply any casing convention, so the actual output uses the C# field names verbatim (`BundleDistribution`, `TotalLogicalBundleCount`, `UnknownGroupCount`). CI parsers written against the old (incorrect) casing should be updated.
+- `operations.md`: documented that `PostprocessOrder`'s `0` is a reserved "unset" sentinel — explicitly setting the field to `0` is treated the same as leaving it unset and falls back to `1000`.
+- `writing-rules.md`: noted that a rule file also using `System.Text.RegularExpressions` should add `using Match = AddressTeller.Match;` to disambiguate the two `Match` types.
+- `operations.md`: documented the two exit-code-3 conditions added for `-addressTellerDisableRules`/`ClearCLI` — an unknown rule class name passed to `-addressTellerDisableRules`, and (for `ClearCLI` with `scope=managed`) a rule configuration error that makes `managedGroups` untrustworthy.
+- Added [Compatibility Policy](Documentation~/compatibility.md) documentation of the `BundleDistribution` report section's "always present" semantics: the field is never omitted or JSON `null`; when it could not be calculated (no `DryRunResult.After`, no `AddressableAssetSettings` supplied, or the calculation itself threw), it appears as an all-C#-defaults object (`Bundles: []`, counts at `0`, empty `Disclaimer`) rather than being left out.
 
 ### Verified
 
 - Addressables 2.8.1 through 3.1.0 compatibility was confirmed in prior work (353 EditMode tests at that time).
-- Current EditMode test suite: 489 pass / 0 fail / 2 skip. The minimum Addressables requirement remains 2.8.1.
+- Current EditMode test suite: 498 pass / 0 fail / 2 skip (500 total). The minimum Addressables requirement remains 2.8.1.
 
 ---
 

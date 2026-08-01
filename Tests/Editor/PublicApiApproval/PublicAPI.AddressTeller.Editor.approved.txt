@@ -129,10 +129,17 @@ static class AddressTeller.Editor.AddressTellerSnapshotService
 
 sealed class AddressTeller.Editor.BundleDistributionReport
   Constructor ()
-  Field AddressTeller.Editor.LogicalBundleDto[] Bundles
+  Field AddressTeller.Editor.BundleDistributionReportEntry[] Bundles
   Field System.String Disclaimer
   Field System.Int32 TotalLogicalBundleCount
   Field System.Int32 UnknownGroupCount
+
+sealed class AddressTeller.Editor.BundleDistributionReportEntry
+  Constructor ()
+  Field System.Int32 AssetCount
+  Field System.String GroupName
+  Field System.String Mode
+  Field System.String SplitKey
 
 static class AddressTeller.Editor.BundleDistributionSerializer
   Method static System.String ToCsv(AddressTeller.BundleDistribution distribution, AddressTeller.Editor.DistributionSummary summary)
@@ -189,13 +196,6 @@ sealed class AddressTeller.Editor.LargestBundleInfo
   Property System.String GroupName { get; }
   Property AddressTeller.BundleModeKind Mode { get; }
   Property System.String SplitKey { get; }
-
-sealed class AddressTeller.Editor.LogicalBundleDto
-  Constructor ()
-  Field System.Int32 AssetCount
-  Field System.String GroupName
-  Field System.String Mode
-  Field System.String SplitKey
 
 sealed class AddressTeller.Editor.NullProgressReporter : AddressTeller.Editor.IProgressReporter
   Field static readonly AddressTeller.Editor.NullProgressReporter Instance

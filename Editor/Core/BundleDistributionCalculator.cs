@@ -11,16 +11,16 @@ namespace AddressTeller
     public enum BundleModeKind
     {
         /// <summary>All assets in the group are packed into a single bundle.</summary>
-        PackTogether,
+        PackTogether = 0,
 
         /// <summary>Each asset in the group is packed into its own separate bundle.</summary>
-        PackSeparately,
+        PackSeparately = 1,
 
         /// <summary>Assets in the group are packed into one bundle per distinct label set.</summary>
-        PackTogetherByLabel,
+        PackTogetherByLabel = 2,
 
         /// <summary>The group's BundleMode could not be determined, e.g. no BundledAssetGroupSchema is attached.</summary>
-        Unknown,
+        Unknown = 3,
     }
 
     /// <summary>
@@ -60,6 +60,8 @@ namespace AddressTeller
     /// One logical bundle: group, BundleMode, split key, and the number of assets it contains.
     /// For the Unknown mode this is not counted as a bundle; it is instead a separate per-group asset
     /// count (see the remarks on <see cref="BundleDistributionCalculator.Calculate"/>).
+    /// This is the domain model; its serialized (JSON report) form is
+    /// <c>AddressTeller.Editor.BundleDistributionReportEntry</c>.
     /// </summary>
     public sealed class LogicalBundle
     {
@@ -109,8 +111,8 @@ namespace AddressTeller
         /// <summary>
         /// Computes the logical bundle distribution from an asset -> group/label placement map and a
         /// group -> BundleMode map.
-        /// The returned Bundles are sorted deterministically by GroupName, then Mode, then SplitKey
-        /// (all Ordinal).
+        /// The returned Bundles are sorted deterministically by GroupName (Ordinal), then by Mode
+        /// (the enum's underlying numeric value, not a string comparison), then by SplitKey (Ordinal).
         /// </summary>
         /// <param name="assets">Asset identifier (e.g. GUID) -> placement.</param>
         /// <param name="groupModes">Group name -> BundleMode. Groups not listed are treated as Unknown.</param>

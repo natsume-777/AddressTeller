@@ -21,8 +21,15 @@ namespace AddressTeller.Editor
         public List<AddressTellerReportIssue> Issues = new();
 
         /// <summary>
-        /// Logical bundle distribution summary. Null if the dry-run has no <see cref="DryRunResult.After"/>
-        /// (e.g. when constructed in a test).
+        /// Logical bundle distribution summary. Left <c>null</c> — never assigned a new value — when the
+        /// dry-run has no <see cref="DryRunResult.After"/> (e.g. when constructed in a test), when no
+        /// <see cref="UnityEditor.AddressableAssets.Settings.AddressableAssetSettings"/> was supplied to the
+        /// builder, or when the bundle-distribution calculation itself throws (caught internally and logged
+        /// as a warning). Because this field's type has no way to serialize a null reference under
+        /// <see cref="JsonUtility"/>, the JSON output always contains a <c>BundleDistribution</c> object even
+        /// while the C# field itself is still <c>null</c>; in the "not calculated" cases above the serialized
+        /// object appears with every field at its C# default (<c>Bundles: []</c>, counts at <c>0</c>,
+        /// <c>Disclaimer: ""</c>) rather than being omitted or written as JSON <c>null</c>.
         /// </summary>
         public BundleDistributionReport BundleDistribution;
 
@@ -117,7 +124,7 @@ namespace AddressTeller.Editor
     public sealed class BundleDistributionReport
     {
         /// <summary>Logical bundles computed from the dry-run result, one per group/split combination.</summary>
-        public LogicalBundleDto[] Bundles = Array.Empty<LogicalBundleDto>();
+        public BundleDistributionReportEntry[] Bundles = Array.Empty<BundleDistributionReportEntry>();
 
         /// <summary>Total number of logical bundles, excluding Unknown.</summary>
         public int TotalLogicalBundleCount;
@@ -129,9 +136,13 @@ namespace AddressTeller.Editor
         public string Disclaimer = "";
     }
 
-    /// <summary>DTO for a single logical bundle (serializable form of <see cref="LogicalBundle"/>).</summary>
+    /// <summary>
+    /// Serialized (JSON report) form of a single logical bundle. This is the shape written to
+    /// <see cref="AddressTellerReport"/> output; the domain model it is derived from is
+    /// <see cref="LogicalBundle"/>.
+    /// </summary>
     [Serializable]
-    public sealed class LogicalBundleDto
+    public sealed class BundleDistributionReportEntry
     {
         /// <summary>Name of the Addressables group this logical bundle belongs to.</summary>
         public string GroupName;

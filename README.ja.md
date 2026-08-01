@@ -64,6 +64,7 @@ Addressables の DefaultGroup に付与したい場合は `Group("名前")` の�
 - [適用と運用](Documentation~/operations.ja.md) — 適用方法、CI 連携、Project Settings、スナップショット、サンプル
 - [設計上の決定事項](Documentation~/design-decisions.ja.md) — アドレス・ラベル・グループの扱いをこう決めた理由
 - [アーキテクチャ](Documentation~/architecture.ja.md) — レイヤ構成・フォルダ別の責務・ルール評価の流れ
+- [互換性ポリシー](Documentation~/compatibility.ja.md) — SemVer の保証対象・対象外
 - [コントリビュート](CONTRIBUTING.md)
 
 ## 背景

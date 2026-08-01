@@ -2,44 +2,51 @@ using System.Collections.Generic;
 
 namespace AddressTeller.Editor
 {
-    /// <summary>Outcome categories produced by evaluating a rule set against a single asset.</summary>
+    /// <summary>
+    /// Outcome categories produced by evaluating a rule set against a single asset.
+    /// This is an open enum: new members may be appended in a minor release. See the Compatibility Policy
+    /// (Documentation~/compatibility.md) for the full contract. Consumers must place a <c>default</c> arm
+    /// in any <c>switch</c> over this type, persist values by name rather than by underlying number, and
+    /// treat an unrecognized value as a problem (fail closed) rather than silently falling back to
+    /// <see cref="Ok"/>.
+    /// </summary>
     public enum ValidationStatus
     {
         /// <summary>Ready to apply.</summary>
-        Ok,
+        Ok = 0,
         /// <summary>No rule matched this asset (nothing was generated, including labels).</summary>
-        Skipped,
+        Skipped = 1,
         /// <summary>
         /// No address candidate, but a label-only rule (AnyGroup() or an addressless Group() rule)
         /// matched and produced a label. The entry is not stale, so it is excluded from cleanup.
         /// </summary>
-        LabelsOnly,
+        LabelsOnly = 2,
         /// <summary>Two or more rules produced an address (conflict).</summary>
-        ConflictingAddress,
+        ConflictingAddress = 3,
         /// <summary>The specified group does not exist in Addressables.</summary>
-        GroupNotFound,
+        GroupNotFound = 4,
         /// <summary>AddressSelector returned null or an empty string.</summary>
-        InvalidAddress,
+        InvalidAddress = 5,
         /// <summary>The rule's Predicate / AddressSelector / LabelSelector threw an exception.</summary>
-        RuleError,
+        RuleError = 6,
         /// <summary>
         /// The specified group does not exist, but AutoCreateMissingGroups is enabled, so it will be
         /// created automatically on Apply. Validate/Predict (dry-run) do not create it.
         /// </summary>
-        GroupWillBeCreated,
+        GroupWillBeCreated = 7,
         /// <summary>AutoCreateMissingGroups is enabled, but automatic group creation failed.</summary>
-        GroupCreationFailed,
+        GroupCreationFailed = 8,
         /// <summary>
         /// A rule using GroupDefault() exists, but AddressableAssetSettings.DefaultGroup could not be
         /// obtained. Writes for assets affected by that rule are skipped.
         /// </summary>
-        DefaultGroupUnavailable,
+        DefaultGroupUnavailable = 9,
         /// <summary>
         /// The rule class's Configure() call itself threw an exception. The rule is treated as having
         /// produced zero entries (unevaluated) for every asset, and evaluation of other rules continues.
         /// Context is null because this is not tied to a specific asset.
         /// </summary>
-        RuleConfigureFailed,
+        RuleConfigureFailed = 10,
     }
 
     /// <summary>

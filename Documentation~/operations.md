@@ -31,19 +31,19 @@ Exit codes (`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI`):
 | 0 | No drift, no issues |
 | 1 | Drift detected (changes present, no Validation errors) |
 | 2 | Validation errors present |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, or report write failure) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, or report write failure) |
 
 `ClearCLI` exit codes:
 
 | Exit code | Meaning |
 |---|---|
 | 0 | Clear completed |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, or snapshot save failure) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `managedGroups` untrustworthy for `scope=managed`, or snapshot save failure) |
 | 4 | Rejected because `-addressTellerConfirmClear` was not specified (intentional rejection) |
 
 ### Logical Bundle Distribution Summary
 
-The `json` report includes a `bundleDistribution` section. This is an estimate of logical bundle units computed from the dry-run Predict results (asset → group/labels) and each group's BundleMode (PackTogether/PackSeparately/PackTogetherByLabel). It is intended as a quick check for unintended extreme distributions (e.g., one huge bundle or hundreds of tiny ones), and **does not guarantee accuracy against an actual Addressables build**.
+The `json` report includes a `BundleDistribution` section (JSON keys mirror the C# field names verbatim, since `JsonUtility` does not apply any casing convention). This is an estimate of logical bundle units computed from the dry-run Predict results (asset → group/labels) and each group's BundleMode (PackTogether/PackSeparately/PackTogetherByLabel). It is intended as a quick check for unintended extreme distributions (e.g., one huge bundle or hundreds of tiny ones), and **does not guarantee accuracy against an actual Addressables build**.
 
 Known approximation differences:
 
@@ -51,14 +51,14 @@ Known approximation differences:
 - PackSeparately's per-folder grouping
 - PackTogetherByLabel label combination differences (this summary uses sorted label sets joined with a separator as a normalization key)
 
-Groups without `BundledAssetGroupSchema` cannot have their BundleMode determined and are treated as `Unknown`; they are excluded from `totalLogicalBundleCount` and counted separately in `unknownGroupCount`.
+Groups without `BundledAssetGroupSchema` cannot have their BundleMode determined and are treated as `Unknown`; they are excluded from `TotalLogicalBundleCount` and counted separately in `UnknownGroupCount`. See [Compatibility Policy](compatibility.md#5-report-output-json--junit-xml) for the full list of JSON keys and their stability guarantees.
 
 ## Project Settings
 
 Under `Project Settings > AddressTeller`:
 
 - **Auto-apply on import** (default: ON) — When off, `AssetPostprocessor` auto-apply is disabled. Manual menu operations are unaffected.
-- **Postprocessor execution order** (`PostprocessOrder`, default: 1000) — Passed to `AssetPostprocessor.GetPostprocessOrder()`. Lower values run before other `AssetPostprocessor`s. The high default puts AddressTeller after other packages' postprocessors, so assets generated or modified by those run first.
+- **Postprocessor execution order** (`PostprocessOrder`, default: 1000) — Passed to `AssetPostprocessor.GetPostprocessOrder()`. Lower values run before other `AssetPostprocessor`s. The high default puts AddressTeller after other packages' postprocessors, so assets generated or modified by those run first. Note: `0` is reserved as the "unset" sentinel — explicitly setting the field to `0` is treated the same as leaving it unset and falls back to `1000`.
 - **Remove unmatched entries** (`CleanupStaleEntries`, default: ON) — During `Apply All`, removes assets from AddressTeller-managed groups (groups referenced by at least one rule) that no longer match any rule. Deletion is per-entry (`RemoveAssetEntry`), removing both the address and Addressables labels. Entries in groups AddressTeller does not manage are never touched. **However, manually registered entries inside a managed group will be deleted if no rule matches them** (only per-asset matching is checked). See [Design Decisions: Deletions Are Determined by Per-Asset Ownership](design-decisions.md#deletions-are-determined-by-per-asset-ownership) and [Design Decisions: Missing Groups Are an Error](design-decisions.md#missing-groups-are-an-error-default).
 - **Snapshot folder** (see below)
 

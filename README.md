@@ -64,6 +64,7 @@ If you define rule classes in a custom assembly, ensure your asmdef's `reference
 - [Apply & Operations](Documentation~/operations.md) — apply methods, CI integration, Project Settings, snapshots, samples
 - [Design Decisions](Documentation~/design-decisions.md) — why addresses, labels, and groups behave the way they do
 - [Architecture](Documentation~/architecture.md) — layer structure, folder responsibilities, rule evaluation flow
+- [Compatibility Policy](Documentation~/compatibility.md) — what is and isn't covered by SemVer guarantees
 - [Contributing](CONTRIBUTING.md)
 
 ## Background
