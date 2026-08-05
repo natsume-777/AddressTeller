@@ -14,7 +14,9 @@ public abstract class AddressRuleBase
 
 Classes that inherit `AddressRuleBase` are collected automatically from assemblies — no central registration required. Place them under an `Editor` folder.
 
-If you define rule classes in a custom assembly definition (asmdef), add both `AddressTeller.Core` and `AddressTeller.Editor` to its `references`, since the public APIs expose types from both assemblies (e.g., `ValidationResult.Context` is `AddressTeller.AssetContext` from Core).
+If you define rule classes in a custom assembly definition (asmdef), add `AddressTeller.Core` to its `references`. Everything a rule class touches — `AddressRuleBase`, `IAddressRuleBuilder`, `Match`, `AssetCondition`, `Naming`, `AssetContext`, and the `AddressTeller.Testing.RuleInspector` used for unit tests — lives in that assembly, so a rule-only assembly needs nothing else. (The `Rule Unit Test Helper` sample's asmdef is exactly this case: it references `AddressTeller.Core` alone.)
+
+Add `AddressTeller.Editor` on top of that only if the same assembly also calls the operational APIs — `AddressTellerService`, `ValidationResult`, `AddressTellerSnapshotService`, the report types, and so on. Those live in `AddressTeller.Editor` but expose Core types in their signatures (e.g., `ValidationResult.Context` is `AddressTeller.AssetContext` from Core), so referencing `AddressTeller.Editor` always requires referencing `AddressTeller.Core` as well.
 
 ## Group / Where / Address / Label
 

@@ -28,6 +28,14 @@ Or add it directly to `Packages/manifest.json`:
 }
 ```
 
+Both forms above track the default branch, so a later `Update` can pull in breaking changes.
+To pin a released version, append the release tag to the URL — this is the recommended form
+for projects that rely on the guarantees in [Compatibility Policy](Documentation~/compatibility.md):
+
+```
+https://github.com/natsume-777/AddressTeller.git#0.4.1
+```
+
 ## Quick Start
 
 New to Addressables? An **address** is the string key used to load an asset at runtime (`Addressables.LoadAssetAsync<GameObject>("Player")`), a **label** is a freeform tag for filtering/grouping assets across addresses, and a **group** is an Addressables container that controls how its assets are bundled. Installing AddressTeller pulls in `com.unity.addressables` as a package dependency, but Addressables itself still needs to be initialized once per project: open `Window > Asset Management > Addressables > Groups` and create the settings if prompted.
@@ -62,7 +70,7 @@ By default, an `AssetPostprocessor` also re-runs rule evaluation automatically w
 
 To assign to the Addressables DefaultGroup, use `GroupDefault()` instead of `Group("name")` — it follows DefaultGroup renames automatically. See [Writing Rules](Documentation~/writing-rules.md#groupdefault) for details.
 
-If you define rule classes in a custom assembly, ensure your asmdef's `references` includes both `AddressTeller.Core` and `AddressTeller.Editor` (the public APIs expose types from both assemblies).
+If you define rule classes in a custom assembly, add `AddressTeller.Core` to your asmdef's `references` — the whole rule-authoring surface (`AddressRuleBase`, `IAddressRuleBuilder`, `Match`, `Naming`, `AssetContext`) lives there. Add `AddressTeller.Editor` as well only if the same assembly also calls the operational APIs (`AddressTellerService`, `ValidationResult`, snapshots, reports); those are in `AddressTeller.Editor` but expose Core types in their signatures, so referencing `AddressTeller.Editor` always means referencing `AddressTeller.Core` too.
 
 ## Documentation
 

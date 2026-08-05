@@ -28,6 +28,14 @@ https://github.com/natsume-777/AddressTeller.git
 }
 ```
 
+上記はいずれも既定ブランチを追跡するため、後から `Update` すると破壊的変更が入る可能性があります。
+リリース版に固定するには、URL の末尾にリリースタグを付けてください。[互換性ポリシー](Documentation~/compatibility.ja.md)
+の保証を前提に運用する場合はこちらを推奨します。
+
+```
+https://github.com/natsume-777/AddressTeller.git#0.4.1
+```
+
 ## クイックスタート
 
 Addressables に不慣れな方向けに用語を一言で説明すると、**アドレス**は実行時にアセットをロードする際に使う文字列キー（`Addressables.LoadAssetAsync<GameObject>("Player")`）、**ラベル**はアドレスをまたいでアセットを絞り込み・分類するための自由記述タグ、**グループ**はアセットのバンドル方法（分割・圧縮方針）を決める Addressables 上の入れ物です。AddressTeller をインストールするとパッケージ依存として `com.unity.addressables` も一緒に導入されますが、Addressables 自体の初期化（設定アセットの作成）はプロジェクトごとに一度別途必要です。`Window > Asset Management > Addressables > Groups` を開き、案内が出たら設定を作成してください。
@@ -62,7 +70,7 @@ public sealed class GameAddressRules : AddressRuleBase
 
 Addressables の DefaultGroup に付与したい場合は `Group("名前")` の代わりに `GroupDefault()` を使えます（DefaultGroup のリネームに追従します）。詳しくは [ルールの書き方](Documentation~/writing-rules.ja.md#groupdefault) を参照してください。
 
-ルールクラスを独自の asmdef 内に定義する場合、その asmdef の `references` に `AddressTeller.Core` と `AddressTeller.Editor` の両方を追加してください（公開 API が両方のアセンブリ型を露出しているため）。
+ルールクラスを独自の asmdef 内に定義する場合、その asmdef の `references` に `AddressTeller.Core` を追加してください。ルール記述に使う型（`AddressRuleBase` / `IAddressRuleBuilder` / `Match` / `Naming` / `AssetContext`）はすべてこのアセンブリにあります。同じアセンブリから運用系 API（`AddressTellerService` / `ValidationResult` / スナップショット / レポート）も呼ぶ場合に限り、`AddressTeller.Editor` も追加してください。これらは `AddressTeller.Editor` にありますが、シグネチャに Core の型を露出しているため、`AddressTeller.Editor` を参照する場合は必ず `AddressTeller.Core` の参照も必要になります。
 
 ## ドキュメント
 

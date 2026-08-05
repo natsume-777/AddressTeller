@@ -8,6 +8,20 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+### Documentation
+
+- README.md, README.ja.md, Documentation~/writing-rules.md and .ja.md: corrected the asmdef
+  reference guidance. A custom assembly that only defines rule classes needs `AddressTeller.Core`
+  alone — the entire rule-authoring surface (`AddressRuleBase`, `IAddressRuleBuilder`, `Match`,
+  `AssetCondition`, `Naming`, `AssetContext`, `RuleInspector`) lives there, as the
+  `Rule Unit Test Helper` sample's own asmdef demonstrates. `AddressTeller.Editor` is required
+  only when the assembly also calls the operational APIs (`AddressTellerService`,
+  `ValidationResult`, snapshots, reports); referencing it always requires referencing
+  `AddressTeller.Core` too, since those signatures expose Core types. The previous text told
+  every rule assembly to reference both.
+- README.md and README.ja.md: documented pinning the install to a release tag
+  (`...AddressTeller.git#0.4.1`), and noted that the unpinned git URL tracks the default branch.
+
 ## [0.4.1] - 2026-08-02
 
 ### Documentation

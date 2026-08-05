@@ -14,7 +14,9 @@ public abstract class AddressRuleBase
 
 `AddressRuleBase` を継承したクラスはアセンブリから自動収集されます（中央登録は不要）。`Editor` フォルダ配下に置いてください。
 
-ルールクラスを独自の asmdef 内に定義する場合、その asmdef の `references` に `AddressTeller.Core` と `AddressTeller.Editor` の両方を追加してください。公開 API が両方のアセンブリ型を露出しているため（例: `ValidationResult.Context` は Core の `AddressTeller.AssetContext`）です。
+ルールクラスを独自の asmdef 内に定義する場合、その asmdef の `references` に `AddressTeller.Core` を追加してください。ルールクラスが触れる型（`AddressRuleBase` / `IAddressRuleBuilder` / `Match` / `AssetCondition` / `Naming` / `AssetContext`、および単体テストで使う `AddressTeller.Testing.RuleInspector`）はすべてこのアセンブリにあるため、ルール定義だけのアセンブリであればこれ以外の参照は不要です（`Rule Unit Test Helper` サンプルの asmdef がまさにこのケースで、`AddressTeller.Core` のみを参照しています）。
+
+同じアセンブリから運用系 API（`AddressTellerService` / `ValidationResult` / `AddressTellerSnapshotService` / レポート系の型など）も呼ぶ場合に限り、`AddressTeller.Editor` も追加してください。これらは `AddressTeller.Editor` にありますが、シグネチャに Core の型を露出している（例: `ValidationResult.Context` は Core の `AddressTeller.AssetContext`）ため、`AddressTeller.Editor` を参照する場合は必ず `AddressTeller.Core` の参照も必要になります。
 
 ## Group / Where / Address / Label
 
