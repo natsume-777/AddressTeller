@@ -19,8 +19,11 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   `ValidationResult`, snapshots, reports); referencing it always requires referencing
   `AddressTeller.Core` too, since those signatures expose Core types. The previous text told
   every rule assembly to reference both.
-- README.md and README.ja.md: documented pinning the install to a release tag
-  (`...AddressTeller.git#0.4.1`), and noted that the unpinned git URL tracks the default branch.
+- README.md and README.ja.md: documented pinning the install to a release tag and clarified
+  that the [Compatibility Policy](Documentation~/compatibility.md) takes effect only from `1.0.0`
+  onward; while in `0.x`, breaking changes may land in minor releases, so tag pinning is strongly
+  recommended. Noted that unpinned git URLs track the default branch, and that release tags exist
+  only for version 0.4.0 and later.
 
 ## [0.4.1] - 2026-08-02
 

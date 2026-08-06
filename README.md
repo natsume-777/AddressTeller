@@ -29,12 +29,17 @@ Or add it directly to `Packages/manifest.json`:
 ```
 
 Both forms above track the default branch, so a later `Update` can pull in breaking changes.
-To pin a released version, append the release tag to the URL — this is the recommended form
-for projects that rely on the guarantees in [Compatibility Policy](Documentation~/compatibility.md):
+To pin a released version, append the release tag to the URL. While the version is `0.x`, the
+[Compatibility Policy](Documentation~/compatibility.md) does not yet apply; breaking changes may
+land in any minor release. Pinning to a tag is therefore strongly recommended:
 
 ```
-https://github.com/natsume-777/AddressTeller.git#0.4.1
+https://github.com/natsume-777/AddressTeller.git#v<X.Y.Z>
 ```
+
+See [GitHub Releases](https://github.com/natsume-777/AddressTeller/releases) for available tags.
+
+**Note:** Release tags exist only for version 0.4.0 and later; tag-based pinning is not available for earlier versions.
 
 ## Quick Start
 

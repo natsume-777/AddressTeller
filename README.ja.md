@@ -29,12 +29,16 @@ https://github.com/natsume-777/AddressTeller.git
 ```
 
 上記はいずれも既定ブランチを追跡するため、後から `Update` すると破壊的変更が入る可能性があります。
-リリース版に固定するには、URL の末尾にリリースタグを付けてください。[互換性ポリシー](Documentation~/compatibility.ja.md)
-の保証を前提に運用する場合はこちらを推奨します。
+リリース版に固定するには、URL の末尾にリリースタグを付けてください。バージョン `0.x` の間は
+[互換性ポリシー](Documentation~/compatibility.ja.md)はまだ発効していません。マイナーリリースでも破壊的変更が入りうるため、タグ固定を強く推奨します。
 
 ```
-https://github.com/natsume-777/AddressTeller.git#0.4.1
+https://github.com/natsume-777/AddressTeller.git#v<X.Y.Z>
 ```
+
+利用可能なタグは [GitHub Releases](https://github.com/natsume-777/AddressTeller/releases) で確認してください。
+
+**注:** リリースタグは 0.4.0 以降にのみ存在するため、タグによるバージョン固定は 0.4.0 以降が対象です。
 
 ## クイックスタート
 

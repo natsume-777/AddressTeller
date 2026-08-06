@@ -11,7 +11,7 @@
 ### Documentation
 
 - README.md/README.ja.md/Documentation~/writing-rules.md/.ja.md: asmdef の参照に関する記述を修正。ルールクラスを定義するだけの独自アセンブリに必要な参照は `AddressTeller.Core` のみ（`AddressRuleBase` / `IAddressRuleBuilder` / `Match` / `AssetCondition` / `Naming` / `AssetContext` / `RuleInspector` といったルール記述面はすべて Core にあり、`Rule Unit Test Helper` サンプルの asmdef 自体がこの構成）。`AddressTeller.Editor` が必要なのは運用系 API（`AddressTellerService` / `ValidationResult` / スナップショット / レポート）も呼ぶ場合に限られ、その場合はシグネチャが Core の型を露出しているため `AddressTeller.Core` の参照も併せて必要になる。従前の記述はすべてのルールアセンブリに両方の参照を求めていた。
-- README.md/README.ja.md: リリースタグによるバージョン固定（`...AddressTeller.git#0.4.1`）を記載し、タグなしの git URL は既定ブランチを追跡することを明記。
+- README.md/README.ja.md: リリースタグによるバージョン固定を記載。[互換性ポリシー](Documentation~/compatibility.ja.md)は `1.0.0` 以降に発効し、`0.x` ではマイナーリリースでも破壊的変更が入りうるため、タグ固定を強く推奨することを明記。タグなしの git URL は既定ブランチを追跡すること、およびリリースタグは 0.4.0 以降にのみ存在することを記載。
 
 ## [0.4.1] - 2026-08-02
 
