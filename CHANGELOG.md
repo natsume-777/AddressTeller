@@ -8,6 +8,8 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-07
+
 ### Documentation
 
 - README.md, README.ja.md, Documentation~/writing-rules.md and .ja.md: corrected the asmdef

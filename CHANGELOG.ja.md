@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-07
+
 ### Documentation
 
 - README.md/README.ja.md/Documentation~/writing-rules.md/.ja.md: asmdef の参照に関する記述を修正。ルールクラスを定義するだけの独自アセンブリに必要な参照は `AddressTeller.Core` のみ（`AddressRuleBase` / `IAddressRuleBuilder` / `Match` / `AssetCondition` / `Naming` / `AssetContext` / `RuleInspector` といったルール記述面はすべて Core にあり、`Rule Unit Test Helper` サンプルの asmdef 自体がこの構成）。`AddressTeller.Editor` が必要なのは運用系 API（`AddressTellerService` / `ValidationResult` / スナップショット / レポート）も呼ぶ場合に限られ、その場合はシグネチャが Core の型を露出しているため `AddressTeller.Core` の参照も併せて必要になる。従前の記述はすべてのルールアセンブリに両方の参照を求めていた。
