@@ -129,7 +129,11 @@ namespace AddressTeller.Editor
             if (string.IsNullOrEmpty(guid)) return null;
             var type = AssetDatabase.GetMainAssetTypeAtPath(path);
             if (type == null) return null;
-            return new AssetContext(guid, path, type);
+            // フォルダのメインアセット型は必ず DefaultAsset なので、その場合だけ IsValidFolder を呼ぶ。
+            // プロジェクト全アセットのループから毎回 AssetDatabase を叩かないための絞り込みで、
+            // DefaultAsset でないパスがフォルダになることはないため取りこぼしは生じない。
+            var isFolder = type == typeof(DefaultAsset) && AssetDatabase.IsValidFolder(path);
+            return new AssetContext(guid, path, type, isFolder);
         }
 
         /// <summary>ルールの評価エラーを issues へ追加する。</summary>

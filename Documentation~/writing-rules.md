@@ -107,6 +107,9 @@ Per-asset information passed to each rule.
 | `IsInFolder(string)` | Returns true if the asset is under the specified folder | `ctx.IsInFolder("Assets/Game")` → `true` |
 | `PathSegments` | Path split by `/` | `["Assets", "Game", "Characters", "Player.prefab"]` |
 | `RelativePathFrom(string root)` | Relative path from the specified folder | `ctx.RelativePathFrom("Assets/Game")` → `"Characters/Player.prefab"` |
+| `IsFolder` | Whether the asset is a folder | `false` |
+
+Folder assets are excluded before rule evaluation, so rules never receive a context with `IsFolder` set. The property is public for callers that construct an `AssetContext` by hand, such as tests and tooling.
 
 ## Testing
 
@@ -120,3 +123,4 @@ Unit-test `AddressRuleBase` subclasses in isolation using the public `RuleInspec
 - **No matching rule**: The asset is skipped. If `CleanupStaleEntries` is enabled (see [Apply & Operations](operations.md)), any existing entries in AddressTeller-managed groups are removed. This removal only applies when *no* rule matches at all (neither an address nor a label). If a label-only rule (e.g. `AnyGroup()` or a `Group()` rule with no `Address()`) still matches, the entry is **not** removed, and its labels are updated on the existing entry instead. In this label-only case, the existing entry's address and group are left unchanged — they keep whatever value was assigned the last time an address rule matched for that asset. Only its labels are updated, and only when the entry is in an AddressTeller-managed group; entries in unmanaged groups are left untouched.
 - **Group not found**: Results in a `GroupNotFound` error. Groups are not created automatically — create them first in the Addressable Groups window. See [Design Decisions: Missing Groups Are an Error](design-decisions.md#missing-groups-are-an-error-default).
 - **Exception inside a rule**: Only that rule is reported as `RuleError`; processing continues for other rules and other assets.
+- **Assets excluded from evaluation**: The following are filtered out before any rule runs: `.cs` / `.js` / `.boo` / `.exe` / `.dll` / `.meta` files, any path containing `/Editor/`, anything under the Addressables config folder (`AddressableAssetSettings.ConfigFolder`), Addressables' own internal assets (`AddressableAssetSettings` / `AddressableAssetGroup` / `AddressableAssetGroupSortSettings` / subclasses of `AddressableAssetGroupSchema`), and **folder assets**. Folders are excluded because making one addressable produces a *folder entry* that implicitly covers every asset beneath it, which would double up with the per-asset entries AddressTeller creates. Since `Match.InFolder` and `Match.Glob` test the path by prefix, without this exclusion a rule would also match the subfolders themselves — `Match.InFolder("Assets/Characters")` matches the folder `Assets/Characters/Enemies`, for instance.

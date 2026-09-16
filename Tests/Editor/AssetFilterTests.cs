@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEditor;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
@@ -129,6 +130,28 @@ namespace AddressTeller.Editor.Tests
             Assert.DoesNotThrow(() => AssetFilter.ShouldExcludeByPath(null));
             Assert.IsTrue(AssetFilter.ShouldExcludeByPath(null));
             Assert.IsTrue(AssetFilter.ShouldExcludeByPath(null, "Assets/AddressableAssetsData"));
+        }
+
+        [Test]
+        public void Folder_IsExcluded()
+        {
+            // フォルダ資産は拡張子を持たないため ShouldExcludeByPath では弾けない。
+            // Addressable 化するとフォルダエントリになり配下を二重管理するため、型ではなく
+            // IsFolder フラグで除外する。
+            var ctx = new AssetContext("guid1", "Assets/Game/Characters", typeof(DefaultAsset), isFolder: true);
+
+            Assert.IsFalse(AssetFilter.ShouldExcludeByPath(ctx.Path));
+            Assert.IsTrue(AssetFilter.ShouldExclude(ctx));
+        }
+
+        [Test]
+        public void ExtensionlessFile_IsNotExcluded()
+        {
+            // 拡張子がないだけのファイル（LICENSE など）は除外しない。除外判定はあくまで
+            // IsFolder に基づくもので、拡張子の有無で代用していないことを確認する。
+            var ctx = new AssetContext("guid1", "Assets/Game/LICENSE", typeof(DefaultAsset), isFolder: false);
+
+            Assert.IsFalse(AssetFilter.ShouldExclude(ctx));
         }
 
         [Test]

@@ -8,6 +8,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- フォルダ資産がルール評価の対象になっていた。`AssetDatabase.GetAllAssetPaths()` はフォルダのパスも返すが、`AssetFilter` の除外条件は拡張子・`/Editor/`・Addressables 設定フォルダ・Addressables 内部型のみで、拡張子を持たないフォルダはすり抜けていた。`Match.InFolder` / `Match.Glob` はパスの前方一致で判定するため、`Match.InFolder("Assets/Characters")` が `Assets/Characters/Enemies` のようなサブフォルダ自身にもマッチし、Addressable 化されていた。フォルダを Addressable 化すると Addressables 側で配下の全アセットを含む「フォルダエントリ」になるため、AddressTeller が個別に作るエントリと二重管理になり、アドレスもフォルダ名から生成されていた。インポート時自動適用が有効な場合はフォルダを作成しただけでエントリが増える状態だった。
+  なお、この修正でフォルダは評価ループ自体に入らなくなるため、**すでに作られてしまったフォルダエントリは `CleanupStaleEntries` では削除されません**（stale 判定は評価対象のアセットごとに行われるため）。Addressables Groups ウィンドウから手動で削除するか、`Tools/AddressTeller/Clear All Addresses & Labels...` を使用してください。
+
+### Added
+
+- `AssetContext.IsFolder`: そのアセットがフォルダかどうかを表す新規公開プロパティ。併せて `AssetContext` のコンストラクタに省略可能な `isFolder` 引数（既定値 `false`）を追加。フォルダは評価前に除外されるためルールに渡されることはなく、テストやツールから `AssetContext` を自前で構築する場合のために公開している。既存の3引数呼び出しはそのまま動作する。
+
 ## [0.4.2] - 2026-08-07
 
 ### Documentation
