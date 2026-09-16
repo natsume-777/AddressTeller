@@ -8,6 +8,15 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+### Fixed
+
+- Folder assets were being evaluated by rules. `AssetDatabase.GetAllAssetPaths()` returns folder paths as well, but `AssetFilter` only excluded by extension, `/Editor/`, the Addressables config folder, and Addressables' internal types — a folder, having no extension, passed straight through. Because `Match.InFolder` and `Match.Glob` test the path by prefix, `Match.InFolder("Assets/Characters")` also matched subfolders such as `Assets/Characters/Enemies`, which then became addressable. Making a folder addressable produces a *folder entry* that implicitly covers every asset beneath it, so it double-counted against the per-asset entries AddressTeller creates, and its address was derived from the folder name. With import-time auto-apply enabled, merely creating a folder added an entry.
+  Note that because folders no longer enter the evaluation loop at all, **folder entries that were already created are not removed by `CleanupStaleEntries`** (staleness is decided per evaluated asset). Delete them from the Addressables Groups window, or use `Tools/AddressTeller/Clear All Addresses & Labels...`.
+
+### Added
+
+- `AssetContext.IsFolder`: new public property indicating whether the asset is a folder, along with an optional `isFolder` constructor argument (default `false`). Folders are excluded before evaluation so rules never see one; the property is public for callers that build an `AssetContext` by hand, such as tests and tooling. Existing three-argument calls continue to work unchanged.
+
 ## [0.4.2] - 2026-08-07
 
 ### Documentation

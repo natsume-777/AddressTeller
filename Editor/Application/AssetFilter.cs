@@ -27,6 +27,13 @@ namespace AddressTeller.Editor
             if (ShouldExcludeByPath(context.Path, addressablesConfigFolder))
                 return true;
 
+            // フォルダ資産を除外する。フォルダは拡張子を持たないため ShouldExcludeByPath をすり抜けるが、
+            // Addressable 化すると Addressables 側で配下の全アセットを含む「フォルダエントリ」になり、
+            // AddressTeller が個別に作るエントリと二重管理になる。また Match.InFolder / Match.Glob は
+            // パス前方一致で判定するため、対象フォルダ配下のサブフォルダにもそのままマッチしてしまう。
+            if (context.IsFolder)
+                return true;
+
             if (context.Type != null)
             {
                 if (ExcludedAddressablesTypes.Contains(context.Type)) return true;

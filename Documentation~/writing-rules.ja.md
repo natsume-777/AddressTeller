@@ -107,6 +107,9 @@ rules.Group("Characters")
 | `IsInFolder(string)` | フォルダ配下判定メソッド | `ctx.IsInFolder("Assets/Game")` → `true` |
 | `PathSegments` | パスを `/` で分割した配列 | `["Assets", "Game", "Characters", "Player.prefab"]` |
 | `RelativePathFrom(string root)` | 指定フォルダ起点の相対パス | `ctx.RelativePathFrom("Assets/Game")` → `"Characters/Player.prefab"` |
+| `IsFolder` | フォルダ資産かどうか | `false` |
+
+フォルダ資産は評価対象から除外されるため、ルールに `IsFolder` が `true` のコンテキストが渡されることはありません。このプロパティは、テストやツールから自分で `AssetContext` を構築する場合のために公開されています。
 
 ## テスト
 
@@ -120,3 +123,4 @@ rules.Group("Characters")
 - **マッチするルールが0件の場合**: そのアセットは対象外としてスキップされます。`CleanupStaleEntries`（[適用と運用](operations.ja.md) を参照）が有効な場合のみ、AddressTeller が管理するグループに残った既存エントリが削除されます。この削除はアドレス・ラベルのいずれも生成しない「真に無マッチ」の場合のみ適用されます。ラベルのみルール（`AnyGroup()` や `Address()` を呼ばない `Group()` ルール）がマッチしている場合はエントリは削除されず、そのラベルが更新されます。このラベルのみのケースでは、既存エントリの address / group は変更されません。そのアセットに対して最後にアドレスルールがマッチした時点の値のまま保持され、管理下グループに属する場合のみラベルが更新されます（管理外グループのエントリには一切触れません）。
 - **グループが存在しない場合**: `GroupNotFound` エラーになります。グループの自動作成は行いません。事前に Addressable Groups ウィンドウで作成してください。詳しくは [設計上の決定事項: 存在しないグループは作らない（既定）](design-decisions.ja.md#存在しないグループは作らない既定) を参照してください。
 - **ルール内で例外が発生した場合**: そのルールだけが `RuleError` として個別に報告され、他のルール・他のアセットの処理は継続されます。
+- **評価対象外のアセット**: 次のものはルール評価の前に除外されます。`.cs` / `.js` / `.boo` / `.exe` / `.dll` / `.meta`、パスに `/Editor/` を含むもの、Addressables の設定フォルダ（`AddressableAssetSettings.ConfigFolder`）配下、Addressables の内部アセット（`AddressableAssetSettings` / `AddressableAssetGroup` / `AddressableAssetGroupSortSettings` / `AddressableAssetGroupSchema` の派生）、および**フォルダ資産**。フォルダを除外するのは、Addressable 化すると Addressables 側で配下の全アセットを含む「フォルダエントリ」になり、AddressTeller が個別に作るエントリと二重管理になるためです。`Match.InFolder` や `Match.Glob` はパスの前方一致で判定するため、除外がなければ対象フォルダ配下のサブフォルダ自身にもマッチしてしまいます（`Match.InFolder("Assets/Characters")` が `Assets/Characters/Enemies` というフォルダにマッチする、など）。

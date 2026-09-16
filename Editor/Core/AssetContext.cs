@@ -19,6 +19,13 @@ namespace AddressTeller
         /// <summary>The asset's type.</summary>
         public Type Type { get; }
 
+        /// <summary>
+        /// True when this asset is a folder. Folders are excluded from rule evaluation, so rules never
+        /// see a context with this set; it exists so that callers constructing a context by hand (tests,
+        /// tooling) can express the distinction.
+        /// </summary>
+        public bool IsFolder { get; }
+
         /// <summary>File name without extension (e.g. "Player").</summary>
         public string FileNameWithoutExtension => System.IO.Path.GetFileNameWithoutExtension(Path);
 
@@ -38,9 +45,10 @@ namespace AddressTeller
         /// <param name="guid">The asset's GUID.</param>
         /// <param name="path">Asset path rooted at Assets/. Backslashes are normalized to forward slashes.</param>
         /// <param name="type">The asset's type.</param>
+        /// <param name="isFolder">True when the path denotes a folder rather than a file.</param>
         /// <exception cref="ArgumentException"><paramref name="guid"/> or <paramref name="path"/> is null or empty.</exception>
         /// <exception cref="ArgumentNullException"><paramref name="type"/> is null.</exception>
-        public AssetContext(string guid, string path, Type type)
+        public AssetContext(string guid, string path, Type type, bool isFolder = false)
         {
             if (string.IsNullOrEmpty(guid)) throw new ArgumentException("guid must not be empty.", nameof(guid));
             if (string.IsNullOrEmpty(path)) throw new ArgumentException("path must not be empty.", nameof(path));
@@ -48,6 +56,7 @@ namespace AddressTeller
             Guid = guid;
             Path = path.Replace('\\', '/');
             Type = type ?? throw new ArgumentNullException(nameof(type));
+            IsFolder = isFolder;
 
             // AssetContext はイミュータブルなので、Naming.ParentFolderName() 等から資産ごと・ルールごとに
             // 繰り返しアクセスされる PathSegments はコンストラクタで1回だけ計算してキャッシュする
