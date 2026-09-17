@@ -47,6 +47,25 @@ namespace AddressTeller.Editor
         /// Context is null because this is not tied to a specific asset.
         /// </summary>
         RuleConfigureFailed = 10,
+        /// <summary>
+        /// A rule matched, an address was resolved, and the target group exists, but Addressables itself
+        /// refused to create or move a usable entry for this asset: AddressableAssetSettings.CreateOrMoveEntry
+        /// either returned null (the asset's main type belongs to an editor assembly), or returned an entry
+        /// Addressables itself marked ReadOnly (the asset's path is not valid for an Addressables entry, but
+        /// its main asset type is not from an editor assembly — Addressables silently creates a read-only
+        /// placeholder entry with the address set to the GUID instead of throwing). This should not
+        /// normally happen, since AddressTeller's own pre-filter uses
+        /// the same path-validity rules Addressables applies (including the Config Folder exclusion) before
+        /// rules run. One known case where it still can: Addressables' internal path-validity check reads
+        /// the Config Folder from the *default* AddressableAssetSettings
+        /// (AddressableAssetSettingsDefaultObject.Settings), not from whichever settings instance a given
+        /// call is actually writing to — so if a caller explicitly targets a non-default
+        /// AddressableAssetSettings instance whose Config Folder differs from the default one's, the two
+        /// checks can still disagree for an asset under the default settings' Config Folder. If this does
+        /// happen, no usable write was performed for this asset (any placeholder entry Addressables did
+        /// create is removed again).
+        /// </summary>
+        EntryRejectedByAddressables = 11,
     }
 
     /// <summary>

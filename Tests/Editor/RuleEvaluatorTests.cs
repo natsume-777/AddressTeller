@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor;
 using UnityEngine;
 
 namespace AddressTeller.Editor.Tests
@@ -10,11 +11,15 @@ namespace AddressTeller.Editor.Tests
         private static AssetContext Ctx(string path) =>
             new AssetContext("guid1", path, typeof(GameObject));
 
+        private static AssetContext FolderCtx(string path) =>
+            new AssetContext("guid1", path, typeof(DefaultAsset), isFolder: true);
+
         private static AddressRuleEntry Entry(
             string group,
             System.Func<AssetContext, bool> where = null,
             System.Func<AssetContext, string> address = null,
-            string[] labels = null)
+            string[] labels = null,
+            bool includeFolders = false)
         {
             var labelSelectors = new List<System.Func<AssetContext, string>>();
             if (labels != null)
@@ -28,7 +33,11 @@ namespace AddressTeller.Editor.Tests
                 group,
                 where ?? (_ => true),
                 address,
-                labelSelectors
+                labelSelectors,
+                sourceClass: null,
+                description: null,
+                ruleIndex: 0,
+                includesFolders: includeFolders
             );
         }
 
@@ -142,6 +151,42 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(1, result.Errors.Count);
             StringAssert.Contains("bad address", result.Errors[0].Message);
             Assert.AreEqual(0, result.AddressCandidates.Count);
+        }
+
+        [Test]
+        public void Folder_RuleWithoutIncludeFolders_PredicateNeverInvoked()
+        {
+            var predicateInvoked = false;
+            var entry = Entry("G", where: _ => { predicateInvoked = true; return true; }, address: _ => "addr", includeFolders: false);
+
+            var result = RuleEvaluator.Evaluate(FolderCtx("Assets/FolderA"), new[] { entry });
+
+            Assert.IsFalse(predicateInvoked);
+            Assert.AreEqual(0, result.AddressCandidates.Count);
+        }
+
+        [Test]
+        public void Folder_RuleWithIncludeFolders_MatchesAndSeesIsFolderTrue()
+        {
+            var entry = Entry("G", where: ctx => ctx.IsFolder, address: ctx => ctx.FileName, includeFolders: true);
+
+            var result = RuleEvaluator.Evaluate(FolderCtx("Assets/FolderA"), new[] { entry });
+
+            Assert.AreEqual(1, result.AddressCandidates.Count);
+            Assert.AreEqual("FolderA", result.AddressCandidates[0].Address);
+        }
+
+        [Test]
+        public void ExtensionlessFile_IsEvaluated_RegardlessOfIncludeFolders()
+        {
+            // LICENSE のような拡張子なしファイルは IsFolder == false なので、
+            // IncludeFolders() を宣言していないルールでも通常どおり評価される。
+            var entry = Entry("G", address: ctx => ctx.FileName, includeFolders: false);
+
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/LICENSE"), new[] { entry });
+
+            Assert.AreEqual(1, result.AddressCandidates.Count);
+            Assert.AreEqual("LICENSE", result.AddressCandidates[0].Address);
         }
     }
 }

@@ -17,6 +17,7 @@ sealed class AddressTeller.AddressRuleEntry
   Property System.Func<AddressTeller.AssetContext, System.String> AddressSelector { get; }
   Property System.String Description { get; }
   Property System.String GroupName { get; }
+  Property System.Boolean IncludesFolders { get; }
   Property System.Collections.Generic.IReadOnlyList<System.Func<AddressTeller.AssetContext, System.String>> LabelSelectors { get; }
   Property System.Func<AddressTeller.AssetContext, System.Boolean> Predicate { get; }
   Property System.Int32 RuleIndex { get; }
@@ -33,6 +34,7 @@ sealed class AddressTeller.AssetCondition
 
 sealed class AddressTeller.AssetContext
   Constructor (System.String guid, System.String path, System.Type type)
+  Constructor (System.String guid, System.String path, System.Type type, System.Boolean isFolder)
   Method System.Boolean IsInFolder(System.String folder)
   Method System.String RelativePathFrom(System.String root)
   Property System.String Directory { get; }
@@ -40,6 +42,7 @@ sealed class AddressTeller.AssetContext
   Property System.String FileName { get; }
   Property System.String FileNameWithoutExtension { get; }
   Property System.String Guid { get; }
+  Property System.Boolean IsFolder { get; }
   Property System.String Path { get; }
   Property System.String[] PathSegments { get; }
   Property System.Type Type { get; }
@@ -72,6 +75,7 @@ interface AddressTeller.IAddressRuleBuilder
 interface AddressTeller.IAddressRuleGroupBuilder
   Method abstract AddressTeller.IAddressRuleGroupBuilder Address(System.Func<AddressTeller.AssetContext, System.String> selector)
   Method abstract AddressTeller.IAddressRuleGroupBuilder Address(System.String address)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder IncludeFolders()
   Method abstract AddressTeller.IAddressRuleGroupBuilder Label(System.Func<AddressTeller.AssetContext, System.String> selector)
   Method abstract AddressTeller.IAddressRuleGroupBuilder Label(System.String label)
   Method abstract AddressTeller.IAddressRuleGroupBuilder Where(AddressTeller.AssetCondition condition)
@@ -79,6 +83,7 @@ interface AddressTeller.IAddressRuleGroupBuilder
   Method abstract AddressTeller.IAddressRuleGroupBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description)
 
 interface AddressTeller.ILabelRuleBuilder
+  Method abstract AddressTeller.ILabelRuleBuilder IncludeFolders()
   Method abstract AddressTeller.ILabelRuleBuilder Label(System.Func<AddressTeller.AssetContext, System.String> selector)
   Method abstract AddressTeller.ILabelRuleBuilder Label(System.String label)
   Method abstract AddressTeller.ILabelRuleBuilder Where(AddressTeller.AssetCondition condition)

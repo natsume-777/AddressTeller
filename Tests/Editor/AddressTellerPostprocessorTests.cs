@@ -76,6 +76,31 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(AddressTellerPostprocessor.ShouldSkip(ConfigFolder + "/", changed));
         }
 
+        [Test]
+        public void ShouldSkip_BackslashConfigFolder_DoesNotMatchForwardSlashPaths()
+        {
+            // ShouldSkip 自身は configFolder を渡されたとおりに使い、正規化しない契約
+            // （正規化は呼び出し元の OnPostprocessAllAssets が settings.ConfigFolder を読み取る箇所で
+            // 1回だけ行う。settings.ConfigFolder は Windows ではバックスラッシュ区切りで返ることがあるため、
+            // 正規化を怠ると変更パス（常にフォワードスラッシュ）と前方一致しなくなる）。
+            // OnPostprocessAllAssets 自体は直接テストできないため、この契約をここで固定しておく。
+            var changed = new List<string> { $"{ConfigFolder}/Nested/Foo.asset" };
+
+            Assert.IsFalse(AddressTellerPostprocessor.ShouldSkip(ConfigFolder.Replace('/', '\\'), changed));
+        }
+
+        [Test]
+        public void ShouldSkip_NullConfigFolder_ReturnsFalseWithoutThrowing()
+        {
+            // configFolder は呼び出し元で settings.ConfigFolder?.Replace(...) を経由するため null になりうる
+            // （settings.ConfigFolder 自体が null を返す異常系）。ConfigFolder 配下かどうかを判定できない以上、
+            // 安全側（スキップしない）に倒すべきで、TrimEnd で NullReferenceException も投げてはならない。
+            var changed = new List<string> { "Assets/Prefabs/Foo.prefab" };
+
+            Assert.DoesNotThrow(() => AddressTellerPostprocessor.ShouldSkip(null, changed));
+            Assert.IsFalse(AddressTellerPostprocessor.ShouldSkip(null, changed));
+        }
+
         // --- ResolveDeletedGuids ---
 
         [Test]

@@ -79,6 +79,8 @@ namespace AddressTeller
             private Func<AssetContext, string> _addressSelector;
             private bool _addressSet;
             private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
+            private bool _includeFolders;
+            private bool _includeFoldersSet;
 
             internal AddressRuleGroupBuilder(string groupName, string sourceClass)
             {
@@ -160,9 +162,19 @@ namespace AddressTeller
                 return this;
             }
 
+            public IAddressRuleGroupBuilder IncludeFolders()
+            {
+                if (_includeFoldersSet)
+                    throw new InvalidOperationException(
+                        $"IncludeFolders() can be called only once on Group(\"{_groupName}\").");
+                _includeFolders = true;
+                _includeFoldersSet = true;
+                return this;
+            }
+
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index);
+                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders);
             }
         }
 
@@ -173,6 +185,8 @@ namespace AddressTeller
             private Func<AssetContext, bool> _predicate = _ => true;
             private bool _whereSet;
             private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
+            private bool _includeFolders;
+            private bool _includeFoldersSet;
 
             internal LabelRuleGroupBuilder(string sourceClass)
             {
@@ -225,9 +239,18 @@ namespace AddressTeller
                 return this;
             }
 
+            public ILabelRuleBuilder IncludeFolders()
+            {
+                if (_includeFoldersSet)
+                    throw new InvalidOperationException("IncludeFolders() can be called only once on AnyGroup().");
+                _includeFolders = true;
+                _includeFoldersSet = true;
+                return this;
+            }
+
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index);
+                return new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders);
             }
         }
     }

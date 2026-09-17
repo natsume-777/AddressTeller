@@ -112,6 +112,36 @@ namespace AddressTeller.Editor.Tests
             CollectionAssert.Contains(entry.labels, "default-group");
         }
 
+        /// <summary>GroupDefault() かつ IncludeFolders() を宣言したルール。センチネル再構築後も IncludesFolders が保持されることの確認用。</summary>
+        private sealed class GroupDefaultWithIncludeFoldersRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.GroupDefault()
+                    .Where(ctx => ctx.IsFolder && ctx.Path.StartsWith(StubFolder + "/", System.StringComparison.Ordinal))
+                    .IncludeFolders()
+                    .Address(ctx => ctx.FileName);
+            }
+        }
+
+        [Test]
+        public void GroupDefault_IncludeFolders_IsPreservedAfterSentinelReconstruction()
+        {
+            // RuleEvaluationPipeline.BuildSetup はセンチネル解決の際、GroupName 以外のフィールド
+            // （IncludesFolders を含む）を引き継いだ新しい AddressRuleEntry を作り直す。
+            // その再構築後も IncludesFolders が失われていないことを直接確認する。
+            var rules = new AddressRuleBase[] { new GroupDefaultWithIncludeFoldersRule() };
+
+            var setup = RuleEvaluationPipeline.BuildSetup(_settings, rules);
+
+            Assert.IsFalse(setup.DefaultGroupUnavailable, "この環境では settings.DefaultGroup が解決できる前提のテスト。");
+            var entry = setup.Entries.Single();
+            Assert.IsTrue(entry.IncludesFolders);
+            Assert.AreNotEqual(AddressRuleBuilderImpl.DefaultGroupSentinel, entry.GroupName,
+                "センチネルは BuildSetup の時点で実名（DefaultGroup.Name）に解決されているべき。");
+            Assert.AreEqual(_settings.DefaultGroup.Name, entry.GroupName);
+        }
+
         [Test]
         public void GroupDefault_FollowsDefaultGroupRename()
         {

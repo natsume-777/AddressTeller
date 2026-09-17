@@ -8,6 +8,99 @@
 
 ## [Unreleased]
 
+### Added
+
+- `IAddressRuleGroupBuilder.IncludeFolders()` / `ILabelRuleBuilder.IncludeFolders()`:
+  ルールがフォルダアセットを評価対象に含める opt-in。1ルールまたは1グループにつき1回のみ呼び出し可能。
+  2回呼ぶと `InvalidOperationException` を投げる。このメソッドなしではフォルダは完全にスキップされ、述語も呼ばれない。
+- `AssetContext.IsFolder`: フォルダアセットの場合に true。ファイルと区別する必要があるフォルダ opt-in ルールや、
+  手作業で AssetContext を構築するテスト・ツール用に利用可能。
+- `AssetContext` コンストラクタの新規オーバーロード。`isFolder` パラメータを受け取る形に加え、既存のコンストラクタ
+  （`isFolder` なし）は false を既定とする形で保持される。
+- `AddressRuleEntry.IncludesFolders`: このエントリがフォルダ評価に opt-in したかどうかを示す読み取り専用プロパティ。
+  公開の `AddressRuleEntry` コンストラクタからは設定できず、ビルダーが生成したエントリ（`IncludeFolders()` が
+  呼ばれた場合）でのみ true になる。独自の評価ループを構築するコード（テストヘルパー等）向け。
+- `ValidationStatus.EntryRejectedByAddressables`: ルールがマッチしてアドレスを解決し、対象グループも実在するのに、
+  Addressables 本体がこのアセットへの usable エントリ作成・移動を拒否した場合に報告される
+  （パスが Addressables のエントリとして無効な場合。メイン型がエディタアセンブリ型なら Addressables はエントリを
+  返さず、そうでなければ read-only のプレースホルダを作る）。対象グループ自体が存在しない場合の
+  `ValidationStatus.GroupNotFound` とは区別される。このエッジケースで作られた read-only プレースホルダエントリは
+  取り除かれる。
+
+### Fixed
+
+- Windows: `AddressableAssetSettings.ConfigFolder` はバックスラッシュ区切りで返ることがあった。
+  これにより Windows では、Config Folder 配下のアセットが実際には除外されておらず、また
+  `AddressTellerPostprocessor` の早期リターン判定も Config Folder 配下だけの変更を認識できず、Addressables
+  設定を保存するたびに、変更された設定アセットに対する不要な差分 apply が走っていた。取得地点でフォワード
+  スラッシュに正規化することで両方の挙動を修正した。除外が効いていなかった間に Config Folder 配下へ作られた
+  エントリは、`CleanupStaleEntries` が有効なら下記の無効パスクリーンアップで削除される。
+- Addressables の `CreateOrMoveEntry` が null を返した場合に Apply が `NullReferenceException` で中止しなくなり、
+  そのアセットは `EntryRejectedByAddressables` として報告されるようになった。
+- Addressables がパスを無効と判定した際に静かに作成する read-only プレースホルダエントリ（アセットのメイン型が
+  エディタアセンブリ型でない場合）が残らなくなった。`Apply` がこれを取り除く。
+
+### Changed
+
+- **BREAKING**: フォルダは `IncludeFolders()` 経由のオプトインになった。既定ではフォルダアセットはルール評価の
+  対象外で、`Where()` 述語もアドレス・ラベルセレクタも呼ばれない。フォルダのエントリを登録したいルールは、
+  ビルダーで `IncludeFolders()` を明示的に（1ルール / 1 `Group()` / 1 `AnyGroup()` につき1回まで）呼ぶ必要がある。
+  従前は `AssetDatabase.GetAllAssetPaths()` が返すフォルダパスもファイルと同様に評価されていたため、広い述語
+  （例: `Match.All()`、`Match.InFolder(...)`）がフォルダにマッチし、配下全体を暗黙に含むフォルダエントリが
+  作られることがあった。`IncludeFolders()` を呼ばないルールは、広い述語を使ってもフォルダにマッチしなくなった。
+  `CleanupStaleEntries` が有効な場合、この変更前は広いルールがマッチしていたことで存在していたフォルダエントリは、
+  そのルールが見なくなった時点で無マッチ扱いになり、ファイルエントリに対して以前から適用されていたのと同じ
+  stale エントリクリーンアップで削除される（新しい削除の仕組みではない。対象範囲もファイルと同じで、その apply で
+  実際に評価されたアセットにしか及ばない）。
+- **BREAKING**: パス妥当性判定が Addressables と一致するようになった。Addressables は、ユーザーが Groups
+  ウィンドウまたは Inspector の「Addressable」チェックでエントリを手動作成する場合、以下のパスを拒否する:
+  `Assets/` の外かつパッケージ自身のフォルダの外にあるパス（`ProjectSettings/`、`Library/`、`Temp/` 配下など）、
+  パッケージ自身の `package.json`、それ以上の階層を持たないパッケージ自身のルートフォルダ、拡張子 `.preset`・
+  `.asmdef`、`/Editor/` を含むまたは `/Editor` で終わるパス、`Assets` ルート自体、そして Addressables の設定フォルダ
+  （下記参照）。これらに該当するパスはルール評価の前に除外されるようになり、どのルールにも渡らず、結果も
+  報告されない（他の事前フィルタ対象パスと同様）。`ValidationStatus.EntryRejectedByAddressables` は、この
+  フィルタを通過したパスへの書き込みを Addressables 本体がなお拒否した場合にだけ報告される（稀なケース。
+  Added 参照）。
+- **BREAKING**: `CleanupStaleEntries` が有効な場合、どのルールにもマッチするかを問わず、管理対象グループ内で
+  アセットパスがそもそも Addressables のエントリとして構造的に無効なエントリ（例: `ProjectSettings/` 配下や
+  `.preset`/`.asmdef` パスに対する、旧バージョンの AddressTeller が作成した残骸）も掃除対象になる。上記の
+  stale エントリクリーンアップとは異なり、この判定は実際にインポート・変更されたアセットとは独立に、apply の
+  たびに（インポート時自動適用を含め）管理対象グループ内の全エントリに対して行われる。
+- **BREAKING**: 拡張子除外判定が大文字小文字を区別するようになった。`.CS`・`.DLL`・`.PRESET` のような大文字拡張子
+  を持つパスは、もはや自動除外されず評価対象になる。Addressables 本体の挙動に揃えた。
+- **BREAKING**: Config Folder の除外判定が Addressables 本体と同じ「境界なしの前方一致」になり、0.4.0 で導入した
+  境界付き判定を取りやめた。Config Folder と名前が前方一致するだけのフォルダ（例: 設定フォルダが
+  `AddressableAssetsData` の場合の `AddressableAssetsData_Backup`）も Groups ウィンドウ・Inspector と同様に
+  除外される。`CleanupStaleEntries` が有効なら、それらの配下のアセット（ファイル・フォルダとも）の管理グループ内
+  エントリは次回の apply で削除される。
+- **0.4.x からのアップデート:** `CleanupStaleEntries` が有効（既定）の場合、アップデート後最初の apply で管理
+  グループ内の既存エントリが削除されることがある。対象は、`IncludeFolders()` で opt-in したルールのどれにも
+  マッチしないフォルダのエントリ（広いルールが作ったものも手動で登録したものも含む）と、Addressables 本体が
+  拒否するパスのエントリ（`.preset`/`.asmdef`、`Editor` フォルダ自体とその配下、`Assets` ルート、パッケージの
+  ルートとその `package.json`、`ProjectSettings/` など `Assets/`・パッケージ外のパス、Config Folder の配下および
+  名前が前方一致するフォルダ）。無効パスのエントリはインポート時の自動適用でも削除され、その経路では自動
+  スナップショットは作られない。アップデート前に、スナップショットを保存する
+  （`Tools/AddressTeller/Snapshot/Save Snapshot`）か、`CleanupStaleEntries` とインポート時の自動適用を一時的に
+  無効化し、フォルダを登録する意図のルールに `IncludeFolders()` を追加してから `Apply All` を実行し、Console の
+  削除 Warning を確認すること。
+- `RuleUnitTestHelper` サンプル: `ExampleRuleTest.FindFirst` が、ルールが `IncludeFolders()` で opt-in していない
+  フォルダの `AssetContext` に対しては `Predicate` を呼ばなくなり、本番の評価パイプラインと同じ挙動になった。
+  `RuleTestHelper` のドキュメントコメントとサンプルの README でも、独自の評価ループを組む場合にこの点を説明した。
+
+### Documentation
+
+- `compatibility.md`: ルールビルダーのインターフェース（`IAddressRuleBuilder`・`IAddressRuleGroupBuilder`・
+  `ILabelRuleBuilder`）へのメソッド追加が非破壊的変更であることを明記した（これらは内部でのみ実装され、
+  ルール作成者は利用するだけで実装することを想定していないため）。あわせて `IncludeFolders()` の単回呼び出し
+  制約、フォルダが opt-in しない限りルールの `Where()` に渡らないこと、stale エントリクリーンアップの対象範囲が
+  拡張された（無マッチのエントリだけでなく構造的に無効なパスも含む）ことを文書化。
+- `design-decisions.md`: フォルダ opt-in モデルの意義、Addressables へのパス妥当性判定の揃え方、および
+  AddressTeller のルール面を Addressables Groups ウィンドウが手動で許可・拒否するものと突き合わせる設計原則を
+  文書化。
+- `operations.md`: 新しく追加されたパス除外カテゴリ、管理対象グループの無効パスエントリのクリーンアップ、
+  および上記アップデート注記への参照を文書化。
+- `writing-rules.md`: `IncludeFolders()` の使用方法と `IsFolder` 経由のフォルダ判定を追加。
+
 ## [0.4.2] - 2026-08-07
 
 ### Documentation

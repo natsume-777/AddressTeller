@@ -12,7 +12,10 @@ namespace AddressTeller.Editor
     {
         /// <summary>
         /// 選択パス群を展開する。フォルダは <paramref name="findAssetsUnderFolder"/> で配下アセットに再帰展開し、
-        /// ファイルはそのまま含める。結果は重複排除し、Ordinal 順で決定的にソートして返す。
+        /// ファイルはそのまま含める。フォルダ自身のパスも含める（Apply All の評価対象と揃えるため。
+        /// Apply All は AssetDatabase.GetAllAssetPaths() が返すフォルダも評価対象に含んでおり、
+        /// IncludeFolders() を宣言したルールはフォルダ自体にマッチしうる）。結果は重複排除し、
+        /// Ordinal 順で決定的にソートして返す。
         /// </summary>
         /// <param name="selectedPaths">選択された資産パス（フォルダ・ファイル混在可）。</param>
         /// <param name="isFolder">パスがフォルダかどうかを判定する関数。</param>
@@ -30,6 +33,8 @@ namespace AddressTeller.Editor
 
                 if (isFolder(path))
                 {
+                    expanded.Add(path);
+
                     foreach (var assetPath in findAssetsUnderFolder(path) ?? Array.Empty<string>())
                     {
                         if (!string.IsNullOrEmpty(assetPath))

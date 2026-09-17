@@ -126,6 +126,8 @@ namespace AddressTeller.Editor
                     return BuildNotMatchedElement(detail);
                 case RuleMatchOutcome.Errored:
                     return BuildErroredElement(detail);
+                case RuleMatchOutcome.Skipped:
+                    return BuildSkippedElement(detail);
                 default:
                     return new VisualElement();
             }
@@ -168,6 +170,29 @@ namespace AddressTeller.Editor
             label.AddToClassList("at-nomatch-label");
             label.AddToClassList("at-detail-indent");
             return label;
+        }
+
+        private static VisualElement BuildSkippedElement(RuleEvaluationDetail detail)
+        {
+            var title = !string.IsNullOrEmpty(detail.Description)
+                ? $"[Skipped] {detail.Description}"
+                : $"[Skipped] {detail.RuleSource}";
+
+            var container = new VisualElement();
+            container.AddToClassList("at-detail-indent");
+
+            var label = new Label(title);
+            label.AddToClassList("at-nomatch-label");
+            container.Add(label);
+
+            if (!string.IsNullOrEmpty(detail.ErrorMessage))
+            {
+                var reasonLabel = new Label(detail.ErrorMessage);
+                reasonLabel.AddToClassList("at-detail-indent-inner");
+                container.Add(reasonLabel);
+            }
+
+            return container;
         }
 
         private static VisualElement BuildErroredElement(RuleEvaluationDetail detail)

@@ -84,6 +84,16 @@ namespace AddressTeller
         /// <summary>Adds the fixed label <paramref name="label"/> for each matching asset.</summary>
         /// <exception cref="ArgumentException"><paramref name="label"/> is null or empty.</exception>
         ILabelRuleBuilder Label(string label);
+
+        /// <summary>
+        /// Opts this rule in to seeing folder assets. Without this call, Where() is never invoked for a
+        /// folder and this rule cannot match one. A folder entry, once created, implicitly covers every
+        /// asset beneath it as far as Addressables is concerned, and labels assigned to the folder are
+        /// inherited by those assets. May be called at most once per <see cref="IAddressRuleBuilder.AnyGroup"/>
+        /// call; a second call throws <see cref="InvalidOperationException"/>.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">IncludeFolders() has already been called once for this rule.</exception>
+        ILabelRuleBuilder IncludeFolders();
     }
 
     /// <summary>
@@ -140,5 +150,15 @@ namespace AddressTeller
         /// <summary>Adds the fixed label <paramref name="label"/> for each matching asset.</summary>
         /// <exception cref="ArgumentException"><paramref name="label"/> is null or empty.</exception>
         IAddressRuleGroupBuilder Label(string label);
+
+        /// <summary>
+        /// Opts this rule in to seeing folder assets. Without this call, Where() is never invoked for a
+        /// folder and this rule cannot match one. A folder entry, once created, implicitly covers every
+        /// asset beneath it as far as Addressables is concerned, and labels assigned to the folder are
+        /// inherited by those assets. May be called at most once per group; a second call throws
+        /// <see cref="InvalidOperationException"/>.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">IncludeFolders() has already been called once for this group.</exception>
+        IAddressRuleGroupBuilder IncludeFolders();
     }
 }

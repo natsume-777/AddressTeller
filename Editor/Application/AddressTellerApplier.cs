@@ -228,9 +228,47 @@ namespace AddressTeller.Editor
             {
                 var candidate = resolution.AddressCandidates[0];
                 group = settings.FindGroup(candidate.GroupName);
+                if (group == null)
+                {
+                    // Validate は existingGroupNames（呼び出し側がループ外で1回だけ構築する、テスト可能な
+                    // コレクション）だけを見て Ok と判定している。通常は settings.groups から構築されるため
+                    // ここで見つからないことはないはずだが、呼び出し側が settings と食い違う
+                    // existingGroupNames を渡した場合はここで初めて食い違いが顕在化する。これは Addressables
+                    // が拒否したわけではなくグループが実際には存在しないという状態そのものなので、
+                    // EntryRejectedByAddressables ではなく既存の GroupNotFound を再利用して原因を正しく伝える。
+                    return new ValidationResult(
+                        context,
+                        ValidationStatus.GroupNotFound,
+                        $"Group '{candidate.GroupName}' not found in AddressableAssetSettings.");
+                }
             }
 
+            // ここに到達する時点で group は必ず非 null（GroupWillBeCreated 分岐は EnsureGroup 成功時のみ
+            // ここに到達し、Ok 分岐は直前の null チェックを通過済みのため）。
             var entry = settings.CreateOrMoveEntry(context.Guid, group);
+            if (entry == null || entry.ReadOnly)
+            {
+                // entry == null になるのは、新規エントリの作成時、CreateAndAddEntryToGroup が内部で
+                // Addressables 本体の IsPathValidForEntry 相当の判定を行い、それが false かつメインアセットの
+                // 型がエディタアセンブリ定義の場合。entry.ReadOnly が true になるのは、同じくパスが無効と
+                // 判定されつつ、メインアセットの型がエディタアセンブリではない場合。この場合
+                // CreateAndAddEntryToGroup は例外を投げず、address=guid の readOnly エントリを作成して
+                // グループに追加してしまうため、AddressTeller としては拒否扱いにした上で、既に作られてしまった
+                // そのエントリを取り除く必要がある。AssetFilter が Addressables 本体の判定を通した上で
+                // Apply を呼んでいるため通常は起こらないはずだが、対象の settings とは別の
+                // AddressableAssetSettings インスタンス（AddressableAssetSettingsDefaultObject.Settings）の
+                // ConfigFolder を Addressables 本体が内部的に参照するため、既定以外の settings を明示的に
+                // 対象にした呼び出しでは、両者の ConfigFolder が食い違いこの分岐に到達しうる
+                // （詳細は ValidationStatus.EntryRejectedByAddressables の XML doc を参照）。
+                // NullReferenceException で ApplyAll 全体を止めず、このアセットだけをエラーとして報告する。
+                if (entry != null)
+                    settings.RemoveAssetEntry(context.Guid);
+
+                return new ValidationResult(
+                    context,
+                    ValidationStatus.EntryRejectedByAddressables,
+                    $"Addressables refused to create/move a usable entry for '{context.Path}' into group '{group.Name}'.");
+            }
             entry.SetAddress(resolution.AddressCandidates[0].Address);
 
             foreach (var label in resolution.Labels)
@@ -358,6 +396,77 @@ namespace AddressTeller.Editor
             if (hasConfigureFailures) return null;
 
             return RemoveStaleEntryIfManaged(guid, settings, managedGroups);
+        }
+
+        /// <summary>
+        /// 管理対象グループに属するエントリのうち、パスが Addressables のエントリとして構造的に無効になっている
+        /// ものを列挙する（書き込みは行わない）。旧バージョンの AddressTeller が誤って作成したエントリ
+        /// （ProjectSettings/*.asset 等プロジェクト外パスの readOnly エントリ、.preset/.asmdef、
+        /// Editor フォルダ自体等）や、除外条件が後から拡張された場合の残骸を検出するためのもの。
+        /// 「無効」の判定基準は <see cref="AssetFilter.IsPathValidForAddressablesEntry"/> が false になること。
+        /// <see cref="AssetFilter.ShouldExcludeByPath"/> はこの否定そのもの（path が null の場合の早期リターンを
+        /// 除き完全に同値）なので、そのまま流用している。
+        /// ただし <see cref="AddressableAssetEntry.AssetPath"/> が空文字のエントリは対象外とする。GUID から
+        /// パスが引けない（<c>AssetDatabase.GUIDToAssetPath</c> が空文字を返す）ケースには、本当に資産が
+        /// 削除された場合だけでなく、LFS 未取得・ブランチ切替中・パッケージ未導入・インポート途中など
+        /// 「一時的に解決できないだけで資産自体は存在する（または後で存在するようになる）」ケースが多く含まれる。
+        /// これらを構造的なパス無効（拡張子・Editor フォルダ等）と同列に扱って削除すると、正当なエントリを
+        /// 誤って消してしまう。資産が本当に削除された場合の追従は <see cref="RemoveEntryForDeletedAsset"/>
+        /// （GUID の削除通知を起点にする別経路）に任せ、このメソッドはパスが引けているのに構造的に無効な
+        /// ケースだけを対象にする。
+        /// Apply（<see cref="RemoveInvalidPathEntries"/>）と Predict（dry-run）の両方から共有する読み取り専用ステップ。
+        /// </summary>
+        internal static List<AddressableAssetEntry> FindInvalidPathManagedEntries(
+            AddressableAssetSettings settings,
+            IReadOnlyCollection<string> managedGroups,
+            string configFolder)
+        {
+            var result = new List<AddressableAssetEntry>();
+            if (settings == null || managedGroups == null || managedGroups.Count == 0) return result;
+
+            foreach (var group in settings.groups)
+            {
+                if (group == null || !managedGroups.Contains(group.Name)) continue;
+
+                foreach (var entry in group.entries)
+                {
+                    if (entry == null) continue;
+                    if (string.IsNullOrEmpty(entry.AssetPath)) continue;
+                    if (AssetFilter.ShouldExcludeByPath(entry.AssetPath, configFolder))
+                        result.Add(entry);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// <see cref="FindInvalidPathManagedEntries"/> が見つけたエントリを実際に削除する。
+        /// 既存の stale クリーンアップ（<see cref="RemoveStaleEntryIfManaged"/>）と同じく、削除ごとに個別の
+        /// Warning ログを出す。呼び出し側で <see cref="AddressTellerSettings.CleanupStaleEntries"/> と
+        /// Configure() 失敗の有無（hasConfigureFailures 相当）を判定してから呼ぶこと（このメソッド自体は
+        /// 判定を行わない）。
+        /// </summary>
+        /// <returns>削除したエントリの一覧（削除が無ければ空リスト）。</returns>
+        internal static List<ClearedEntry> RemoveInvalidPathEntries(
+            AddressableAssetSettings settings,
+            IReadOnlyCollection<string> managedGroups,
+            string configFolder)
+        {
+            var targets = FindInvalidPathManagedEntries(settings, managedGroups, configFolder);
+            var cleared = new List<ClearedEntry>(targets.Count);
+
+            foreach (var entry in targets)
+            {
+                var groupName = entry.parentGroup?.Name ?? "";
+                var labels = entry.labels.OrderBy(l => l, StringComparer.Ordinal).ToList();
+                cleared.Add(new ClearedEntry(entry.guid, entry.address, groupName, labels));
+
+                Debug.LogWarning($"[AddressTeller] Removing stale entry: guid={entry.guid}, group='{groupName}', address='{entry.address}', path='{entry.AssetPath}', labels=[{string.Join(", ", labels)}] (path is not valid for an Addressables entry).");
+                settings.RemoveAssetEntry(entry.guid);
+            }
+
+            return cleared;
         }
 
         /// <summary>

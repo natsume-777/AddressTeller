@@ -67,7 +67,12 @@ namespace AddressTeller.Editor
         public static EvaluationSetup BuildSetup(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
         {
             var entries = GetOrderedEntries(rules, out var configureFailures);
-            var configFolder = settings.ConfigFolder;
+            // settings.ConfigFolder は Windows では "Assets\AddressableAssetsData" のようにバックスラッシュ
+            // 区切りで返ることがある（Addressables 本体が OS のパス区切りを使って構築しているため）。
+            // AddressTeller のパスは常にフォワードスラッシュに正規化されている前提（AssetContext/AssetFilter 参照）なので、
+            // ConfigFolder を使う全箇所（AssetFilter の除外判定、Postprocessor の ShouldSkip、無効パス掃除）に
+            // 一貫して効かせるため、取得箇所であるここで1回だけ正規化する。
+            var configFolder = settings.ConfigFolder?.Replace('\\', '/');
             var defaultGroupUnavailable = false;
 
             // センチネルを使うルールが1件もなければ DefaultGroup を取得しない（不要な Addressables アクセスを避ける）。
@@ -89,7 +94,7 @@ namespace AddressTeller.Editor
                 {
                     entries = entries
                         .Select(e => e.GroupName == AddressRuleBuilderImpl.DefaultGroupSentinel
-                            ? new AddressRuleEntry(defaultGroup.Name, e.Predicate, e.AddressSelector, e.LabelSelectors, e.SourceClass, e.Description, e.RuleIndex)
+                            ? new AddressRuleEntry(defaultGroup.Name, e.Predicate, e.AddressSelector, e.LabelSelectors, e.SourceClass, e.Description, e.RuleIndex, e.IncludesFolders)
                             : e)
                         .ToArray();
                 }
@@ -129,7 +134,11 @@ namespace AddressTeller.Editor
             if (string.IsNullOrEmpty(guid)) return null;
             var type = AssetDatabase.GetMainAssetTypeAtPath(path);
             if (type == null) return null;
-            return new AssetContext(guid, path, type);
+            // フォルダのメインアセット型は必ず DefaultAsset なので、その場合だけ IsValidFolder を呼ぶ。
+            // プロジェクト全アセットのループから毎回 AssetDatabase を叩かないための絞り込みで、
+            // DefaultAsset でないパスがフォルダになることはないため取りこぼしは生じない。
+            var isFolder = type == typeof(DefaultAsset) && AssetDatabase.IsValidFolder(path);
+            return new AssetContext(guid, path, type, isFolder);
         }
 
         /// <summary>ルールの評価エラーを issues へ追加する。</summary>

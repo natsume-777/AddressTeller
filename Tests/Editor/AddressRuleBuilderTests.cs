@@ -268,5 +268,59 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual("Characters", builder.Entries[0].GroupName);
             Assert.IsNull(builder.Entries[1].GroupName);
         }
+
+        [Test]
+        public void Group_IncludesFolders_DefaultsToFalse()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            builder.Group("G").Address("addr");
+
+            Assert.IsFalse(builder.Entries[0].IncludesFolders);
+        }
+
+        [Test]
+        public void Group_IncludeFolders_SetsIncludesFoldersTrue()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            builder.Group("G").Address("addr").IncludeFolders();
+
+            Assert.IsTrue(builder.Entries[0].IncludesFolders);
+        }
+
+        [Test]
+        public void Group_IncludeFolders_CalledTwice_Throws()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            var group = builder.Group("G").IncludeFolders();
+
+            Assert.Throws<InvalidOperationException>(() => group.IncludeFolders());
+        }
+
+        [Test]
+        public void AnyGroup_IncludesFolders_DefaultsToFalse()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            builder.AnyGroup().Label("lbl");
+
+            Assert.IsFalse(builder.Entries[0].IncludesFolders);
+        }
+
+        [Test]
+        public void AnyGroup_IncludeFolders_SetsIncludesFoldersTrue()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            builder.AnyGroup().Label("lbl").IncludeFolders();
+
+            Assert.IsTrue(builder.Entries[0].IncludesFolders);
+        }
+
+        [Test]
+        public void AnyGroup_IncludeFolders_CalledTwice_Throws()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            var anyGroup = builder.AnyGroup().IncludeFolders();
+
+            Assert.Throws<InvalidOperationException>(() => anyGroup.IncludeFolders());
+        }
     }
 }

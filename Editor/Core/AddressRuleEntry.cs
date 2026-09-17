@@ -29,6 +29,16 @@ namespace AddressTeller
         /// <summary>Order (zero-based) in which Group() was called within Configure(). Used in error messages.</summary>
         public int RuleIndex { get; }
 
+        /// <summary>
+        /// True when this rule opted in to seeing folder assets (via IncludeFolders() on the builder).
+        /// Not part of the public constructor: it is only ever set by AddressRuleBuilderImpl, which is
+        /// the sole producer of entries that rule evaluation consumes. Consumers that build their own
+        /// evaluation loop over collected entries (e.g. unit-testing helpers) must check this before
+        /// invoking Predicate for a folder AssetContext, to match the production evaluator's behavior:
+        /// a rule that has not opted in never sees folders, and its Predicate is not even called for one.
+        /// </summary>
+        public bool IncludesFolders { get; }
+
         /// <summary>Creates an AddressRuleEntry. See the properties above for each parameter's meaning.</summary>
         public AddressRuleEntry(
             string groupName,
@@ -38,6 +48,23 @@ namespace AddressTeller
             string sourceClass = null,
             string description = null,
             int ruleIndex = 0)
+            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false)
+        {
+        }
+
+        /// <summary>
+        /// internal 用オーバーロード。IncludeFolders() を宣言したビルダー（AddressRuleBuilderImpl）と、
+        /// GroupDefault() のセンチネル解決時の再構築（RuleEvaluationPipeline.BuildSetup）が使う。
+        /// </summary>
+        internal AddressRuleEntry(
+            string groupName,
+            Func<AssetContext, bool> predicate,
+            Func<AssetContext, string> addressSelector,
+            IReadOnlyList<Func<AssetContext, string>> labelSelectors,
+            string sourceClass,
+            string description,
+            int ruleIndex,
+            bool includesFolders)
         {
             // groupName は AnyGroup() 由来のラベル専用エントリでは null を許容する。
             GroupName = groupName;
@@ -47,6 +74,7 @@ namespace AddressTeller
             SourceClass = sourceClass;
             Description = description;
             RuleIndex = ruleIndex;
+            IncludesFolders = includesFolders;
         }
 
         /// <summary>

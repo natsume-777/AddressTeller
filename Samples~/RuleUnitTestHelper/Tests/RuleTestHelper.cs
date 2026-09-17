@@ -49,7 +49,11 @@ namespace AddressTellerSamples
         /// propagating it — here, the exception propagates out of this call unchanged, so a misused builder
         /// call fails the test directly.
         /// Evaluate entries with <c>entry.Predicate(ctx)</c>, <c>entry.AddressSelector?.Invoke(ctx)</c>,
-        /// and <c>entry.LabelSelectors</c>.
+        /// and <c>entry.LabelSelectors</c>. When <paramref name="rule"/> may see folder AssetContexts
+        /// (<c>AssetContext.IsFolder</c> true), check <see cref="AddressRuleEntry.IncludesFolders"/> before
+        /// calling Predicate: the production evaluator never invokes Predicate for a folder unless the
+        /// entry opted in via IncludeFolders() on the builder, and a hand-rolled evaluation loop that skips
+        /// this check can call into a rule's Predicate with a folder it was never written to handle.
         /// </summary>
         public static IReadOnlyList<AddressRuleEntry> Collect(AddressRuleBase rule) => RuleInspector.Collect(rule);
     }

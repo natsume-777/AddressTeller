@@ -35,6 +35,7 @@ The source of truth is the approval test baseline: `Tests/Editor/PublicApiApprov
 - Adding a new public/protected type or member
 - Adding an optional parameter with a default value to an existing method (does not change the signature seen by existing call sites)
 - Widening a parameter type to a more general one without changing overload resolution for existing callers
+- Adding a new method to a rule-builder interface (`IAddressRuleBuilder`, `IAddressRuleGroupBuilder`, `ILabelRuleBuilder`). These interfaces are only ever implemented internally (by `AddressRuleBuilderImpl`) and are meant to be consumed, not implemented, by rule authors — the usual breaking-interface-change concern (adding a member breaks every implementer) does not apply to them.
 
 ### 2. `-executeMethod` Entry Points
 
@@ -204,8 +205,10 @@ The following aspects of how `AddressRuleBase` subclasses are collected and eval
 - **Order**: rules are evaluated in ascending `Order`; ties are broken deterministically by the rule class's full type name (Ordinal). Duplicate `Order` values across classes produce a warning but are not an error.
 - **Conflicts**: if two or more matching rules call `Address()` for the same asset, this is a conflict (`ValidationStatus.ConflictingAddress`) and neither the address nor any labels are written for that asset — the whole write for that asset is skipped, not just the address.
 - **Label accumulation**: `Label()` calls from every matching rule accumulate on an asset; labels are never implicitly removed by a rule that stops matching (see `CleanupStaleEntries` for the one path that does remove labels, by deleting the whole entry).
-- **`Where()` / `Address()` single-call constraint**: calling either a second time on the same rule chain throws `InvalidOperationException`.
+- **`Where()` / `Address()` / `IncludeFolders()` single-call constraint**: calling any of these a second time on the same rule chain throws `InvalidOperationException`.
 - **`GroupDefault()` resolution**: resolved from `AddressableAssetSettings.DefaultGroup` at evaluation time (not baked in at `Configure()` time), so it follows DefaultGroup renames automatically.
+- **Folders**: a folder asset never reaches a rule's `Where()` (the predicate is not even invoked) unless that rule opts in with `IncludeFolders()`. This keeps existing rules, written with files in mind, from unintentionally matching a folder through a broad `Where` condition.
+- **Stale entry cleanup scope**: when `CleanupStaleEntries` is enabled, cleanup also removes entries in managed groups whose asset path is structurally invalid for an Addressables entry (not just entries no longer matched by any rule) — for example leftovers created by an older AddressTeller version, identified by extension, an `Editor`-named folder, or similar. Entries whose path cannot currently be resolved at all (`AddressableAssetEntry.AssetPath` is empty — e.g. an asset temporarily unavailable due to an unfetched LFS pointer, an in-progress branch switch, or a missing package) are excluded from this check; a genuinely deleted asset is instead handled by the separate deletion-notification path (`RemoveEntriesForDeletedAssets`). This check runs on every managed entry currently in Addressables, independent of which paths were passed to Apply (and its dry-run/Preview).
 
 Adding a new, off-by-default opt-in setting that changes evaluation behavior only when explicitly enabled is non-breaking, since it does not change behavior for projects that don't opt in.
 
@@ -215,7 +218,7 @@ Adding a new, off-by-default opt-in setting that changes evaluation behavior onl
 
 **Why appending a member doesn't break compilation but can break behavior at runtime**: a `switch` statement without a `default` arm compiles and runs fine against a new enum value it doesn't recognize — it just silently does nothing (or falls through, depending on the surrounding code), which is usually the wrong behavior for a status the caller has never seen. This is why appending is minor rather than patch: it is meant to be visible in a changelog and considered by anyone who switches exhaustively over these types, even though it cannot fail a build.
 
-Concretely, `ValidationStatus` currently has: `Ok`, `Skipped`, `LabelsOnly`, `ConflictingAddress`, `GroupNotFound`, `InvalidAddress`, `RuleError`, `GroupWillBeCreated`, `GroupCreationFailed`, `DefaultGroupUnavailable`, `RuleConfigureFailed`. This is the enum most likely to keep growing (it is the package's general-purpose "what happened for this asset" result type), so a `switch` over it is the most important place to have a `default` arm.
+Concretely, `ValidationStatus` currently has: `Ok`, `Skipped`, `LabelsOnly`, `ConflictingAddress`, `GroupNotFound`, `InvalidAddress`, `RuleError`, `GroupWillBeCreated`, `GroupCreationFailed`, `DefaultGroupUnavailable`, `RuleConfigureFailed`, `EntryRejectedByAddressables`. This is the enum most likely to keep growing (it is the package's general-purpose "what happened for this asset" result type), so a `switch` over it is the most important place to have a `default` arm.
 
 `[Flags]` is deliberately not used for any of these enums, even though some (`ValidationStatus` in particular) might look combinable. A `ValidationResult` represents exactly one outcome for one asset; using `[Flags]` would imply combinations are meaningful and would also change the JSON/enum-name serialization story (a `[Flags]` `ToString()` can produce comma-joined names for combined values), which is a larger compatibility surface this package does not want to commit to.
 

@@ -105,8 +105,39 @@ rules.Group("Characters")
 | `Directory` | ディレクトリパス | `"Assets/Game/Characters"` |
 | `Extension` | ファイル拡張子 | `".prefab"` |
 | `IsInFolder(string)` | フォルダ配下判定メソッド | `ctx.IsInFolder("Assets/Game")` → `true` |
+| `IsFolder` | このアセットがファイルではなくフォルダかどうか | `"Assets/Game/Characters"` に対して `true` |
 | `PathSegments` | パスを `/` で分割した配列 | `["Assets", "Game", "Characters", "Player.prefab"]` |
 | `RelativePathFrom(string root)` | 指定フォルダ起点の相対パス | `ctx.RelativePathFrom("Assets/Game")` → `"Characters/Player.prefab"` |
+
+## 評価対象から除外されるアセット
+
+一部のパスはどのルールの `Where()` にも渡されません。ルールが除外したのではなく、Addressables 自身がエントリ登録を拒否するパスを AddressTeller が事前にフィルタしているためです（Groups ウィンドウへのドラッグや Inspector の Addressable チェックボックスと同じパス有効性の判定。ただし Inspector のチェックボックスはこれに加えて、メインアセットの型がエディタアセンブリに属するものも拒否しており、その判定は AddressTeller では再現していません）。これにより、手動では作れないエントリを AddressTeller 経由でだけ作ってしまうことを防いでいます。
+
+`IncludeFolders()` の有無に関わらず除外されるもの:
+- `Assets/` 配下でもパッケージ自身のフォルダ配下でもないパス（`ProjectSettings/` や `Library/` 配下のファイル等）、およびパッケージ直下の `package.json` 自体。
+- 次のいずれかの拡張子を持つファイル: `.cs`, `.js`, `.boo`, `.exe`, `.dll`, `.meta`, `.preset`, `.asmdef`。
+- パスの途中に `Editor` という名前のセグメントを含むもの（例: `Assets/Game/Editor/Foo.asset`）。
+- 拡張子がなく、パスがちょうど `Assets` であるか、`Editor` という名前のフォルダ自体であるか、または `Editor` という名前のフォルダの配下にあるもの（実際にフォルダかどうかは問わない。下記の注記を参照）。
+- 設定済みの Addressables Config Folder 自体とその配下（`AddressableAssetSettings.asset` 等が置かれているフォルダ）。Addressables 本体と同じ単純な前方一致で判定するため、名前が同じ文字列で**始まっているだけ**の別フォルダ（例: `Assets/AddressableAssetsData_Backup`）も、Config Folder の実際の配下ではなくても除外されます。
+
+これは Addressables 本体が内部で行っているエントリ有効性の判定を移植したもので、パス文字列のみで判定します。そのため、拡張子のないパスは実体が通常のファイルであってもフォルダ扱いになります。例えば、拡張子なしで `Assets/Game/Editor` という名前の実ファイルが存在すれば、それも除外されます。`AssetContext.IsFolder`（下記の `IncludeFolders()` の opt-in 判定で使用）はこれとは別の、実際のフォルダかどうかの判定であり、この除外には関与しません。
+
+## フォルダ（IncludeFolders）
+
+既定では、ルールはフォルダを一切見ません。ルールが `IncludeFolders()` で明示的に opt-in しない限り、フォルダに対して `Where()` は呼ばれません。これにより、ファイルを前提に書かれた既存ルールが、`Match.InFolder(...)` のような前方一致条件で意図せずサブフォルダにマッチしてしまうことを防いでいます。
+
+```csharp
+rules.Group("Bundles")
+    .Where(ctx => ctx.IsFolder && ctx.FileName == "StreamingContent")
+    .IncludeFolders()
+    .Address(ctx => ctx.FileName);
+```
+
+- `IncludeFolders()` は1ルールにつき1回のみ呼び出せます（`Where()` / `Address()` と同じ制約）。2回目を呼ぶと `InvalidOperationException`。
+- opt-in したルールの `Where` / `Address` / `Label` の中では、`ctx.IsFolder` でファイルとフォルダを区別できます。
+- Addressables 側でフォルダをエントリ化すると、配下の全アセットが暗黙に含まれます。フォルダのラベルは配下アセットにも継承されます。フォルダと配下のアセットを別々のルールでそれぞれマッチさせると、同じアセット群を指す2つのエントリが別々に管理される状態になるため、意図した挙動か確認してください。
+- 拡張子のないファイル（`LICENSE` など）は通常のファイルであり、フォルダではありません。`IncludeFolders()` を宣言していても `IsFolder` は `false` のままです。ただし拡張子なしパスの一部（`Assets` ルート自体、`Editor` という名前のフォルダ自体、`Editor` という名前のフォルダ配下）は、実際にフォルダかどうかを問わず評価対象から除外されます。詳しくは上記の[評価対象から除外されるアセット](#評価対象から除外されるアセット)を参照してください。
+- `IncludeFolders()` を宣言していても、[評価対象から除外されるアセット](#評価対象から除外されるアセット)に挙げた除外は変わらず適用されます（いずれにせよ Addressables 側がそれらのパスへのエントリ登録を拒否するため）。
 
 ## テスト
 

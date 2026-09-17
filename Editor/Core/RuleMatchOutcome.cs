@@ -13,5 +13,11 @@ namespace AddressTeller
 
         /// <summary>Predicate / AddressSelector / LabelSelector の評価中に例外が発生した。</summary>
         Errored,
+
+        /// <summary>
+        /// アセットがフォルダで、このルールが IncludeFolders() を宣言していなかったため、
+        /// Predicate を呼ばずにスキップした。
+        /// </summary>
+        Skipped,
     }
 }

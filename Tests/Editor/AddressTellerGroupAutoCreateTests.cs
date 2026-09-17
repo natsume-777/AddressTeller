@@ -2,6 +2,7 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
@@ -14,6 +15,14 @@ namespace AddressTeller.Editor.Tests
     /// </summary>
     public class AddressTellerGroupAutoCreateTests
     {
+        private const string TestRootFolder = "Assets/_AddressTellerTestTemp";
+        private const string StubFolder = TestRootFolder + "/GroupAutoCreate";
+
+        // AddressTellerApplier.Apply が実際にエントリを新規作成する経路（settings.CreateOrMoveEntry）に
+        // 到達するテストでは、GUID がプロジェクト内のどのアセットにも対応しないと、Addressables 本体が
+        // パス無効と判定して readOnly のプレースホルダエントリを作ってしまい、AddressTellerApplier の
+        // 拒否判定（EntryRejectedByAddressables）に引っかかる。Validate() のみで完結する（Apply の
+        // エントリ作成に到達しない）テストでは実アセットは不要なため、Ctx() の既定の偽 GUID のままでよい。
         private AddressableAssetSettings _settings;
         private AddressableAssetGroup _existingGroup;
         private bool _originalAutoCreateSetting;
@@ -25,6 +34,11 @@ namespace AddressTeller.Editor.Tests
 
             _settings = AddressableAssetSettings.Create("Assets/_AddressTellerTestTemp", "AddressTellerGroupAutoCreateTestSettings", false, false);
             _existingGroup = _settings.CreateGroup("ExistingGroup", false, false, false, null);
+
+            if (!AssetDatabase.IsValidFolder(TestRootFolder))
+                AssetDatabase.CreateFolder("Assets", "_AddressTellerTestTemp");
+            if (!AssetDatabase.IsValidFolder(StubFolder))
+                AssetDatabase.CreateFolder(TestRootFolder, "GroupAutoCreate");
         }
 
         [TearDown]
@@ -38,10 +52,30 @@ namespace AddressTeller.Editor.Tests
                 UnityEngine.Object.DestroyImmediate(group, true);
 
             UnityEngine.Object.DestroyImmediate(_settings, true);
+
+            // SetUp で作成した一時アセット・フォルダはまとめて消す（他のテストクラスと同じ流儀）。
+            if (AssetDatabase.IsValidFolder(TestRootFolder))
+                AssetDatabase.DeleteAsset(TestRootFolder);
         }
 
         private static AssetContext Ctx(string guid = "guid-1") =>
             new AssetContext(guid, "Assets/Foo.prefab", typeof(GameObject));
+
+        /// <summary>指定パスに最小限の Prefab アセットを作成し、その GUID から AssetContext を組み立てる。</summary>
+        private static AssetContext RealCtx(string assetPath)
+        {
+            var go = new GameObject(System.IO.Path.GetFileNameWithoutExtension(assetPath));
+            try
+            {
+                PrefabUtility.SaveAsPrefabAsset(go, assetPath);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+
+            return new AssetContext(AssetDatabase.AssetPathToGUID(assetPath), assetPath, typeof(GameObject));
+        }
 
         private static AddressResolution Resolution(params AddressCandidate[] candidates) =>
             new AddressResolution(candidates, new HashSet<string>());
@@ -134,9 +168,12 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void Apply_AutoCreateOn_MissingGroup_CreatesGroupFromDefaultAndWritesEntry()
         {
+            // settings.CreateOrMoveEntry に実際に到達する（エントリを新規作成する）ため、
+            // guid がプロジェクト内の実アセットに対応している必要がある(readOnly プレースホルダ回避)。
+            var ctx = RealCtx(StubFolder + "/Stub1.prefab");
             var resolution = Resolution(new AddressCandidate("NewGroup", "addr"));
 
-            var result = AddressTellerApplier.Apply(Ctx(), resolution, _settings, ExistingGroupNames(), autoCreateMissingGroups: true);
+            var result = AddressTellerApplier.Apply(ctx, resolution, _settings, ExistingGroupNames(), autoCreateMissingGroups: true);
 
             Assert.AreEqual(ValidationStatus.GroupWillBeCreated, result.Status);
             Assert.IsTrue(result.IsOk);
@@ -150,7 +187,7 @@ namespace AddressTeller.Editor.Tests
                 defaultGroup.Schemas.Select(s => s.GetType()),
                 createdGroup.Schemas.Select(s => s.GetType()));
 
-            var entry = _settings.FindAssetEntry("guid-1");
+            var entry = _settings.FindAssetEntry(ctx.Guid);
             Assert.IsNotNull(entry);
             Assert.AreEqual("addr", entry.address);
             Assert.AreEqual("NewGroup", entry.parentGroup.Name);
@@ -159,13 +196,16 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void Apply_AutoCreateOn_ExistingGroup_BehavesAsNormalApply()
         {
+            // settings.CreateOrMoveEntry に実際に到達する（エントリを新規作成する）ため、
+            // guid がプロジェクト内の実アセットに対応している必要がある(readOnly プレースホルダ回避)。
+            var ctx = RealCtx(StubFolder + "/Stub2.prefab");
             var resolution = Resolution(new AddressCandidate("ExistingGroup", "addr"));
 
-            var result = AddressTellerApplier.Apply(Ctx(), resolution, _settings, ExistingGroupNames(), autoCreateMissingGroups: true);
+            var result = AddressTellerApplier.Apply(ctx, resolution, _settings, ExistingGroupNames(), autoCreateMissingGroups: true);
 
             Assert.AreEqual(ValidationStatus.Ok, result.Status);
 
-            var entry = _settings.FindAssetEntry("guid-1");
+            var entry = _settings.FindAssetEntry(ctx.Guid);
             Assert.IsNotNull(entry);
             Assert.AreEqual("ExistingGroup", entry.parentGroup.Name);
 
@@ -179,12 +219,15 @@ namespace AddressTeller.Editor.Tests
             // 同じ existingGroupNames インスタンスを2件のアセットの Apply 呼び出しに使い回すことで、
             // 1件目でグループが作成された後、2件目では GroupWillBeCreated ではなく Ok になり、
             // EnsureGroup が再度呼ばれないこと（= 新規グループが1個だけ作成されること）を検証する。
+            // settings.CreateOrMoveEntry に実際に到達するため、両方とも実アセットの guid を使う。
+            var ctx1 = RealCtx(StubFolder + "/Stub3.prefab");
+            var ctx2 = RealCtx(StubFolder + "/Stub4.prefab");
             var existingGroupNames = ExistingGroupNames();
             var resolution1 = Resolution(new AddressCandidate("NewGroup", "addr1"));
             var resolution2 = Resolution(new AddressCandidate("NewGroup", "addr2"));
 
-            var result1 = AddressTellerApplier.Apply(Ctx("guid-1"), resolution1, _settings, existingGroupNames, autoCreateMissingGroups: true);
-            var result2 = AddressTellerApplier.Apply(Ctx("guid-2"), resolution2, _settings, existingGroupNames, autoCreateMissingGroups: true);
+            var result1 = AddressTellerApplier.Apply(ctx1, resolution1, _settings, existingGroupNames, autoCreateMissingGroups: true);
+            var result2 = AddressTellerApplier.Apply(ctx2, resolution2, _settings, existingGroupNames, autoCreateMissingGroups: true);
 
             Assert.AreEqual(ValidationStatus.GroupWillBeCreated, result1.Status);
             Assert.AreEqual(ValidationStatus.Ok, result2.Status,
@@ -194,8 +237,8 @@ namespace AddressTeller.Editor.Tests
             var newGroups = _settings.groups.Where(g => g != null && g.Name == "NewGroup").ToList();
             Assert.AreEqual(1, newGroups.Count);
 
-            var entry1 = _settings.FindAssetEntry("guid-1");
-            var entry2 = _settings.FindAssetEntry("guid-2");
+            var entry1 = _settings.FindAssetEntry(ctx1.Guid);
+            var entry2 = _settings.FindAssetEntry(ctx2.Guid);
             Assert.AreSame(entry1.parentGroup, entry2.parentGroup, "2件目のアセットも1件目で作成されたグループへ書き込まれるべき。");
         }
 

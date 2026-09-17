@@ -160,10 +160,16 @@ namespace AddressTellerSamples
             Assert.AreEqual("Settings", matched.AddressSelector?.Invoke(ctx));
         }
 
+        // ctx.IsFolder かつ entry.IncludesFolders が false のエントリは Predicate を呼ばずスキップする。
+        // 本番の評価パイプライン（RuleEvaluator）と同じ判定であり、IncludeFolders() を宣言していない
+        // ルールの Predicate がフォルダ用に書かれていない前提を壊さないようにするため。
         private static AddressRuleEntry FindFirst(IReadOnlyList<AddressRuleEntry> entries, AssetContext ctx)
         {
             foreach (var e in entries)
+            {
+                if (ctx.IsFolder && !e.IncludesFolders) continue;
                 if (e.Predicate(ctx)) return e;
+            }
             return null;
         }
 

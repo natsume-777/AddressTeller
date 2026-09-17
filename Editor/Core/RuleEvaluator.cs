@@ -18,6 +18,11 @@ namespace AddressTeller
 
             foreach (var entry in entries)
             {
+                // フォルダは、ルールが IncludeFolders() で明示的に opt-in していない限り評価対象外。
+                // Predicate すら呼ばない（フォルダを想定していない既存ルールの Predicate を壊さないため）。
+                if (context.IsFolder && !entry.IncludesFolders)
+                    continue;
+
                 try
                 {
                     if (!entry.Predicate(context))
@@ -61,6 +66,16 @@ namespace AddressTeller
             foreach (var entry in entries)
             {
                 var ruleSource = AddressRuleEntry.DescribeSource(entry.SourceClass, entry.Description, entry.RuleIndex);
+
+                // フォルダは、ルールが IncludeFolders() で明示的に opt-in していない限り評価対象外。
+                // Predicate すら呼ばずスキップし、Explain 上でもその旨を明示する。
+                if (context.IsFolder && !entry.IncludesFolders)
+                {
+                    details.Add(new RuleEvaluationDetail(
+                        ruleSource, entry.GroupName, entry.Description,
+                        RuleMatchOutcome.Skipped, null, null, "Folder asset; this rule does not call IncludeFolders()."));
+                    continue;
+                }
 
                 try
                 {

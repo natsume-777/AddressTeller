@@ -24,7 +24,7 @@ namespace AddressTeller
         /// <summary>Matched 時に発行されたラベル。マッチしていない／ラベル指定がない場合は空リスト。</summary>
         public IReadOnlyList<string> ProducedLabels { get; }
 
-        /// <summary>Errored の場合の例外メッセージ。それ以外は null。</summary>
+        /// <summary>Errored の場合の例外メッセージ、Skipped の場合のスキップ理由。それ以外は null。</summary>
         public string ErrorMessage { get; }
 
         public RuleEvaluationDetail(

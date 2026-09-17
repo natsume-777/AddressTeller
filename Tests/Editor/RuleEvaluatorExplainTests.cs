@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor;
 using UnityEngine;
 
 namespace AddressTeller.Editor.Tests
@@ -10,6 +11,9 @@ namespace AddressTeller.Editor.Tests
         private static AssetContext Ctx(string path) =>
             new AssetContext("guid1", path, typeof(GameObject));
 
+        private static AssetContext FolderCtx(string path) =>
+            new AssetContext("guid1", path, typeof(DefaultAsset), isFolder: true);
+
         private static AddressRuleEntry Entry(
             string group,
             System.Func<AssetContext, bool> where = null,
@@ -17,7 +21,8 @@ namespace AddressTeller.Editor.Tests
             string[] labels = null,
             string sourceClass = null,
             string description = null,
-            int ruleIndex = 0)
+            int ruleIndex = 0,
+            bool includeFolders = false)
         {
             var labelSelectors = new List<System.Func<AssetContext, string>>();
             if (labels != null)
@@ -34,7 +39,8 @@ namespace AddressTeller.Editor.Tests
                 labelSelectors,
                 sourceClass,
                 description,
-                ruleIndex
+                ruleIndex,
+                includeFolders
             );
         }
 
@@ -158,6 +164,33 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(evaluated.Errors.Count, explanation.Resolution.Errors.Count);
             for (var i = 0; i < evaluated.Errors.Count; i++)
                 Assert.AreEqual(evaluated.Errors[i].Message, explanation.Resolution.Errors[i].Message);
+        }
+
+        [Test]
+        public void Folder_RuleWithoutIncludeFolders_DetailIsSkipped()
+        {
+            var entries = new[]
+            {
+                Entry("G1", address: _ => "addr", description: "no folder opt-in"),
+            };
+            var explanation = RuleEvaluator.Explain(FolderCtx("Assets/FolderA"), entries);
+
+            Assert.AreEqual(RuleMatchOutcome.Skipped, explanation.Details[0].Outcome);
+            Assert.IsNotNull(explanation.Details[0].ErrorMessage);
+            Assert.AreEqual(0, explanation.Resolution.AddressCandidates.Count);
+        }
+
+        [Test]
+        public void Folder_RuleWithIncludeFolders_DetailIsMatched()
+        {
+            var entries = new[]
+            {
+                Entry("G1", where: ctx => ctx.IsFolder, address: ctx => ctx.FileName, includeFolders: true),
+            };
+            var explanation = RuleEvaluator.Explain(FolderCtx("Assets/FolderA"), entries);
+
+            Assert.AreEqual(RuleMatchOutcome.Matched, explanation.Details[0].Outcome);
+            Assert.AreEqual("FolderA", explanation.Details[0].ProducedAddress);
         }
     }
 }

@@ -71,7 +71,14 @@ namespace AddressTeller.Editor
         /// Cleanup of entries that "no longer match any rule" is only performed for assets that were
         /// themselves passed to this method. Project-wide consistency checks remain the responsibility of
         /// the parameterless <see cref="ApplyAll(AddressableAssetSettings)"/> (the full scan used by
-        /// Menu/CLI).
+        /// Menu/CLI). By contrast, cleanup of entries whose path is structurally invalid for an
+        /// Addressables entry (for example leftovers from an older AddressTeller version) is not scoped by
+        /// <paramref name="paths"/>: every call scans every entry already sitting in a managed group,
+        /// regardless of what was passed in, since an asset whose stale entry needs removing may never
+        /// appear in an incremental <paramref name="paths"/> list again. This check skips entries whose
+        /// path cannot currently be resolved at all (empty <c>AssetPath</c> — e.g. an unfetched LFS
+        /// pointer, an in-progress branch switch, or a missing package); a genuinely deleted asset is
+        /// instead handled by <see cref="RemoveEntriesForDeletedAssets(IEnumerable{string}, AddressableAssetSettings)"/>.
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings = null)
         {
@@ -122,6 +129,15 @@ namespace AddressTeller.Editor
                 // そのためこの実行全体で stale クリーンアップ（Apply の Skipped 分岐での削除）を停止する。
                 if (hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
                     Debug.LogWarning($"[AddressTeller] Skipping stale entry cleanup for this run because {setup.ConfigureFailures.Count} rule(s) failed to configure.");
+
+                // 旧バージョンの AddressTeller が作成した、いまはパスが無効なエントリ（ProjectSettings/*.asset の
+                // readOnly エントリ等）を掃除する。paths（このメソッドに渡された対象アセット）には依存させない
+                // — Postprocessor 経由の差分適用では、旧エントリのパス自体は変更イベントに含まれないため、
+                // 対象を絞ると永遠に掃除されなくなってしまう。既存の stale クリーンアップと同じ所有権判定
+                // （管理対象グループ限定）・同じ条件（CleanupStaleEntries、Configure() 失敗時は停止）を使う。
+                // 削除は RemoveInvalidPathEntries 側で個別に Warning ログ済みのため、戻り値は破棄する。
+                if (!hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
+                    _ = AddressTellerApplier.RemoveInvalidPathEntries(settings, setup.ManagedGroups, setup.ConfigFolder);
 
                 var issues = new List<ValidationResult>(setup.ConfigureFailures);
 

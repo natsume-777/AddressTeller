@@ -15,9 +15,8 @@ namespace AddressTeller.Editor.Tests
     /// 保存の有無、issues の有無によるログ出力）を検証する。
     /// Run() 自体は EditorUtility.DisplayDialogComplex によるモーダルダイアログ操作を挟むため、
     /// EditMode テストからは検証できない（このテストの対象外。詳細はクラスコメント末尾を参照）。
-    /// ExecuteApply の rules 注入オーバーロード（internal、コードレビュー対応で追加）を使うことで、
-    /// リフレクションによるルール収集（プロジェクト内の他の AddressRuleBase 実装、例えば
-    /// dev/Assets/Editor/DemoRules.cs のようなワークスペースローカルなルール）に依存せず決定的に検証する。
+    /// ExecuteApply の rules 注入オーバーロード（internal）を使うことで、
+    /// リフレクションによるルール収集（プロジェクト内の他の AddressRuleBase 実装）に依存せず決定的に検証する。
     /// wasCancelled=true の分岐（EditorUtility.DisplayCancelableProgressBar への実際のキャンセル操作）は
     /// ユーザーの実インタラクションに依存するため自動テストでは再現できず、対象外とする。
     /// </summary>
@@ -229,8 +228,7 @@ namespace AddressTeller.Editor.Tests
         {
             // Run() から呼ばれる2引数オーバーロード（rules=null）は、リフレクションによるルール収集
             // （RuleCollector.CollectEnabledRules()）を経由する。実在しないダミーパスを渡すことで、
-            // プロジェクト内に実際に存在するルール（本ワークスペースの dev/Assets/Editor/DemoRules.cs 等）
-            // が実行されても評価対象がなく副作用が発生しないようにしたうえで、経路自体が例外を投げない
+            // プロジェクト内に実際に存在するルールが実行されても評価対象がなく副作用が発生しないようにしたうえで、経路自体が例外を投げない
             // ことのみをスモークテストとして確認する（AddressTellerServiceProgressTests と同じ考え方）。
             var dummyPath = TestRootFolder + "/NonExistent.prefab";
 

@@ -343,6 +343,16 @@ namespace AddressTeller.Editor
             // dry-run のため、スキップ自体のログはここでは出さない（実 Apply 側で1本出れば十分なため）。
             var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
 
+            // ApplyAll と同じ理由・同じ条件（CleanupStaleEntries、Configure() 失敗時は停止）で、
+            // 管理対象グループ内の無効パスエントリの予測削除を行う。paths には依存させない
+            // （旧バージョンの残骸は paths に含まれるとは限らないため）。書き込みは行わず、
+            // afterMap から取り除くだけで Diff.Removed に反映される。
+            if (!hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
+            {
+                foreach (var invalidEntry in AddressTellerApplier.FindInvalidPathManagedEntries(settings, setup.ManagedGroups, setup.ConfigFolder))
+                    afterMap.Remove(invalidEntry.guid);
+            }
+
             var issues = new List<ValidationResult>(setup.ConfigureFailures);
             var groupsToCreate = new HashSet<string>();
 

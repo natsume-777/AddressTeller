@@ -27,7 +27,20 @@ namespace AddressTeller.Editor.Tests
                 path => path == "Assets/FolderA",
                 folder => new[] { "Assets/FolderA/B.prefab", "Assets/FolderA/Sub/C.prefab" });
 
-            Assert.AreEqual(new[] { "Assets/FolderA/B.prefab", "Assets/FolderA/Sub/C.prefab" }, result);
+            Assert.AreEqual(new[] { "Assets/FolderA", "Assets/FolderA/B.prefab", "Assets/FolderA/Sub/C.prefab" }, result);
+        }
+
+        [Test]
+        public void ExpandFolders_Folder_IncludesFolderPathItself()
+        {
+            // Apply All は AssetDatabase.GetAllAssetPaths() が返すフォルダ自身も評価対象に含めるため、
+            // IncludeFolders() 宣言済みルールとの結果を揃えるにはフォルダ自身のパスも含める必要がある。
+            var result = AddressTellerScopeBuilder.ExpandFolders(
+                new[] { "Assets/FolderA" },
+                path => path == "Assets/FolderA",
+                folder => new[] { "Assets/FolderA/B.prefab" });
+
+            CollectionAssert.Contains(result, "Assets/FolderA");
         }
 
         [Test]
@@ -38,7 +51,7 @@ namespace AddressTeller.Editor.Tests
                 path => path == "Assets/FolderA",
                 folder => new[] { "Assets/FolderA/B.prefab", "Assets/FolderA/C.prefab" });
 
-            Assert.AreEqual(new[] { "Assets/FolderA/B.prefab", "Assets/FolderA/C.prefab" }, result);
+            Assert.AreEqual(new[] { "Assets/FolderA", "Assets/FolderA/B.prefab", "Assets/FolderA/C.prefab" }, result);
         }
 
         [Test]

@@ -27,6 +27,11 @@ misused builder call fails the test directly (see step 3 below).
    detail of the package. When you need to show a group name in an assertion message or log output, pass it
    through `RuleTestHelper.DisplayGroupName(entry.GroupName)` first — the raw sentinel contains unprintable
    control characters that would otherwise show up garbled in a failed test's output.
+5. If you build your own evaluation loop over the collected entries and pass it a folder `AssetContext`
+   (`IsFolder == true`), check `entry.IncludesFolders` before calling `entry.Predicate(ctx)` — see
+   `ExampleRuleTest.FindFirst` for the exact check. A rule only sees folders if its `Configure()` called
+   `IncludeFolders()`; the production evaluation pipeline skips `Predicate` entirely otherwise, and a helper
+   loop that skips this check can call a rule's `Predicate` with a folder it was never written to handle.
 
 ## Requirements
 

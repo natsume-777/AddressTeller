@@ -105,8 +105,39 @@ Per-asset information passed to each rule.
 | `Directory` | Directory path | `"Assets/Game/Characters"` |
 | `Extension` | File extension | `".prefab"` |
 | `IsInFolder(string)` | Returns true if the asset is under the specified folder | `ctx.IsInFolder("Assets/Game")` → `true` |
+| `IsFolder` | True when this asset is a folder rather than a file | `true` for `"Assets/Game/Characters"` |
 | `PathSegments` | Path split by `/` | `["Assets", "Game", "Characters", "Player.prefab"]` |
 | `RelativePathFrom(string root)` | Relative path from the specified folder | `ctx.RelativePathFrom("Assets/Game")` → `"Characters/Player.prefab"` |
+
+## Assets Excluded from Evaluation
+
+Some paths never reach any rule's `Where()` at all — not because a rule excluded them, but because AddressTeller pre-filters anything Addressables itself would refuse to register as an entry (the same path-validity check the Groups window's drag-and-drop and the Inspector's Addressable checkbox apply; the Inspector checkbox additionally rejects assets whose main type belongs to an editor assembly, a check AddressTeller does not replicate here). This keeps AddressTeller from creating entries that couldn't have been created by hand.
+
+Excluded regardless of `IncludeFolders()`:
+- Anything outside `Assets/` and outside a package's own folder (e.g. files under `ProjectSettings/` or `Library/`), and a package's own `package.json`.
+- Files with one of these extensions: `.cs`, `.js`, `.boo`, `.exe`, `.dll`, `.meta`, `.preset`, `.asmdef`.
+- Anything under a path segment named `Editor` (e.g. `Assets/Game/Editor/Foo.asset`).
+- Paths with no extension that are exactly `Assets`, a folder named `Editor` itself, or a path under a folder named `Editor` (whether or not the path is actually a folder — see note below).
+- The configured Addressables Config Folder itself and anything under it (the folder holding `AddressableAssetSettings.asset` and related assets), matched by plain prefix like Addressables itself does — so a folder that merely *starts with* the same name (e.g. `Assets/AddressableAssetsData_Backup`) is excluded too, not just the Config Folder's actual contents.
+
+This mirrors Addressables' own internal entry-validity check, which works on the path string alone. Because of that, a path with no extension is treated as folder-like by this check even when it happens to be an ordinary file — for example, a real file literally named `Assets/Game/Editor` with no extension is excluded too. `AssetContext.IsFolder` (used below for the `IncludeFolders()` opt-in) is a separate, actual folder check and plays no part in this exclusion.
+
+## Folders (IncludeFolders)
+
+By default, rules never see folders: `Where()` is never invoked for a folder unless the rule opts in with `IncludeFolders()`. This keeps existing rules (written with files in mind) safe from unintentionally matching a folder through a broad `Where` such as `Match.InFolder(...)`, whose prefix match would otherwise catch subfolders too.
+
+```csharp
+rules.Group("Bundles")
+    .Where(ctx => ctx.IsFolder && ctx.FileName == "StreamingContent")
+    .IncludeFolders()
+    .Address(ctx => ctx.FileName);
+```
+
+- `IncludeFolders()` can be called once per rule (same one-call limit as `Where()` / `Address()`); calling it a second time throws `InvalidOperationException`.
+- Once a rule opts in, `ctx.IsFolder` distinguishes folders from files inside that rule's `Where` / `Address` / `Label` selectors.
+- A folder entry, once created by Addressables, implicitly covers every asset beneath it — labels assigned to the folder are inherited by those assets. Matching a folder with one rule and its contents with another rule creates two separately managed entries covering the same assets; make sure that's what you intend.
+- Files without an extension (e.g. `LICENSE`) are ordinary files, not folders — `IsFolder` is `false` for them regardless of `IncludeFolders()`. Note that a subset of extension-less paths (the `Assets` root, a folder named `Editor` itself, and paths under a folder named `Editor`) are excluded from evaluation entirely, whether or not they are actually folders — see [Assets Excluded from Evaluation](#assets-excluded-from-evaluation) above.
+- Even with `IncludeFolders()` declared, the exclusions listed in [Assets Excluded from Evaluation](#assets-excluded-from-evaluation) still apply — Addressables itself would refuse to register those paths as entries either way.
 
 ## Testing
 

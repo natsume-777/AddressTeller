@@ -35,6 +35,7 @@
 - public/protected な型・メンバーの新規追加
 - 既存メソッドへの、既定値付きオプション引数の追加（既存の呼び出し元から見えるシグネチャは変わらない）
 - 引数の型をより汎用的な型へ拡張すること（既存呼び出し元のオーバーロード解決に影響しない場合）
+- ルールビルダーのインターフェース（`IAddressRuleBuilder` / `IAddressRuleGroupBuilder` / `ILabelRuleBuilder`）への新規メソッド追加。これらのインターフェースは内部（`AddressRuleBuilderImpl`）でのみ実装され、ルール作成者は利用するだけで実装することを想定していないため、通常のインターフェース破壊的変更（メンバー追加が全実装者を壊す）の懸念は当てはまらない。
 
 ### 2. `-executeMethod` エントリポイント
 
@@ -205,8 +206,10 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 - **Order**: `Order` の昇順で評価されます。同値の場合はルールクラスの完全修飾型名（Ordinal）で決定的にタイブレークします。クラス間で `Order` が重複していても警告が出るだけでエラーにはなりません。
 - **競合**: 同一アセットに対して2件以上のマッチしたルールが `Address()` を呼んだ場合は競合（`ValidationStatus.ConflictingAddress`）となり、そのアセットへのアドレス・ラベルとも書き込まれません（アドレスだけでなく、そのアセットへの書き込み自体がスキップされます）。
 - **ラベルの蓄積**: マッチした全ルールからの `Label()` 呼び出しがアセットに蓄積されます。マッチしなくなったルールによってラベルが暗黙に削除されることはありません（唯一ラベルを削除するのは `CleanupStaleEntries` によるエントリ全体の削除です）。
-- **`Where()` / `Address()` の単回呼び出し制約**: 同一ルールチェーン上でいずれかを2回呼び出すと `InvalidOperationException` を投げます。
+- **`Where()` / `Address()` / `IncludeFolders()` の単回呼び出し制約**: 同一ルールチェーン上でこれらのいずれかを2回呼び出すと `InvalidOperationException` を投げます。
 - **`GroupDefault()` の解決**: `Configure()` 実行時ではなく評価時に `AddressableAssetSettings.DefaultGroup` から解決されるため、DefaultGroup のリネームに自動的に追従します。
+- **フォルダ**: ルールが `IncludeFolders()` で明示的に opt-in しない限り、フォルダ資産はそのルールの `Where()` に一切渡りません（Predicate 自体が呼ばれません）。ファイルを前提に書かれた既存ルールが、広めの `Where` 条件で意図せずフォルダにマッチしてしまうことを防ぐためです。
+- **stale エントリ掃除の対象範囲**: `CleanupStaleEntries` が有効な場合、「どのルールにもマッチしなくなったエントリ」だけでなく、管理対象グループ内でアセットパスが構造的に無効なエントリ（拡張子・`Editor` という名前のフォルダ等で判定される、旧バージョンの AddressTeller が作成した残骸等）も掃除対象に含まれます。パスがそもそも解決できない（`AddressableAssetEntry.AssetPath` が空文字になる。LFS 未取得・ブランチ切替中・パッケージ未導入等で一時的に資産へアクセスできないケースを含む）エントリはこの掃除の対象外です。資産が本当に削除された場合の追従は、別経路（`RemoveEntriesForDeletedAssets`、削除通知を起点にするもの）が担当します。この判定は Apply（その dry-run/Preview を含む）に渡されたパスとは独立に、現在 Addressables 上に存在する管理対象エントリ全件に対して毎回行われます。
 
 評価挙動を変える新規設定を、明示的に有効化した場合にのみ挙動が変わる形（既定OFFのオプトイン）で追加することは非破壊的です。オプトインしないプロジェクトの挙動は変わらないためです。
 
@@ -216,7 +219,7 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 
 **メンバー追加がコンパイルを壊さずに実行時の挙動を壊しうる理由**: `default` アームの無い `switch` 文は、認識していない新しいenum値に対してもコンパイル・実行ができてしまいます。ただ何もしない（あるいは周辺コード次第でフォールスルーする）だけで、これは呼び出し元が見たことのないステータスに対してはたいてい誤った挙動です。追加をパッチではなくマイナーとして扱うのはこのためです。ビルドは失敗しないものの、CHANGELOGで可視化され、これらの型を網羅的に `switch` しているコードの持ち主に検討してもらうことを意図しています。
 
-具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
+具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
 
 これらの enum のいずれにも `[Flags]` は意図的に採用していません。`ValidationStatus` は特に組み合わせ可能に見えるかもしれませんが、`ValidationResult` は1アセットにつきちょうど1つの結果を表します。`[Flags]` にすると組み合わせに意味があるという前提を持ち込んでしまい、JSON・enum名のシリアライズのされ方も変わってしまいます（`[Flags]` の `ToString()` は組み合わせ値に対してカンマ区切りの名前を生成しうる）。これはこのパッケージがコミットしたくない、より大きな互換性の保証範囲です。
 

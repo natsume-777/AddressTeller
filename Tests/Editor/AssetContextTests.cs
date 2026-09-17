@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using System;
+using UnityEditor;
 using UnityEngine;
 
 namespace AddressTeller.Editor.Tests
@@ -17,6 +18,33 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual("Player", ctx.FileNameWithoutExtension);
             Assert.AreEqual("Player.prefab", ctx.FileName);
             Assert.AreEqual("Assets/Game/Characters", ctx.Directory);
+        }
+
+        [Test]
+        public void IsFolder_DefaultsToFalse()
+        {
+            var ctx = new AssetContext("abc123", "Assets/Game/Characters/Player.prefab", typeof(GameObject));
+
+            Assert.IsFalse(ctx.IsFolder);
+        }
+
+        [Test]
+        public void IsFolder_ReflectsConstructorArgument()
+        {
+            var ctx = new AssetContext("abc123", "Assets/Game/Characters", typeof(DefaultAsset), isFolder: true);
+
+            Assert.IsTrue(ctx.IsFolder);
+        }
+
+        [Test]
+        public void IsInFolder_StillMatchesSubfolderPaths()
+        {
+            // IsInFolder はパス前方一致なので、サブフォルダ自身のパスにもマッチする。
+            // フォルダをルール評価から外すかどうかは RuleEvaluator（IncludeFolders() の有無）の役目であり、
+            // この条件式側では絞り込まない（opt-in したルールがフォルダパスを自由に判定できるようにするため）。
+            var folderCtx = new AssetContext("abc123", "Assets/Game/Characters/Enemies", typeof(DefaultAsset), isFolder: true);
+
+            Assert.IsTrue(folderCtx.IsInFolder("Assets/Game/Characters"));
         }
 
         [Test]

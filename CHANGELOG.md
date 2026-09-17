@@ -8,6 +8,112 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+### Added
+
+- `IAddressRuleGroupBuilder.IncludeFolders()` and `ILabelRuleBuilder.IncludeFolders()`:
+  opt a rule into receiving folder assets during evaluation. Callable once per rule or group; calling
+  twice throws `InvalidOperationException`. Without this call, folders are skipped entirely (predicate
+  is never invoked).
+- `AssetContext.IsFolder`: true when the asset is a folder rather than a file. Useful for rules that
+  opt into folder evaluation and need to distinguish between the two; also available to tests and
+  tooling that construct AssetContext manually.
+- Overload of `AssetContext` constructor accepting `isFolder` parameter, in addition to the existing
+  constructor. The existing constructor (without `isFolder`) defaults to `false`.
+- `AddressRuleEntry.IncludesFolders`: read-only property indicating whether this entry opted in to
+  folder evaluation. Not settable through the public `AddressRuleEntry` constructor — it is only ever
+  `true` when the entry was produced by the builder (i.e. `IncludeFolders()` was called). Useful for
+  code that constructs its own evaluation loop over collected entries (e.g. testing helpers).
+- `ValidationStatus.EntryRejectedByAddressables`: reported when a rule matched, resolved an address,
+  and the target group exists, but Addressables itself refused to create or move a usable entry for
+  this asset (the path is not valid for an Addressables entry; Addressables returns no entry when the
+  asset's main type also belongs to an editor assembly, and a read-only placeholder otherwise). This
+  is distinct from `ValidationStatus.GroupNotFound`, which covers the target group itself not
+  existing. Any read-only placeholder entry Addressables did create in this edge case is removed.
+
+### Fixed
+
+- Windows: `AddressableAssetSettings.ConfigFolder` may be returned with backslash separators. This
+  meant that, on Windows, assets under the Config Folder were not actually excluded from rule
+  evaluation, and `AddressTellerPostprocessor`'s early-exit check did not recognize changes confined to
+  the Config Folder, so saving Addressables settings triggered an unnecessary incremental apply for the
+  changed settings assets. The path is now normalized to forward slashes at the point of retrieval,
+  restoring both behaviors; any Config Folder entries created while the exclusion was ineffective are
+  removed by the invalid-path cleanup described below when `CleanupStaleEntries` is enabled.
+- Apply no longer aborts with a `NullReferenceException` when Addressables' `CreateOrMoveEntry` returns
+  `null`; the asset is now reported as `EntryRejectedByAddressables` instead.
+- Read-only placeholder entries that Addressables silently creates for a path it considers invalid
+  (when the asset's main type is not from an editor assembly) are no longer left behind; `Apply` now
+  removes them.
+
+### Changed
+
+- **BREAKING**: Folders are now opt-in via `IncludeFolders()`. By default, folder assets do not appear
+  in rule evaluation — neither the `Where()` predicate nor address/label selectors are invoked for
+  folders. Rules that wish to register entries for folders must explicitly call `IncludeFolders()` on
+  the builder (once per rule / `Group()` / `AnyGroup()`). Previously, every folder path returned by
+  `AssetDatabase.GetAllAssetPaths()` was evaluated like a file, so a broad predicate (e.g.
+  `Match.All()` or `Match.InFolder(...)`) could match a folder and create an Addressables folder entry
+  that implicitly covers everything beneath it. Rules that do not call `IncludeFolders()` can now use
+  broad predicates without matching folders. If `CleanupStaleEntries` is enabled, a folder entry that
+  only existed because such a broad rule matched it before this change is treated as unmatched once
+  the rule stops seeing it, and is removed by the same stale-entry cleanup that has always applied to
+  unmatched file entries — this is not a new cleanup mechanism, and follows the same scoping as file
+  cleanup (only assets actually evaluated by that particular apply are affected).
+- **BREAKING**: Path validity checks now align with Addressables. Addressables itself rejects certain
+  paths when users manually create entries via the Groups window or the Inspector "Addressable"
+  checkbox: paths outside `Assets/` and outside a package's own folder (e.g. `ProjectSettings/`,
+  `Library/`, `Temp/`); a package's own `package.json`; a package's own root folder with nothing
+  beneath it; extensions `.preset` and `.asmdef`; paths containing `/Editor/` or ending in `/Editor`;
+  the `Assets` root itself; and the Addressables Config Folder (see below). Such paths are now
+  filtered out before rules run — no rule sees them and no result is reported for them, the same as
+  any other pre-filtered path. `ValidationStatus.EntryRejectedByAddressables` is reported only if
+  Addressables still refuses a write for a path that passed this filter (a rare case, see Added).
+- **BREAKING**: `CleanupStaleEntries`, when enabled, also removes entries in managed groups whose
+  asset path is structurally invalid for an Addressables entry at all — regardless of whether any rule
+  matches them — for example leftovers created by an older AddressTeller version under
+  `ProjectSettings/`, or with a `.preset`/`.asmdef` path. Unlike the stale-entry cleanup described
+  above, this check scans every entry in every managed group on every apply, including import-time
+  auto-apply, independent of which assets were actually imported or changed.
+- **BREAKING**: Extension exclusion is now case-sensitive. File paths ending in `.CS`, `.DLL`,
+  `.PRESET`, etc. (uppercase) are no longer automatically excluded from evaluation and will now pass
+  through to rules. This matches Addressables' own behavior.
+- **BREAKING**: The Config Folder exclusion now uses Addressables' own boundary-less prefix match,
+  reverting the boundary-aware check introduced in 0.4.0. Folders that merely share the Config
+  Folder's name prefix (e.g. `Assets/AddressableAssetsData_Backup`) are now excluded, matching the
+  Groups window and Inspector; existing entries for assets under them — files as well as folders — in
+  managed groups are removed on the next apply when `CleanupStaleEntries` is enabled.
+- **Upgrading from 0.4.x:** with `CleanupStaleEntries` enabled (the default), the first apply after
+  upgrading can delete existing entries in managed groups: folder entries (whether created by a broad
+  rule or added by hand) that no rule opting in with `IncludeFolders()` matches; and entries whose path
+  Addressables itself rejects (`.preset`/`.asmdef`, an `Editor` folder or anything under one, the
+  `Assets` root, a package root or its `package.json`, paths outside `Assets/`/packages such as
+  `ProjectSettings/`, and anything under or sharing a name prefix with the Config Folder). Invalid-path
+  entries are removed by any apply, including the automatic apply on import, which does not take an
+  automatic snapshot. Before upgrading: save a snapshot (`Tools/AddressTeller/Snapshot/Save
+  Snapshot`), or temporarily disable `CleanupStaleEntries` and turn off auto-apply on import; add
+  `IncludeFolders()` to rules that are meant to register folders; then run `Apply All` and review the
+  removal warnings in the Console.
+- `RuleUnitTestHelper` sample: `ExampleRuleTest.FindFirst` now skips a rule's `Predicate` for a folder
+  `AssetContext` when the rule did not opt in via `IncludeFolders()`, matching the production
+  evaluator's behavior; `RuleTestHelper`'s doc comments and the sample's README explain this for
+  hand-rolled evaluation loops.
+
+### Documentation
+
+- `compatibility.md`: documented that adding a method to a rule-builder interface
+  (`IAddressRuleBuilder`, `IAddressRuleGroupBuilder`, `ILabelRuleBuilder`) is a non-breaking change,
+  since these interfaces are only ever implemented internally and are meant to be consumed, not
+  implemented, by rule authors. Also documented the `IncludeFolders()` single-call constraint, that a
+  folder never reaches a rule's `Where()` unless the rule opts in, and the stale-entry cleanup's
+  expanded scope (structurally invalid paths, not just unmatched entries).
+- `design-decisions.md`: documented the folder opt-in model, the rationale for aligning path validity
+  checks with Addressables, and a design principle comparing AddressTeller's rule surface against what
+  the Addressables Groups window allows and refuses manually.
+- `operations.md`: documented the new path exclusion categories, the cleanup of path-invalid entries
+  in managed groups, and a pointer to the upgrade note above.
+- `writing-rules.md`: added guidance on `IncludeFolders()` use and folder context detection
+  via `IsFolder`.
+
 ## [0.4.2] - 2026-08-07
 
 ### Documentation

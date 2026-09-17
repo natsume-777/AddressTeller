@@ -7,7 +7,7 @@ using UnityEngine;
 namespace AddressTeller.Editor.Tests
 {
     /// <summary>
-    /// AddressTellerApplier.Apply の Skipped 時クリーンアップ挙動(コードレビュー#5対応)を、
+    /// AddressTellerApplier.Apply の Skipped 時クリーンアップ挙動を、
     /// ディスクに保存しない一時的な AddressableAssetSettings 上で検証する。
     /// </summary>
     public class AddressTellerApplierApplyTests
@@ -45,6 +45,9 @@ namespace AddressTeller.Editor.Tests
 
         private static AddressResolution LabelsOnlyResolution(params string[] labels) =>
             new AddressResolution(Array.Empty<AddressCandidate>(), new HashSet<string>(labels));
+
+        private static AddressResolution OneCandidateResolution(string groupName, string address) =>
+            new AddressResolution(new[] { new AddressCandidate(groupName, address) }, new HashSet<string>());
 
         private HashSet<string> ExistingGroupNames() =>
             new HashSet<string> { _managedGroup.Name, _otherGroup.Name };
@@ -243,6 +246,47 @@ namespace AddressTeller.Editor.Tests
 
             Assert.IsTrue(result.HasValue);
             CollectionAssert.AreEqual(new[] { "Mango", "apple", "zebra" }, result.Value.Labels);
+        }
+
+        [Test]
+        public void Apply_CandidateGroupMissingFromSettings_ReturnsGroupNotFound_DoesNotThrow()
+        {
+            // existingGroupNames は呼び出し側が別途構築するコレクションであり、_settings.groups と食い違いうる
+            // (テスト用の意図的なミスマッチ)。Validate は existingGroupNames だけを見て Ok を返すため、
+            // Apply は settings.FindGroup(candidate.GroupName) まで進むが、そのグループは実際には
+            // _settings に存在しないため null が返る。これは Addressables が拒否したのではなくグループが
+            // 実在しないという状態そのものなので、EntryRejectedByAddressables ではなく GroupNotFound を返し、
+            // かつ group が null のままクラッシュしないことを検証する。
+            var existingGroupNames = new HashSet<string> { "GroupNotInSettings" };
+            var managedGroups = new HashSet<string> { "GroupNotInSettings" };
+
+            ValidationResult result = null;
+            Assert.DoesNotThrow(() =>
+                result = AddressTellerApplier.Apply(
+                    Ctx("guid-missing-group"), OneCandidateResolution("GroupNotInSettings", "SomeAddress"),
+                    _settings, existingGroupNames, managedGroups));
+
+            Assert.AreEqual(ValidationStatus.GroupNotFound, result.Status);
+            Assert.IsNull(_settings.FindAssetEntry("guid-missing-group"));
+        }
+
+        [Test]
+        public void Apply_GuidDoesNotResolveToAnAsset_RemovesLeftoverReadOnlyEntry_ReturnsEntryRejectedByAddressables()
+        {
+            // "guid-unresolvable" はプロジェクト内のどのアセットにも対応しないため、
+            // AssetDatabase.GUIDToAssetPath は空文字を返す。この場合、Addressables 本体の
+            // CreateAndAddEntryToGroup は例外を投げず、address=guid の readOnly エントリを作成して
+            // グループに追加してしまう(AddressTellerApplier.cs の当該コメント参照)。
+            // AddressTeller はこれを拒否扱いにし、作られてしまったエントリを取り除く必要がある。
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var result = AddressTellerApplier.Apply(
+                Ctx("guid-unresolvable"), OneCandidateResolution(_managedGroup.Name, "SomeAddress"),
+                _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(ValidationStatus.EntryRejectedByAddressables, result.Status);
+            Assert.IsNull(_settings.FindAssetEntry("guid-unresolvable"),
+                "The read-only placeholder entry Addressables created should have been removed, not left behind.");
         }
     }
 }
