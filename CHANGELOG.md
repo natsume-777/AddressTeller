@@ -8,6 +8,8 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-17
+
 ### Added
 
 - `IAddressRuleGroupBuilder.IncludeFolders()` and `ILabelRuleBuilder.IncludeFolders()`:
