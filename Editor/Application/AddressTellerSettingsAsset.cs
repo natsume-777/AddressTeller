@@ -21,6 +21,11 @@ namespace AddressTeller.Editor
     /// 実装する場合、その生成元となるオブジェクト参照など）は、破棄済みの参照を握り続けることになり
     /// 破綻する。<see cref="AddressTellerSettings"/> の各プロパティは現在すべて呼び出しのたびに
     /// <c>instance</c> を引き直しており、この不変条件を満たしている。
+    /// もう一つの不変条件: このクラスに <c>UnityEngine.Object</c> 参照のフィールドを追加してはならない。
+    /// テストのポリューションガード（<c>AddressTellerAddressablesPollutionGuard</c>）はメモリ上の値を
+    /// <c>EditorJsonUtility</c> の JSON ラウンドトリップで復元しており、この方式はオブジェクト参照を
+    /// 含むフィールドを完全には元の状態へ戻せない。ここに <c>UnityEngine.Object</c> 参照フィールドが
+    /// 増えると、その復元漏れにより開発者の未保存の設定値が気づかないうちに壊れうる。
     /// </remarks>
     [FilePath("ProjectSettings/AddressTellerSettings.asset", FilePathAttribute.Location.ProjectFolder)]
     internal sealed class AddressTellerSettingsAsset : ScriptableSingleton<AddressTellerSettingsAsset>
