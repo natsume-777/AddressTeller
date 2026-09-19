@@ -42,11 +42,22 @@ namespace AddressTeller.Editor
         /// </summary>
         public ClearScope ClearScope { get; private set; } = ClearScope.Managed;
 
+        /// <summary>
+        /// Whether -addressTellerFailOnSettingsMismatch was specified. When set, each CLI entry point
+        /// (<see cref="AddressTellerMenu.ApplyAllCLI"/>, <see cref="AddressTellerMenu.ApplyWithValidateCLI"/>,
+        /// <see cref="AddressTellerMenu.CheckCLI"/>, <see cref="AddressTellerMenu.ClearCLI"/>) checks, before
+        /// doing anything else, whether ProjectSettings/AddressTellerSettings.asset on disk matches the
+        /// settings currently loaded in memory; if it does not, the run logs an error and exits with code 3
+        /// instead of proceeding. Defaults to false (no check performed; existing behavior is unchanged).
+        /// </summary>
+        public bool FailOnSettingsMismatch { get; private set; }
+
         private const string ReportPathFlag = "-addressTellerReport";
         private const string ReportFormatFlag = "-addressTellerReportFormat";
         private const string DisableRulesFlag = "-addressTellerDisableRules";
         private const string ConfirmClearFlag = "-addressTellerConfirmClear";
         private const string ClearScopeFlag = "-addressTellerClearScope";
+        private const string FailOnSettingsMismatchFlag = "-addressTellerFailOnSettingsMismatch";
 
         /// <summary>
         /// Parses an argument array.
@@ -71,6 +82,7 @@ namespace AddressTeller.Editor
             IReadOnlyList<string> disableRuleFullNames = Array.Empty<string>();
             var confirmClear = false;
             var clearScope = ClearScope.Managed;
+            var failOnSettingsMismatch = false;
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -123,6 +135,10 @@ namespace AddressTeller.Editor
                         confirmClear = true;
                         break;
 
+                    case FailOnSettingsMismatchFlag:
+                        failOnSettingsMismatch = true;
+                        break;
+
                     case ClearScopeFlag:
                         if (i + 1 >= args.Length)
                         {
@@ -156,6 +172,7 @@ namespace AddressTeller.Editor
                 DisableRuleFullNames = disableRuleFullNames,
                 ConfirmClear = confirmClear,
                 ClearScope = clearScope,
+                FailOnSettingsMismatch = failOnSettingsMismatch,
             };
             return true;
         }

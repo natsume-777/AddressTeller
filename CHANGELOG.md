@@ -8,6 +8,79 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+### Added
+
+- `AddressTellerSettings.SaveToDisk()`: writes the current in-memory settings to
+  `ProjectSettings/AddressTellerSettings.asset` unconditionally, even when nothing has changed. Property
+  setters already persist on change, but skip the write when the assigned value equals the current one —
+  which made it impossible to recover using the public API alone once the file and the in-memory settings
+  had drifted apart (for example, the file failed to load, or was edited outside the Editor while it was
+  already running). Verifies the write by comparing the file's contents against a fresh re-serialization
+  of the same in-memory settings. Returns `false`, and logs an error, if writing the file, re-serializing
+  the settings for the comparison, or reading either file fails (e.g. no read/write permission), or if
+  that comparison does not match.
+- `AddressTellerSettings.ReloadFromDisk()`: reloads `ProjectSettings/AddressTellerSettings.asset` into
+  memory by discarding the current in-memory settings object and letting Unity recreate it from disk; does
+  not write to disk. This changes the identity of the internal settings object, and any unsaved in-memory
+  changes are lost. Returns `false` without changing memory only when the file does not exist or is not
+  accessible (e.g. first run in a project that has never saved this asset). If the file exists but is
+  corrupted or otherwise unreadable, the result is the same as what happens when the Editor itself starts
+  up and reads that file — Unity's own deserializer may log a parse error to the Console while doing so
+  (this is a log from Unity, not from AddressTeller), and the settings may reset to their defaults. This
+  method cannot distinguish that outcome from a normal reload, so it still returns `true` in that case.
+- Settings load diagnostic: once per Editor session — not repeated on every domain reload within that
+  session (tracked via `SessionState`, which persists across domain reloads) — AddressTeller compares
+  `ProjectSettings/AddressTellerSettings.asset` on disk against a fresh re-serialization of the settings
+  currently loaded in memory, and logs a `Debug.LogWarning` listing the differing fields (by their
+  serialized field name, e.g. `_postprocessOrder`) if they disagree. This is the only signal this package
+  emits for the BREAKING silent reset described below — previously nothing was logged at all. The check
+  logs nothing when the file does not exist yet, cannot be read, or matches memory (it can still, rarely,
+  emit the same one-off temp-file-cleanup `Debug.LogWarning` described for `SaveToDisk()` above, since it
+  reuses the same re-serialization helper); it never runs during asset import (`AssetPostprocessor`), so it
+  adds no per-import cost. This startup check runs unconditionally — including under `-batchmode` CI runs —
+  regardless of the new `-addressTellerFailOnSettingsMismatch` CLI flag: that flag does not gate whether the
+  check runs, only whether a mismatch also fails the run. When specified, `ApplyAllCLI` /
+  `ApplyWithValidateCLI` / `CheckCLI` / `ClearCLI` re-run the same comparison before doing anything else and,
+  if a mismatch is found, additionally log an error and exit with code 3 (existing exit code, no new one
+  introduced) — on a run that already has a mismatch, this means the same fields are logged twice (the
+  startup warning, then the CLI error) and the comparison temp file is written twice. Omitting the flag
+  leaves all four CLI entry points' exit-code behavior unchanged; the startup warning still runs either way.
+
+### Changed
+
+- **BREAKING**: Settings saved by any version of AddressTeller before this one are silently reset to
+  their default values — the load itself is not accompanied by any warning or error, neither from
+  AddressTeller nor from Unity's own deserializer — the first time
+  `ProjectSettings/AddressTellerSettings.asset` is loaded by this version (or later). This was confirmed
+  by testing: a settings file with non-default values, saved in the form written by every version before
+  this one, has every field come back as its default after being loaded by this version.
+  This is a side effect of moving the internal settings storage type (`AddressTellerSettingsAsset`) from
+  `AddressTellerSettings.cs` into its own file, `Editor/Application/AddressTellerSettingsAsset.cs`.
+  This version's own settings load diagnostic (see Added above) closes part of that gap after the fact: once
+  per Editor session it compares the file against what actually loaded into memory and logs a warning
+  listing the fields that differ, so the reset no longer goes completely unnoticed on an Editor upgraded to
+  this version or later — it just does not happen at the exact moment the reset itself occurs.
+  **Before upgrading**, note down your current values from `Project Settings > AddressTeller` — Auto-apply
+  on import, Postprocessor execution order, Remove unmatched entries, Snapshot folder, Save auto-snapshot
+  before Apply, Auto-snapshot retention count, and the enable/disable state of any rule classes — and
+  re-apply them after upgrading.
+  Once loaded by this version, the file's serialized representation of *how the type is identified* is
+  rewritten: `m_Script` changes from `{fileID: 0}` to a real `MonoScript` reference (the `.meta` GUID of
+  `Editor/Application/AddressTellerSettingsAsset.cs`), and `m_EditorClassIdentifier` changes from
+  `AddressTeller.Editor:AddressTeller.Editor:AddressTellerSettingsAsset` to
+  `AddressTeller.Editor::AddressTeller.Editor.AddressTellerSettingsAsset`. Since this file is expected to
+  be checked into version control (see
+  [Settings Asset](Documentation~/compatibility.md#7-settings-asset)), expect this as a diff (and a
+  possible merge conflict) the first time it is saved after upgrading.
+  **Downgrade note:** This silent reset runs in both directions. Downgrading has the same effect for the same underlying
+  reason — the file's representation of the type does not match what the code on the other side of this
+  split recognizes: a settings file saved by this version (or later) and then opened with a version of
+  AddressTeller from before this file split cannot be resolved by that older version, and is likewise
+  reset to default values with no warning or error (also confirmed by testing). If you need to move
+  between versions on either side of this split, restore `ProjectSettings/AddressTellerSettings.asset`
+  from version control history for the target version rather than trusting Unity to read it correctly
+  across the boundary.
+
 ## [0.5.0] - 2026-09-17
 
 ### Added

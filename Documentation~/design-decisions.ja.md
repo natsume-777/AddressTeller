@@ -73,3 +73,13 @@ AddressTeller のルールは、Unity の Addressables「Groups」ウィンド�
 - スナップショットのファイル管理・自動退避・レポート組み立て
 
 これらは `AddressTeller.Core` / `AddressTeller.Editor` の2つのエディタアセンブリに分かれており（アセンブリ構成の詳細は[アーキテクチャ](architecture.ja.md)参照）、テストからはそれぞれのアセンブリで宣言した `InternalsVisibleTo` で限定的に参照できるようにしている。利用者から直接参照されない前提のため、内部実装の型・メソッドはシグネチャを保たずに変更できる。
+
+## 設定の永続化は Unity の非公開 API に依存している
+
+`AddressTellerSettings.SaveToDisk()` は、書き込みが実際にディスクへ反映されたことを確認するため、現在メモリ上にある設定を一時ファイルへ再シリアライズし、その結果のテキストを `ProjectSettings/AddressTellerSettings.asset` の内容と比較する。この再シリアライズ処理（`AddressTellerSettingsAsset.SaveCurrentInstanceToTempFileAndReadText()`）は `UnityEditorInternal.InternalEditorUtility.SaveToSerializedFileAndForget` を呼んでおり、これはドキュメント化されておらず Unity の公開API保証の対象外である。
+
+この依存は新規に持ち込んだものではなく、既存の依存を明示化しただけである。`AddressTellerSettingsAsset` が書き込みのたびに呼んでいる `ScriptableSingleton<T>.Save` 自体が、内部でこの同じ非公開APIを使っている。`Assets/`・`Packages/` の外にあるエディタ全体設定を永続化する以上、Unity 自身のシリアライズ経路のどこかでこのAPIを通らざるを得ない。選べたのは、この1箇所の検証処理のためにその依存を明示的に露出させるか、`ScriptableSingleton` の内部に暗黙のまま留めておくかだけである。
+
+`AssetDatabase` ベースの代替手段はここでは使えない。`AssetDatabase` が管理するのは `Assets/` と `Packages/` 配下のアセットのみであり、`ProjectSettings/` はその管轄外にある。`ScriptableSingleton` がアセットデータベースの外にあるエディタ全体設定のために Unity が用意しているサポート対象の仕組みなのは、まさにこのためである。
+
+将来の Unity バージョンで `SaveToSerializedFileAndForget` が削除・変更された場合、壊れるのは本パッケージがこの1箇所（上記の書き込み検証処理）で直接呼んでいる部分だけである。`ScriptableSingleton.Save` は壊れない。`ScriptableSingleton` を永続化するために Unity が内部でどの仕組みを使うかは Unity 自身が保守する責任であり、本パッケージが直接依存しているわけではないからである。その場合の縮退方針は、書き込み検証処理を諦め `SaveChanges()`（`ScriptableSingleton.Save(true)`）だけを残すことである。設定自体は引き続き正しく永続化される。`SaveToDisk()` は「書き込みがバイト単位で反映されたか」を確認できなくなり、無条件の書き込みへと縮退するだけである。読み込み側の `ReloadFromDisk()` も、このAPIを直接呼んでいない点は同様で、現在のインスタンスを破棄してから `instance` に再アクセスするだけであり、読み込み自体は Unity 自身の `ScriptableSingleton` の読み込み経路に委ねている。

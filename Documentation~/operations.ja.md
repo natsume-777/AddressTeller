@@ -26,6 +26,8 @@
 
 `-addressTellerReport <path>` / `-addressTellerReportFormat json|junit` を指定すると、`CheckCLI` は dry-run、`ApplyAllCLI` / `ApplyWithValidateCLI` は Apply 実行前の差分（dry-run）から構造化レポートをファイル出力します。`-addressTellerReportFormat` を省略した場合、拡張子が `.xml` なら `junit`、それ以外は `json` として扱われます。
 
+`-addressTellerFailOnSettingsMismatch` を指定すると、4つの CLI エントリポイントすべてが、他の処理を行う前に `ProjectSettings/AddressTellerSettings.asset` のディスク上の内容と現在メモリにロードされている設定を比較します（後述の [Project Settings](#project-settings) にある起動時診断と同じ検査を、次の Editor セッションを待たずにその場で実行するものです）。一致しなければ、そのまま処理を続けずエラーログを出して exit code 3 で終了します——設定ファイルの読み込み失敗（このバージョンの [CHANGELOG.ja.md](../CHANGELOG.ja.md) の「Changed」項目を参照）が CI の結果に影響する前に検出するのに使えます。このフラグは検査そのものの実行有無を制御するものではありません——後述の起動時診断はこのフラグの有無に関わらず `-batchmode` でも無条件に実行されます。フラグが制御するのは、不一致が見つかったときに CLI の実行自体を失敗させるかどうかだけです。そのため、不一致がある状態でこのフラグを指定した CI 実行では、同じ差分フィールドが起動時の `Debug.LogWarning` と CLI 側の `Debug.LogError` の2回ログされ、比較用の一時ファイルも2回書き出されます——ログを機械的にパースする場合は注意してください。このフラグを指定しなければ、4つの CLI エントリポイントいずれも挙動は変わりません。
+
 exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 
 | exit code | 意味 |
@@ -33,14 +35,14 @@ exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 | 0 | 差分なし・問題なし |
 | 1 | ドリフトあり（差分あり、Validation エラーなし） |
 | 2 | Validation エラーあり |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ設定ファイルとメモリの不一致） |
 
 `ClearCLI` の exit code:
 
 | exit code | 意味 |
 |---|---|
 | 0 | クリア完了 |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ設定ファイルとメモリの不一致） |
 | 4 | `-addressTellerConfirmClear` が指定されていないため実行を拒否（意図的な拒否） |
 
 ### コマンドラインからの非対話実行
@@ -57,6 +59,23 @@ exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 - `-logFile -` は Editor ログをファイルではなく標準出力へ流します。この機能が出力する `Debug.Log` / `Debug.LogError` を CI で捕捉するのに便利です。
 - 必要に応じて `CheckCLI`・`ApplyWithValidateCLI`・`ClearCLI`（こちらは `-addressTellerConfirmClear` が別途必須。`-addressTellerClearScope all` も任意で指定可）に差し替えてください。
 - ビルドを失敗させるかどうかは、上記の exit code 表と照らし合わせて判定してください。
+- `AddressTellerSettings.SaveToDisk()` / `ReloadFromDisk()`（詳細は後述の [Project Settings](#project-settings)）は、
+  何か本当に問題がある場合を除き AddressTeller 自身からはログを出しません。`SaveToDisk()` はファイルの
+  書き込み、または書き込みの検証に失敗したときだけ `Debug.LogError` を出します。まれに、その検証で使う
+  一時ファイルの後始末に失敗した場合に `Debug.LogWarning` を1回だけ出すこともあります（戻り値には影響
+  しません。一時ファイルが削除されずに残るだけです）。`ReloadFromDisk()` は自ら何かをログ出力することは
+  ありません。ただし設定ファイルが壊れている場合、`ReloadFromDisk()` の読み込み中に Unity 自身のデシリアライザがパース
+  エラーをログ出力することがあります——これは AddressTeller ではなく Unity 側が出すログですが、
+  `-logFile -` の捕捉結果には含まれます。その場合、設定は無言で既定値へフォールバックします（詳細は後述の
+  [Project Settings](#project-settings) を参照）。
+  この契約は、後述の [Project Settings](#project-settings) にある設定ロード診断（CI 実行時は上記の
+  `-addressTellerFailOnSettingsMismatch` も含む）には及びません。その診断は設定ファイルとメモリの不一致を
+  検出して知らせること自体が目的のため、不一致を見つけるたびに `Debug.LogWarning`（そのフラグ指定時は
+  `Debug.LogError` を出したうえで終了）を出します——これは上記の `SaveToDisk()` / `ReloadFromDisk()` に
+  ついて説明した「書き込み・読み込み自体に問題が無い限り無言」という契約とは別物です。ただしこの診断は
+  `SaveToDisk()` と同じ一時ファイル再シリアライズ処理を再利用しているため、ファイルとメモリが実際には
+  一致している場合でも、上記の一時ファイル後始末失敗時の無関係な `Debug.LogWarning`（2段落前で説明した
+  もの）がまれに同様に出ることがあります。
 
 ### 論理バンドル分布サマリ
 
@@ -72,6 +91,25 @@ exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 
 ## Project Settings
 
+**このバージョンより前のバージョンからアップデートする場合**、この画面の全項目が、このバージョンが
+`ProjectSettings/AddressTellerSettings.asset` を最初に読み込んだ時点で既定値へリセットされます
+（このリセット自体には警告もエラーも伴いません）。アップデート前に以下の現在値を控えておき、アップデート後に再設定してください。
+実測で確認した詳細と影響対象の設定については、このバージョンの [CHANGELOG.ja.md](../CHANGELOG.ja.md) の
+「Changed」項目を参照してください。
+
+ただしこのバージョンからは、これを記憶だけに頼って把握する必要はありません。Editor セッションにつき
+1回——同一セッション内でドメインリロードが何度起きても繰り返されない——、AddressTeller が
+`ProjectSettings/AddressTellerSettings.asset` のディスク上の内容と、現在メモリにロードされている設定を
+再シリアライズした結果を比較し、食い違っていれば差分フィールドをシリアライズ名（例:
+`_postprocessOrder`）で列挙した `Debug.LogWarning` と、次に何をすべきかの案内を出します。この検査自体は、
+ファイルがまだ存在しない・読み取れない・メモリと一致する場合はいずれも比較についてのログを出しません
+（唯一の例外は前述の [コマンドラインからの非対話実行](#コマンドラインからの非対話実行) にある一時ファイル
+後始末の注記を参照）。アセットのインポート中には一切実行されないためインポートごとの追加コストもあり
+ません。この起動時検査は `-batchmode` の CI 実行を含め無条件に実行されます。CI で
+`-addressTellerFailOnSettingsMismatch`（前述の [CI 連携](#ci-連携) を参照）を指定すると、警告を出すだけ
+でなく不一致時に実行自体を失敗させることができます——このフラグは検査自体の実行有無を制御するものでは
+ありません。
+
 `Project Settings > AddressTeller` に以下の項目があります。
 
 - **インポート時に自動適用する**（既定: ON）— オフにすると `AssetPostprocessor` による自動適用を行いません。手動メニューには影響しません。
@@ -79,7 +117,14 @@ exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 - **マッチしなくなったエントリを削除する**（`CleanupStaleEntries`、既定: ON）— apply 時（手動の `Apply All`、およびインポート時の自動適用では変更されたアセットについて）、どのルールにもマッチしなくなったアセットを、AddressTeller が管理するグループ（いずれかのルールが参照しているグループ）から削除します。削除はエントリ単位（`RemoveAssetEntry`）のため、アドレスと（Addressablesの）ラベルの両方が失われます。AddressTeller が管理していないグループに手動で登録したエントリには触れません。**一方、管理グループ内に手動で登録したエントリは、対応するルールがなければ削除対象になります**（資産単位で「現在どのルールにもマッチするか」のみを判定するため）。有効な場合、これに加えて、管理対象グループ内でアセットパスが構造的に無効なエントリ（拡張子・`Editor` という名前のフォルダ等で判定される、旧バージョンの AddressTeller が作成した残骸等）も削除対象になります。パスがそもそも解決できない（`AssetPath` が空文字になる。LFS 未取得・ブランチ切替中・パッケージ未導入等で一時的に資産へアクセスできないケースを含む）エントリはこの掃除の対象外です。資産が本当に削除された場合の追従は、別経路（削除通知を起点にするもの）が担当します。この判定は実際にインポート・変更されたアセットとは独立に、管理対象グループ内の全エントリに対して毎回行われるため、インポート時の自動適用（Postprocessor）のような差分適用では本来たどり着けないはずの残骸も掃除されます。つまり Postprocessor が走るたびに、インポート・変更されたアセットの件数に関わらず、管理対象グループ全件のエントリを毎回スキャンします。**旧バージョンからアップデートする場合**、最初の apply で、新たに無効・無マッチと判定されるようになった管理グループ内の既存エントリ（`IncludeFolders()` で opt-in していないフォルダのエントリ、Addressables 本体が拒否するパスのエントリ、Config Folder の配下または名前が前方一致するフォルダのエントリ等）が削除されることがあります。対象となる具体的な範囲とアップデート前の準備については、[CHANGELOG.ja.md](../CHANGELOG.ja.md) の「0.4.x からのアップデート」の注記を参照してください。あわせて [設計上の決定事項: 削除は資産単位の所有権で判定する](design-decisions.ja.md#削除は資産単位の所有権で判定する) および [設計上の決定事項: 存在しないグループは作らない（既定）](design-decisions.ja.md#存在しないグループは作らない既定) も参照してください。
 - **スナップショット保存先フォルダ**（後述）
 
-これらの設定値は `ProjectSettings/AddressTellerSettings.asset` に保存されます。プロジェクト単位の設定としてバージョン管理に含めることができ、チームメンバー間で共有されます。
+これらの設定値は `ProjectSettings/AddressTellerSettings.asset` に保存されます。プロジェクト単位の設定としてバージョン管理に含めることができ、チームメンバー間で共有されます。各プロパティの setter は値を変更するたびにこのファイルへ書き込みますが（同じ値を再代入した場合は何もせず、書き込みも行いません）、ファイルとメモリ上の値がずれてしまった場合——例えばファイルの読み込みに失敗した、あるいは Editor 起動中にファイルがエディタ外で書き換えられた（マージ、手動編集、VCS でのチェックアウト等)——setter だけでは復旧できません。同値判定によって書き込みが黙って省略されるためです。`AddressTellerSettings.ReloadFromDisk()` は、現在メモリ上にある設定オブジェクトを破棄し、Unity 自身にディスクから作り直させることでファイルの内容をメモリへ反映します（この呼び出しにより内部の設定オブジェクトの参照そのものが差し替わり、未保存のメモリ上の変更は失われます）。ファイルが存在しない、またはアクセスできない場合に限りメモリを変更せず `false` を返します。`AddressTellerSettings.SaveToDisk()` は値の変更有無に関わらずメモリ上の現在値を無条件でファイルへ書き込みます（書き込みや読み込みに失敗した場合、または書き込み後のファイルの内容が同じ設定を再シリアライズした結果と一致しない場合は、エラーログを出したうえで `false` を返します）。
+
+ずれを解消する際は、どちらの値を残したいかを**呼び出す前に**決めてください。`ReloadFromDisk()` を呼んだ時点でメモリ上の値はファイルの値に上書きされるため、呼び出した後では呼び出し前のメモリ上の値を取り戻す方法はありません。
+
+- ファイル側の値を採用し、メモリ上の変更を捨てたい場合: `ReloadFromDisk()` を呼んで終わりです。
+- メモリ上の値を残し、ファイルの内容を捨てたい場合: `ReloadFromDisk()` を**呼ばずに**、`SaveToDisk()` を直接呼んでください（`ReloadFromDisk()` を先に呼んでから `SaveToDisk()` を呼んでも、メモリ上の値は既にファイルの値で上書きされてしまっているため、「メモリ側の値を復元する」ことにはなりません。単にファイルの値をファイル自身へ書き戻すだけです）。
+
+Project Settings ウィンドウを開いたままこれらのメソッドを呼んだ場合、ウィンドウの表示は自動更新されません。各フィールドはページ生成時点の値を表示し続けます。フィールドを操作する前にウィンドウを開き直す（または別ページへ移動して戻る）必要があります。そうしないと、古い表示のフィールドを編集した際に、読み込み直前・保存直前の値で上書きしてしまいます。
 
 登録されているルールクラス（`AddressRuleBase` 継承クラス）の一覧と、`Order` 値も同じ画面で確認できます。各ルールクラスの横には有効/無効を切り替えるトグルがあり、デバッグ・動作確認時に特定のルールだけを無効化することができます。無効化したルールは `Apply All` / `Validate` / `Apply with Validate` / `Explain` / スナップショットの dry-run 予測の評価対象から除外されます。各ルール行には「Validate/Apply this rule only」ボタンもあり、そのルール1件だけをプロジェクト内の全アセットに対して dry-run し、結果ウィンドウを開きます。1ルールのみのスコープであるため、他ルールが管理するエントリの削除予測は表示されません（結果ウィンドウにその旨の注意文が表示されます）。逆に、同じグループを他のルールも参照している場合、そのルールにしかマッチしないアセットがこの単独ルールプレビューでは「Removed」と表示されることがあります（`Apply All` は全ルールをまとめて評価するため、実際には削除されません）。全ルールを横断した最終結果を確認するには、別途 `Apply All` や `Validate` を実行してください。このボタンは有効/無効トグルを無視するため、無効化中のルールでも明示的にクリックすれば単独で dry-run できます。
 

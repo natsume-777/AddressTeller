@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using UnityEditor;
 using UnityEngine;
 
 namespace AddressTeller.Editor
@@ -10,6 +9,10 @@ namespace AddressTeller.Editor
     /// AddressTeller settings persisted to ProjectSettings/AddressTellerSettings.asset.
     /// Shared across the project and tracked in version control; these values can be toggled from the
     /// Project Settings UI.
+    /// Assigning a property the value it already has is a no-op and does not write the file (each setter
+    /// short-circuits on equality). If the file and the in-memory values have drifted apart, use
+    /// <see cref="SaveToDisk"/> to force a write, or <see cref="ReloadFromDisk"/> to load the file's
+    /// values back into memory.
     /// </summary>
     public static class AddressTellerSettings
     {
@@ -216,6 +219,111 @@ namespace AddressTeller.Editor
             }
         }
 
+        /// <summary>
+        /// Writes the current in-memory settings to ProjectSettings/AddressTellerSettings.asset, even when
+        /// nothing has changed, and verifies the write.
+        /// </summary>
+        /// <remarks>
+        /// Property setters already persist on change, so this is only needed when the file and the
+        /// in-memory values have drifted apart — for example after the file failed to load, or after it
+        /// was edited outside the Editor.
+        /// The in-memory values win: any change made to the file while the Editor was running is
+        /// overwritten. Call <see cref="ReloadFromDisk"/> first if the file is the side you want to keep.
+        /// Returns true if, after writing, the file's contents match a fresh re-serialization of the same
+        /// in-memory settings (this compares serialized text, not deserialized values — it confirms the
+        /// write was not lost, truncated, or partially applied; it does not confirm Unity itself can still
+        /// parse the file back). Returns false, and logs an error, if writing the file, re-serializing the
+        /// settings for the comparison, or reading either file fails (for example, no read/write
+        /// permission), or if that comparison does not match.
+        /// </remarks>
+        public static bool SaveToDisk()
+        {
+            var asset = AddressTellerSettingsAsset.instance;
+
+            string diskText;
+            string reserializedText;
+            try
+            {
+                asset.SaveChanges();
+                diskText = File.ReadAllText(AddressTellerSettingsAsset.GetAbsoluteFilePath());
+                reserializedText = AddressTellerSettingsAsset.SaveCurrentInstanceToTempFileAndReadText();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("[AddressTeller] SaveToDisk: writing or verifying " +
+                    $"ProjectSettings/AddressTellerSettings.asset failed ({ex.GetType().Name}: {ex.Message}).");
+                return false;
+            }
+
+            if (reserializedText == null)
+            {
+                Debug.LogError("[AddressTeller] SaveToDisk: could not re-serialize the current settings to " +
+                    "a temporary file for verification. This does not necessarily mean the write to " +
+                    "ProjectSettings/AddressTellerSettings.asset itself failed.");
+                return false;
+            }
+
+            if (reserializedText == diskText) return true;
+
+            Debug.LogError("[AddressTeller] SaveToDisk: the file content read back after writing does not " +
+                "match a fresh re-serialization of the in-memory settings. " +
+                "ProjectSettings/AddressTellerSettings.asset may not reflect the current settings.");
+            return false;
+        }
+
+        /// <summary>
+        /// Reloads ProjectSettings/AddressTellerSettings.asset from disk into memory.
+        /// </summary>
+        /// <remarks>
+        /// Discards the current in-memory settings object and forces Unity to recreate it, which reads the
+        /// file fresh. Any unsaved in-memory changes are lost. Does not write to disk.
+        /// This changes the identity of the internal settings object; code that has cached a reference to
+        /// it directly (rather than looking it up again after calling this method) would hold a stale,
+        /// destroyed reference — the public API here always looks the object up on each call, so this only
+        /// matters for code that reaches into internal implementation details.
+        /// Because this discards and recreates a Unity object, call it from the main thread, outside of an
+        /// asset import callback or a serialization callback (e.g. <c>ISerializationCallbackReceiver</c>)
+        /// — destroying an object from those contexts is not supported by Unity.
+        /// If the file exists but is corrupted or otherwise unreadable, the result is the same as what
+        /// happens when the Editor itself starts up and reads that same file — which may mean the settings
+        /// reset to their default values, and Unity's own deserializer may log a parse error to the
+        /// Console while doing so (that log comes from Unity, not from this method — this method never
+        /// logs anything on its own, in either the success or failure case). This method cannot
+        /// distinguish a reset-to-defaults outcome from a normal successful reload, so it still returns
+        /// true in that case.
+        /// Returns false, without changing memory, only when the file does not exist or is not accessible
+        /// (e.g. on first run in a project that has never saved this asset, or if the process lacks read
+        /// permission).
+        /// </remarks>
+        public static bool ReloadFromDisk()
+        {
+            var path = AddressTellerSettingsAsset.GetAbsoluteFilePath();
+
+            // File.Exists は「存在するが読めない」を確実に判別できるとは限らないため、実際に開けるかどうか
+            // で判定する。ファイルが存在しない場合もこの catch に落ちるが、この段階ではログは出さない
+            // （ログが出うるのは、この後 Unity 自身が壊れたファイルを読む場合のみ。XML doc 参照）。
+            // また、開けないファイルをそのまま下の破棄→再取得の経路（Unity 自身の再読み込み処理）へ渡すと、
+            // Editor のメインスレッドが長時間ブロックされる事象を実測で観測した（原因は未特定）。
+            // ここで事前に弾くことで、その経路へ入ること自体を避けている。
+            try
+            {
+                using (File.OpenRead(path)) { }
+            }
+            catch
+            {
+                return false;
+            }
+
+            // メモリ上の唯一のインスタンスを破棄してから instance に再アクセスすることで、
+            // ScriptableSingleton にディスクから読み直させる（Unity の内部読み込み経路に委ねる）。
+            // 同じファイルを2個目のオブジェクトとして読む方式は ScriptableSingleton のコンストラクタが
+            // 既存インスタンスの存在を検知して Debug.LogError を出す実装と衝突するため採用しない。
+            UnityEngine.Object.DestroyImmediate(AddressTellerSettingsAsset.instance);
+            _ = AddressTellerSettingsAsset.instance;
+
+            return true;
+        }
+
         /// <summary>Enables or disables the given rule class.</summary>
         public static void SetRuleEnabled(string ruleClassFullName, bool enabled)
         {
@@ -234,25 +342,5 @@ namespace AddressTeller.Editor
 
             asset.SaveChanges();
         }
-    }
-
-    /// <summary>
-    /// AddressTellerSettings の実体。ProjectSettings/AddressTellerSettings.asset に
-    /// シリアライズされ、プロジェクトを共有する開発者間でバージョン管理される。
-    /// </summary>
-    [FilePath("ProjectSettings/AddressTellerSettings.asset", FilePathAttribute.Location.ProjectFolder)]
-    internal sealed class AddressTellerSettingsAsset : ScriptableSingleton<AddressTellerSettingsAsset>
-    {
-        [SerializeField] internal bool _cleanupStaleEntries = true;
-        [SerializeField] internal bool _postprocessEnabled = true;
-        [SerializeField] internal string _snapshotFolder = AddressTellerSettings.DefaultSnapshotFolder;
-        [SerializeField] internal bool _autoSnapshotBeforeApplyAll = true;
-        [SerializeField] internal int _autoSnapshotRetention = 10;
-        [SerializeField] internal bool _autoCreateMissingGroups = false;
-        [SerializeField] internal int _postprocessOrder = AddressTellerSettings.DefaultPostprocessOrder;
-        [SerializeField] internal List<string> _disabledRuleClassNames = new();
-
-        /// <summary>変更内容を ProjectSettings/AddressTellerSettings.asset へ書き出す。</summary>
-        internal void SaveChanges() => Save(true);
     }
 }

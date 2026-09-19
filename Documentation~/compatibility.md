@@ -57,6 +57,7 @@ Parsed by `AddressTellerCliArgs.TryParse` (source of truth: `Editor/EntryPoints/
 | `-addressTellerDisableRules <names>` | comma-separated rule class full names | empty (no additional exclusions) |
 | `-addressTellerConfirmClear` | presence-only flag (no value) | absent (treated as intentional refusal by `ClearCLI`) |
 | `-addressTellerClearScope <scope>` | `all`, `managed` | `managed` |
+| `-addressTellerFailOnSettingsMismatch` | presence-only flag (no value) | absent (no exit-code failure; the once-per-session startup diagnostic still runs regardless of this flag and may log a warning on its own — see [Project Settings](operations.md#project-settings) in `operations.md`) |
 
 Unrecognized arguments are silently ignored — this is itself part of the contract. A future flag can therefore never break a CI invocation that already happens to pass an argument the package doesn't yet recognize; conversely, this package must not start rejecting unknown arguments as an error in a later release.
 
@@ -75,14 +76,14 @@ From `Documentation~/operations.md`.
 | 0 | No drift, no issues |
 | 1 | Drift detected (changes present, no Validation errors) |
 | 2 | Validation errors present |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, or report write failure) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — a settings file/memory mismatch) |
 
 `ClearCLI`:
 
 | Exit code | Meaning |
 |---|---|
 | 0 | Clear completed |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `managedGroups` untrustworthy for `scope=managed`, or snapshot save failure) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `managedGroups` untrustworthy for `scope=managed`, snapshot save failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — a settings file/memory mismatch) |
 | 4 | Rejected because `-addressTellerConfirmClear` was not specified |
 
 Adding a **new** exit code value (for either CLI family) is treated as a **major** change, not minor, even though CI scripts that only check specific known codes wouldn't necessarily break. This is because CI scripts commonly branch with an equality check per known code and treat "anything else" as an unexpected failure category (e.g. `case 0/1/2/3: ... ; default: fail the build`); introducing a new code changes what "anything else" catches even if no existing branch's meaning changes.
@@ -159,7 +160,7 @@ Tooling that locates the latest auto-snapshot or clear-snapshot by scanning thes
 
 ### 7. Settings Asset
 
-Persisted at `ProjectSettings/AddressTellerSettings.asset` (a `ScriptableSingleton`, `Editor/Application/AddressTellerSettings.cs`), intended to be checked into version control and shared across a team.
+Persisted at `ProjectSettings/AddressTellerSettings.asset` (a `ScriptableSingleton`, `Editor/Application/AddressTellerSettingsAsset.cs`), intended to be checked into version control and shared across a team.
 
 **Serialized field names** (all `[SerializeField] internal`, on `AddressTellerSettingsAsset`):
 
@@ -177,6 +178,27 @@ Persisted at `ProjectSettings/AddressTellerSettings.asset` (a `ScriptableSinglet
 Renaming any of these fields without a `[FormerlySerializedAs]` pointing at the old name is prohibited — it would silently reset that setting to its default for every project that already has a committed `AddressTellerSettings.asset`, with no error or warning. Changing a field's default value is a **major** (breaking) change, since it changes behavior for projects that never explicitly set the field.
 
 `_postprocessOrder`'s `0` is reserved as an "unset" sentinel: both an existing asset with the field left at its zero-value default from before this setting existed, and a project that explicitly sets it to `0`, read back as `AddressTellerSettings.DefaultPostprocessOrder` (`1000`). This is a deliberate consequence of the field-rename rule above — the package cannot distinguish "never set" from "explicitly set to 0" in a Unity-serialized `int`, so both are folded into the same fallback.
+
+The file also embeds how `AddressTellerSettingsAsset` itself is identified as a type: its `m_Script` entry is a `MonoScript` reference keyed by the `.meta` GUID of `Editor/Application/AddressTellerSettingsAsset.cs`, and `m_EditorClassIdentifier` additionally embeds the type's full name and assembly name. This has a confirmed practical consequence for every project upgrading across the file split that introduced this: files saved by any version before this file split have `m_Script: {fileID: 0}` (no GUID reference at all) instead of a `MonoScript` reference, and this version's settings storage cannot resolve that form — loading such a file resets every field to its default value, silently (no error or warning; confirmed by testing). See the "Changed" entry for this version in [CHANGELOG.md](../CHANGELOG.md) for the affected settings and the recommended mitigation.
+
+Starting with the version that introduced this diagnostic, a settings load mismatch like the one above
+(or any other drift between the file and what actually loaded into memory) is surfaced by a
+`Debug.LogWarning` logged once per Editor session (see the "Added" entry for that version in
+[CHANGELOG.md](../CHANGELOG.md), and [Project Settings](operations.md#project-settings) /
+[CI Integration](operations.md#ci-integration) in `operations.md` for the full behavior, including the
+`-addressTellerFailOnSettingsMismatch` CLI flag). If you see that warning: it lists the affected fields by
+their serialized name (the same names in the table above); if it says the file was written in a form this
+version cannot read (the diagnostic keys on `m_Script` alone — see the migration case described above,
+where `m_Script` and `m_EditorClassIdentifier` change together, but only `m_Script` decides the wording),
+copy the values it
+reports out of the warning text — the file's own previous values are still sitting on disk unresolved at
+that point, but the next settings change (from any source, including the Project Settings UI) overwrites
+them — and re-enter them under `Project Settings > AddressTeller`; otherwise (the file and memory disagree
+for some other reason, e.g. an external edit or a VCS checkout while the Editor was running), decide which
+side you want to keep and call `AddressTellerSettings.ReloadFromDisk()` or `SaveToDisk()` accordingly (see
+[Project Settings](operations.md#project-settings) in `operations.md` for the full recovery procedure).
+
+Beyond that one-time transition, what would break the reference going forward is losing the `.meta` GUID itself — for example the `.meta` file being deleted, or the `.cs` file being copied or moved outside Unity's AssetDatabase in a way that does not carry its `.meta` along, which causes Unity to generate a new GUID for it. An ordinary in-Editor move or rename of the file keeps the same `.meta` (and therefore the same GUID) and does not have this effect; renaming the type, its namespace, or its assembly is likewise expected to keep resolving correctly as long as the GUID itself stays unchanged. We treat the `.meta` GUID of `Editor/Application/AddressTellerSettingsAsset.cs` as part of this type's compatibility surface going forward and commit to keeping it stable: if it is ever lost or regenerated, the same silent reset-to-defaults failure occurs (see the "Downgrade note" in [CHANGELOG.md](../CHANGELOG.md) for a concrete case that reproduces this, including confirmation that the same silent reset also occurs in the downgrade direction).
 
 The Project Settings UI itself (`Project Settings > AddressTeller`, registered at provider path `Project/AddressTeller`) is **not** covered — its layout, field ordering, and descriptive text may change freely.
 

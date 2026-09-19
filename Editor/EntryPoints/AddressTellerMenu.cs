@@ -187,14 +187,24 @@ namespace AddressTeller.Editor
         /// a snapshot being left behind with nothing actually removed). Saving a dedicated snapshot
         /// (under SnapshotFolder/Clear) before running is required, and a failure to save also aborts
         /// with exit code 3.
-        /// Exit codes: 0 = completed, 3 = environment error (including rule configuration errors and
-        /// snapshot save failures), 4 = confirmation flag not specified.
+        /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
+        /// ProjectSettings/AddressTellerSettings.asset on disk does not match the settings currently loaded
+        /// in memory, this also aborts with exit code 3, before doing anything else.
+        /// Exit codes: 0 = completed, 3 = environment error (including rule configuration errors, snapshot
+        /// save failures, and settings mismatches when -addressTellerFailOnSettingsMismatch is specified),
+        /// 4 = confirmation flag not specified.
         /// </summary>
         public static void ClearCLI()
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
                 Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
+                EditorApplication.Exit(3);
+                return;
+            }
+
+            if (SettingsMismatchShouldAbortCli(cliArgs))
+            {
                 EditorApplication.Exit(3);
                 return;
             }
@@ -319,13 +329,23 @@ namespace AddressTeller.Editor
         /// the CLI/CI, to avoid extra build time and disk I/O.
         /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
         /// -addressTellerReportFormat json|junit (built from the dry-run result computed before Apply runs).
-        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment error.
+        /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
+        /// ProjectSettings/AddressTellerSettings.asset on disk does not match the settings currently loaded
+        /// in memory, this aborts with exit code 3, before doing anything else.
+        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
+        /// error (including a settings mismatch when -addressTellerFailOnSettingsMismatch is specified).
         /// </summary>
         public static void ApplyAllCLI()
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
                 Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
+                EditorApplication.Exit(3);
+                return;
+            }
+
+            if (SettingsMismatchShouldAbortCli(cliArgs))
+            {
                 EditorApplication.Exit(3);
                 return;
             }
@@ -377,13 +397,23 @@ namespace AddressTeller.Editor
         /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
         /// -addressTellerReportFormat json|junit (built from the pre-Apply dry-run result if Validate
         /// found a problem, or from the dry-run result computed before Apply runs otherwise).
-        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment error.
+        /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
+        /// ProjectSettings/AddressTellerSettings.asset on disk does not match the settings currently loaded
+        /// in memory, this aborts with exit code 3, before doing anything else.
+        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
+        /// error (including a settings mismatch when -addressTellerFailOnSettingsMismatch is specified).
         /// </summary>
         public static void ApplyWithValidateCLI()
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
                 Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
+                EditorApplication.Exit(3);
+                return;
+            }
+
+            if (SettingsMismatchShouldAbortCli(cliArgs))
+            {
                 EditorApplication.Exit(3);
                 return;
             }
@@ -428,6 +458,30 @@ namespace AddressTeller.Editor
             AddressTellerIssueLogger.LogAll(applyIssues);
 
             ExitWithReport(applyDryRun, applyIssues, cliArgs, settings);
+        }
+
+        /// <summary>
+        /// <c>-addressTellerFailOnSettingsMismatch</c> が指定されている場合のみ、設定ロード診断
+        /// （<see cref="AddressTellerSettingsLoadDiagnostics.DiagnoseMismatch"/>）を実行し、差分が見つかれば
+        /// Error ログを出して true（呼び出し元は Exit(3) して中断すべき）を返す。フラグ未指定時は診断自体を
+        /// 呼ばない（挙動を一切変えない契約。File I/O・一時ファイル書き出しも発生しない）。
+        /// </summary>
+        /// <remarks>
+        /// この診断は Postprocessor/Menu には波及しない CLI 限定のオプトイン機能である
+        /// （<see cref="TryBuildCliRules"/> の -addressTellerDisableRules と同じ、意図的な逸脱）。
+        /// 設定ファイルが読めない状況そのものを検出する診断のため、既存の永続設定フラグとして
+        /// AddressTellerSettings 側に持たせることはできない
+        /// （<see cref="AddressTellerSettingsLoadDiagnostics"/> のクラス remarks を参照）。
+        /// </remarks>
+        private static bool SettingsMismatchShouldAbortCli(AddressTellerCliArgs cliArgs)
+        {
+            if (!cliArgs.FailOnSettingsMismatch) return false;
+
+            var message = AddressTellerSettingsLoadDiagnostics.DiagnoseMismatch();
+            if (message == null) return false;
+
+            Debug.LogError($"[AddressTeller] {message}");
+            return true;
         }
 
         /// <summary>
@@ -483,13 +537,23 @@ namespace AddressTeller.Editor
         /// state and the state after rules would be applied.
         /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
         /// -addressTellerReportFormat json|junit.
-        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment error.
+        /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
+        /// ProjectSettings/AddressTellerSettings.asset on disk does not match the settings currently loaded
+        /// in memory, this aborts with exit code 3, before doing anything else.
+        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
+        /// error (including a settings mismatch when -addressTellerFailOnSettingsMismatch is specified).
         /// </summary>
         public static void CheckCLI()
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
                 Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
+                EditorApplication.Exit(3);
+                return;
+            }
+
+            if (SettingsMismatchShouldAbortCli(cliArgs))
+            {
                 EditorApplication.Exit(3);
                 return;
             }

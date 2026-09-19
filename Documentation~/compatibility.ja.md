@@ -57,6 +57,7 @@
 | `-addressTellerDisableRules <names>` | カンマ区切りのルールクラス完全修飾名 | 空（追加除外なし） |
 | `-addressTellerConfirmClear` | 値を取らない存在フラグ | 未指定（`ClearCLI` は意図的な拒否として扱う） |
 | `-addressTellerClearScope <scope>` | `all`, `managed` | `managed` |
+| `-addressTellerFailOnSettingsMismatch` | 値を取らない存在フラグ | 未指定（exit code は失敗にならない。ただしセッションにつき1回の起動時診断はこのフラグの有無に関わらず実行され、それ単独で警告をログすることがある。`operations.ja.md` の [Project Settings](operations.ja.md#project-settings) 参照） |
 
 未知の引数は黙って無視されます。これ自体が契約の一部です。したがって、将来追加されるフラグが、既にそのフラグ名を（無関係な目的で）渡しているCI実行を壊すことはありません。逆に、このパッケージが将来のリリースで未知の引数をエラーとして拒否し始めることも許されません。
 
@@ -75,14 +76,14 @@
 | 0 | 差分なし・問題なし |
 | 1 | ドリフトあり（差分あり、Validation エラーなし） |
 | 2 | Validation エラーあり |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ設定ファイルとメモリの不一致） |
 
 `ClearCLI`:
 
 | exit code | 意味 |
 |---|---|
 | 0 | クリア完了 |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ設定ファイルとメモリの不一致） |
 | 4 | `-addressTellerConfirmClear` が指定されていないため拒否 |
 
 新しい exit code 値の追加（いずれのCLI系統でも）は、既知のコードだけをチェックするCIスクリプトを必ずしも壊さないとしても、**メジャー**変更として扱います。理由は、CIスクリプトは既知コードごとの等値判定で分岐し「それ以外」を予期しない失敗区分として扱う書き方が一般的だからです（例: `case 0/1/2/3: ... ; default: ビルド失敗`）。新しいコードを追加すると、既存の分岐の意味が変わらなくても「それ以外」が捕捉する範囲が変わってしまいます。
@@ -160,7 +161,7 @@ SchemaVersion                             (System.Int32)
 
 ### 7. Settings Asset
 
-`ProjectSettings/AddressTellerSettings.asset`（`ScriptableSingleton`、`Editor/Application/AddressTellerSettings.cs`）に永続化され、バージョン管理に含めてチームで共有されることを想定しています。
+`ProjectSettings/AddressTellerSettings.asset`（`ScriptableSingleton`、`Editor/Application/AddressTellerSettingsAsset.cs`）に永続化され、バージョン管理に含めてチームで共有されることを想定しています。
 
 **シリアライズされるフィールド名**（すべて `AddressTellerSettingsAsset` 上の `[SerializeField] internal`）:
 
@@ -178,6 +179,26 @@ SchemaVersion                             (System.Int32)
 これらのフィールドを、旧名を指す `[FormerlySerializedAs]` を付けずにリネームすることは禁止です。付けずにリネームすると、既に `AddressTellerSettings.asset` をコミット済みのすべてのプロジェクトで、該当設定がエラーも警告もなく既定値へ黙って戻ってしまいます。フィールドの既定値の変更は**メジャー**（破壊的）変更です。明示的に設定していないプロジェクトの挙動が変わるためです。
 
 `_postprocessOrder` の `0` は「未設定」を表す予約値です。この設定が追加される前からある既存アセット（フィールドがゼロ値の既定のまま）と、明示的に `0` を設定したプロジェクトのどちらも、読み込み時は `AddressTellerSettings.DefaultPostprocessOrder`（`1000`）として扱われます。これは上記のフィールドリネーム規則の必然的な帰結です。Unityがシリアライズする `int` では「一度も設定されていない」と「明示的に0を設定した」を区別できないため、両方を同じフォールバックにまとめています。
+
+このファイルには、`AddressTellerSettingsAsset` という型自体をどう同定するかも焼き込まれています。`m_Script` は `Editor/Application/AddressTellerSettingsAsset.cs` の `.meta` GUID をキーとする `MonoScript` 参照であり、`m_EditorClassIdentifier` には型の完全名とアセンブリ名が追加で埋め込まれます。この型を導入したファイル分割をまたいでアップデートする全プロジェクトに、実測で確認済みの実害があります。このファイル分割より前のバージョンが保存したファイルは、`MonoScript` 参照ではなく `m_Script: {fileID: 0}`（GUID 参照が一切無い状態）を持っており、このバージョンの設定保存機構はこの形式を解決できません——そのようなファイルを読み込むと、全フィールドが既定値へ静かにリセットされます（エラーも警告も出ない。実測で確認済み）。対象となる設定項目と推奨される対処については、このバージョンの [CHANGELOG.ja.md](../CHANGELOG.ja.md) の「Changed」項目を参照してください。
+
+この診断が導入されたバージョン以降は、上記のような設定ロードの不一致（それ以外の、ファイルと実際に
+メモリへ読み込まれた内容とのずれも含む）は、Editor セッションにつき1回出力される `Debug.LogWarning` で
+可視化されます（該当バージョンの [CHANGELOG.ja.md](../CHANGELOG.ja.md) の「Added」項目、および
+`operations.ja.md` の [Project Settings](operations.ja.md#project-settings) /
+[CI 連携](operations.ja.md#ci-連携)（`-addressTellerFailOnSettingsMismatch` CLI フラグを含む）を参照して
+ください）。この警告が出た場合: 影響を受けたフィールドは上の表と同じシリアライズ名で列挙されます。
+警告が「このバージョンでは読めない形式で書かれていた」と言っている場合（この診断は `m_Script` のみを見て
+判定します——上記の移行ケースでは `m_Script` と `m_EditorClassIdentifier` が一緒に変わりますが、
+文面の判定基準は `m_Script` だけです）は、警告本文に列挙された値を控えてください——その時点ではファイル側の旧い値は
+まだディスク上に未解決のまま残っていますが、次に（Project Settings UI を含む）どこからか設定が変更
+されるとそのまま上書きされます——控えた値を `Project Settings > AddressTeller` へ再入力してください。
+それ以外の理由でファイルとメモリが食い違っている場合（Editor 実行中の外部編集や VCS チェックアウト等）
+は、どちらの値を残したいかを決めたうえで `AddressTellerSettings.ReloadFromDisk()` または `SaveToDisk()`
+を呼んでください（完全な復旧手順は `operations.ja.md` の
+[Project Settings](operations.ja.md#project-settings) を参照）。
+
+このファイル分割時点の一度限りの移行を除けば、今後この参照が壊れうるのは GUID そのものを失った場合です——例えば `.meta` ファイルが削除された場合や、`.cs` ファイルが Unity の AssetDatabase を経由せずに `.meta` を伴わない形でコピー・移動され、Unity が新しい GUID を生成してしまった場合です。Unity エディタ上での通常の移動・改名操作は同じ `.meta`（したがって同じ GUID）を保ったままなのでこれには当たりません。同様に、型・名前空間・アセンブリのリネームも、GUID 自体が変わらない限りは引き続き解決できると見込まれます。今後については、`Editor/Application/AddressTellerSettingsAsset.cs` の `.meta` GUID をこの型の互換性表面の一部として扱い、安定させ続けることを約束します。もしこの GUID が失われる・再生成されると、同じ「静かに既定値へリセットされる」失敗が起こります（この事象を再現した具体例、および同じ現象がダウングレード方向でも起きることの確認は [CHANGELOG.ja.md](../CHANGELOG.ja.md) の「ダウングレードに関する注記」を参照）。
 
 Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバイダーパス `Project/AddressTeller` で登録）は保証対象**外**です。レイアウト・項目順序・説明文は自由に変更されえます。
 

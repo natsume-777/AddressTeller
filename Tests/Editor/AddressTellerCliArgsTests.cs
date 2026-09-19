@@ -253,5 +253,29 @@ namespace AddressTeller.Editor.Tests
             Assert.IsNull(result);
             Assert.IsNotEmpty(error);
         }
+
+        [Test]
+        public void NoFailOnSettingsMismatchFlag_DefaultsToFalse()
+        {
+            var args = new[] { "-batchmode", "-quit" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            Assert.IsFalse(result.FailOnSettingsMismatch);
+        }
+
+        [Test]
+        public void FailOnSettingsMismatchFlag_SetsFailOnSettingsMismatchTrue()
+        {
+            var args = new[] { "-addressTellerFailOnSettingsMismatch" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            Assert.IsTrue(result.FailOnSettingsMismatch);
+        }
     }
 }
