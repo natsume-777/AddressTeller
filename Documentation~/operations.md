@@ -26,7 +26,7 @@ The following methods can be invoked via `-executeMethod`:
 
 Specifying `-addressTellerReport <path>` / `-addressTellerReportFormat json|junit` outputs a structured report file: `CheckCLI` reports its dry-run results; `ApplyAllCLI` / `ApplyWithValidateCLI` report the pre-apply diff (dry-run). If `-addressTellerReportFormat` is omitted, the format is `junit` when the extension is `.xml`, otherwise `json`.
 
-Specifying `-addressTellerFailOnSettingsMismatch` makes all four CLI entry points check, before doing anything else, whether `ProjectSettings/AddressTellerSettings.asset` on disk matches the settings currently loaded in memory (the same check as the startup diagnostic described under [Project Settings](#project-settings) below, run on demand instead of waiting for the next Editor session). If it does not match, the run logs an error and exits with code 3 instead of proceeding — useful for catching a settings file that failed to load (see the "Changed" entry for this version in [CHANGELOG.md](../CHANGELOG.md)) before it can affect a CI run's outcome. This flag does not control whether the underlying check runs at all — the once-per-session startup diagnostic below runs unconditionally, including under `-batchmode`, regardless of this flag; the flag only controls whether a mismatch also fails the CLI run. Consequently, a CI run that both has a mismatch and passes this flag logs the same differing fields twice (once as the startup `Debug.LogWarning`, once as the CLI's own `Debug.LogError`) and writes the comparison temp file twice — worth knowing if something downstream parses the log mechanically. Omitting this flag leaves all four CLI entry points' behavior unchanged.
+Specifying `-addressTellerFailOnSettingsMismatch` makes all four CLI entry points check, before doing anything else, whether `ProjectSettings/AddressTellerSettings.asset` on disk can be confirmed to match the settings currently loaded in memory (the same check as the startup diagnostic described under [Project Settings](#project-settings) below, run on demand instead of waiting for the next Editor session). If it cannot — the file does not match, the file exists but could not be read, or the file was read but could not be checked against the current settings at all — the run logs an error and exits with code 3 instead of proceeding — useful for catching a settings file that failed to load (see the "Changed" entry for this version in [CHANGELOG.md](../CHANGELOG.md)) before it can affect a CI run's outcome. A settings file that could not be checked at all because AddressTeller itself could not re-serialize the in-memory settings for comparison (rather than a problem with the file) does **not** fail the run under this flag — only a Warning is logged in that case, the same as when the flag is omitted. This flag does not control whether the underlying check runs at all — the once-per-session startup diagnostic below runs unconditionally, including under `-batchmode`, regardless of this flag; the flag only controls whether a settings-file problem also fails the CLI run. Consequently, a CI run that both has a settings-file problem and passes this flag logs the same details twice (once as the startup `Debug.LogWarning`, once as the CLI's own `Debug.LogError`) and writes the comparison temp file twice — worth knowing if something downstream parses the log mechanically. Omitting this flag leaves all four CLI entry points' behavior unchanged.
 
 Exit codes (`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI`):
 
@@ -35,14 +35,14 @@ Exit codes (`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI`):
 | 0 | No drift, no issues |
 | 1 | Drift detected (changes present, no Validation errors) |
 | 2 | Validation errors present |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — a settings file/memory mismatch) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — the settings file could not be confirmed to match the settings currently in use: it does not match, could not be read, or could not be checked at all) |
 
 `ClearCLI` exit codes:
 
 | Exit code | Meaning |
 |---|---|
 | 0 | Clear completed |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `managedGroups` untrustworthy for `scope=managed`, snapshot save failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — a settings file/memory mismatch) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `managedGroups` untrustworthy for `scope=managed`, snapshot save failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — the settings file could not be confirmed to match the settings currently in use: it does not match, could not be read, or could not be checked at all) |
 | 4 | Rejected because `-addressTellerConfirmClear` was not specified (intentional rejection) |
 
 ### Running from the Command Line
@@ -70,10 +70,15 @@ Example: running `ApplyAllCLI` headless, writing a JSON report, and using the pr
   back to their defaults in that case (see [Project Settings](#project-settings) below).
   This does not extend to the settings load diagnostic described under [Project Settings](#project-settings)
   below (and, in a CI run, to `-addressTellerFailOnSettingsMismatch` above): that diagnostic exists
-  specifically to surface a settings file/memory mismatch, so it logs a `Debug.LogWarning` (or, with that
-  flag, a `Debug.LogError` followed by exiting) whenever it finds one — this is separate from, and not
-  governed by, the "silent unless something is wrong with the write/read itself" contract described for
-  `SaveToDisk()` / `ReloadFromDisk()` above. That diagnostic reuses the same temp-file re-serialization
+  specifically to surface a problem checking the settings file against the settings in use — the file not
+  matching, the file existing but not being readable, or the file being unparsable — so it logs a
+  `Debug.LogWarning` (or, with that flag and only for one of those three cases, a `Debug.LogError` followed
+  by exiting) whenever it finds one — this is separate from, and not governed by, the "silent unless
+  something is wrong with the write/read itself" contract described for `SaveToDisk()` / `ReloadFromDisk()`
+  above. When the diagnostic itself cannot run to completion — for example because AddressTeller could not
+  re-serialize the in-memory settings for comparison — it likewise logs a `Debug.LogWarning` explaining
+  that, but this case never fails the CLI run even with `-addressTellerFailOnSettingsMismatch` specified,
+  since it says nothing about the file itself. That diagnostic reuses the same temp-file re-serialization
   helper as `SaveToDisk()`, though, so it can likewise, rarely, emit the same unrelated one-off
   `Debug.LogWarning` about failing to clean up its temp file — described two paragraphs above — even when
   the file and memory otherwise match.
@@ -101,15 +106,22 @@ the confirmed details and the settings this affects.
 Starting with this version, though, you don't have to catch this purely by memory: once per Editor
 session — not repeated on every domain reload within that session — AddressTeller compares
 `ProjectSettings/AddressTellerSettings.asset` on disk against a fresh re-serialization of the settings
-currently loaded in memory, and — if they differ — logs a `Debug.LogWarning` listing the differing fields
-by their serialized name (e.g. `_postprocessOrder`), along with guidance on what to do next. This check
-itself logs nothing about the comparison whenever the file does not exist yet, cannot be read, or matches
-memory (see the temp-file-cleanup caveat under [Running from the Command Line](#running-from-the-command-line)
-above for the one unrelated exception), and it never runs during asset import, so it adds no per-import
-cost. This startup check runs unconditionally, including in `-batchmode` CI runs. In CI, pass
+currently loaded in memory. This check itself logs nothing about the comparison only when the file does not
+exist yet (a normal first run) or when the comparison finds the file matches memory. In every other case it
+logs a `Debug.LogWarning` describing what it found: the differing fields by their serialized name (e.g.
+`_postprocessOrder`) when the file exists and could be compared but disagrees with memory; that the file
+exists but could not be read (e.g. no read permission) when it could not even be opened; that the file was
+read but contains none of the settings fields this version writes when it could be opened but not
+meaningfully compared; or that AddressTeller could not complete the comparison at all, on its own side, when
+neither of the two outcomes above applies. Each case comes with guidance on what to do next (see the
+temp-file-cleanup caveat under [Running from the Command Line](#running-from-the-command-line) above for one
+unrelated exception to the "logs nothing" cases). It never runs during asset import, so it adds no
+per-import cost. This startup check runs unconditionally, including in `-batchmode` CI runs. In CI, pass
 `-addressTellerFailOnSettingsMismatch` (see [CI Integration](#ci-integration) above) to additionally fail
-the run on a mismatch instead of only logging a warning — that flag does not control whether the check
-itself runs.
+the run — with a `Debug.LogError` instead of only a `Debug.LogWarning` — when the file does not match, could
+not be read, or could not be meaningfully compared; that flag does not control whether the check itself
+runs, and it does not fail the run when AddressTeller could not complete the comparison on its own side (that
+case only ever logs a warning, since it says nothing about the file itself).
 
 Under `Project Settings > AddressTeller`:
 

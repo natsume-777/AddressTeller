@@ -57,7 +57,7 @@
 | `-addressTellerDisableRules <names>` | カンマ区切りのルールクラス完全修飾名 | 空（追加除外なし） |
 | `-addressTellerConfirmClear` | 値を取らない存在フラグ | 未指定（`ClearCLI` は意図的な拒否として扱う） |
 | `-addressTellerClearScope <scope>` | `all`, `managed` | `managed` |
-| `-addressTellerFailOnSettingsMismatch` | 値を取らない存在フラグ | 未指定（exit code は失敗にならない。ただしセッションにつき1回の起動時診断はこのフラグの有無に関わらず実行され、それ単独で警告をログすることがある。`operations.ja.md` の [Project Settings](operations.ja.md#project-settings) 参照） |
+| `-addressTellerFailOnSettingsMismatch` | 値を取らない存在フラグ | 未指定（exit code は失敗にならない。ただしセッションにつき1回の起動時診断はこのフラグの有無に関わらず実行され、それ単独で警告をログすることがある。`operations.ja.md` の [Project Settings](operations.ja.md#project-settings) 参照）。指定時も、設定ファイル自体の問題（不一致・読み取り不能・解釈不能）だと確認できた場合のみ実行を失敗させる。AddressTeller 側の都合で診断が完了できなかった場合はこのフラグの有無に関わらず実行を失敗させない |
 
 未知の引数は黙って無視されます。これ自体が契約の一部です。したがって、将来追加されるフラグが、既にそのフラグ名を（無関係な目的で）渡しているCI実行を壊すことはありません。逆に、このパッケージが将来のリリースで未知の引数をエラーとして拒否し始めることも許されません。
 
@@ -76,14 +76,14 @@
 | 0 | 差分なし・問題なし |
 | 1 | ドリフトあり（差分あり、Validation エラーなし） |
 | 2 | Validation エラーあり |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ設定ファイルとメモリの不一致） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ、設定ファイルが現在使用中の設定と一致すると確認できなかった場合——不一致・読み取り不能・照合不能のいずれか） |
 
 `ClearCLI`:
 
 | exit code | 意味 |
 |---|---|
 | 0 | クリア完了 |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ設定ファイルとメモリの不一致） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ、設定ファイルが現在使用中の設定と一致すると確認できなかった場合——不一致・読み取り不能・照合不能のいずれか） |
 | 4 | `-addressTellerConfirmClear` が指定されていないため拒否 |
 
 新しい exit code 値の追加（いずれのCLI系統でも）は、既知のコードだけをチェックするCIスクリプトを必ずしも壊さないとしても、**メジャー**変更として扱います。理由は、CIスクリプトは既知コードごとの等値判定で分岐し「それ以外」を予期しない失敗区分として扱う書き方が一般的だからです（例: `case 0/1/2/3: ... ; default: ビルド失敗`）。新しいコードを追加すると、既存の分岐の意味が変わらなくても「それ以外」が捕捉する範囲が変わってしまいます。
@@ -197,6 +197,16 @@ SchemaVersion                             (System.Int32)
 は、どちらの値を残したいかを決めたうえで `AddressTellerSettings.ReloadFromDisk()` または `SaveToDisk()`
 を呼んでください（完全な復旧手順は `operations.ja.md` の
 [Project Settings](operations.ja.md#project-settings) を参照）。
+
+同じ診断は、不一致とは別の2種類の警告も出すことがあります。1つはファイルが存在するのに読めなかった
+場合（例: 読み取り権限が無い——この警告にはフィールド一覧がありません。ファイルを開けていないためです）、
+もう1つはファイルは読めたがこのバージョンが書き出す設定フィールドを1つも含んでいなかった場合（例:
+途中で切り詰められた、または解釈できない形式のファイル——この警告には読み取れた文字数が含まれますが、
+同じくフィールド一覧はありません）です。これら2つは上記のいずれの結論も意味しません。それぞれの意味と
+対処については `operations.ja.md` の [Project Settings](operations.ja.md#project-settings) を参照して
+ください。さらに、これらとは無関係な4つ目の警告として、AddressTeller 側の都合でこの検査そのものが
+完了できなかった旨のものもあります——これはファイル自体について何も述べておらず、上記3つの結論の
+いずれでもありません。
 
 このファイル分割時点の一度限りの移行を除けば、今後この参照が壊れうるのは GUID そのものを失った場合です——例えば `.meta` ファイルが削除された場合や、`.cs` ファイルが Unity の AssetDatabase を経由せずに `.meta` を伴わない形でコピー・移動され、Unity が新しい GUID を生成してしまった場合です。Unity エディタ上での通常の移動・改名操作は同じ `.meta`（したがって同じ GUID）を保ったままなのでこれには当たりません。同様に、型・名前空間・アセンブリのリネームも、GUID 自体が変わらない限りは引き続き解決できると見込まれます。今後については、`Editor/Application/AddressTellerSettingsAsset.cs` の `.meta` GUID をこの型の互換性表面の一部として扱い、安定させ続けることを約束します。もしこの GUID が失われる・再生成されると、同じ「静かに既定値へリセットされる」失敗が起こります（この事象を再現した具体例、および同じ現象がダウングレード方向でも起きることの確認は [CHANGELOG.ja.md](../CHANGELOG.ja.md) の「ダウングレードに関する注記」を参照）。
 

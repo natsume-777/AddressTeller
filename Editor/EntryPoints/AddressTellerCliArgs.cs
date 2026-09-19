@@ -46,9 +46,11 @@ namespace AddressTeller.Editor
         /// Whether -addressTellerFailOnSettingsMismatch was specified. When set, each CLI entry point
         /// (<see cref="AddressTellerMenu.ApplyAllCLI"/>, <see cref="AddressTellerMenu.ApplyWithValidateCLI"/>,
         /// <see cref="AddressTellerMenu.CheckCLI"/>, <see cref="AddressTellerMenu.ClearCLI"/>) checks, before
-        /// doing anything else, whether ProjectSettings/AddressTellerSettings.asset on disk matches the
-        /// settings currently loaded in memory; if it does not, the run logs an error and exits with code 3
-        /// instead of proceeding. Defaults to false (no check performed; existing behavior is unchanged).
+        /// doing anything else, whether ProjectSettings/AddressTellerSettings.asset on disk can be confirmed
+        /// to match the settings currently loaded in memory. If it cannot — the file does not match, the file
+        /// exists but could not be read, or the file could not be checked against the current settings at
+        /// all — the run logs an error and exits with code 3 instead of proceeding. Defaults to false (no
+        /// check performed; existing behavior is unchanged).
         /// </summary>
         public bool FailOnSettingsMismatch { get; private set; }
 

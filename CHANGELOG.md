@@ -31,20 +31,31 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 - Settings load diagnostic: once per Editor session — not repeated on every domain reload within that
   session (tracked via `SessionState`, which persists across domain reloads) — AddressTeller compares
   `ProjectSettings/AddressTellerSettings.asset` on disk against a fresh re-serialization of the settings
-  currently loaded in memory, and logs a `Debug.LogWarning` listing the differing fields (by their
-  serialized field name, e.g. `_postprocessOrder`) if they disagree. This is the only signal this package
-  emits for the BREAKING silent reset described below — previously nothing was logged at all. The check
-  logs nothing when the file does not exist yet, cannot be read, or matches memory (it can still, rarely,
-  emit the same one-off temp-file-cleanup `Debug.LogWarning` described for `SaveToDisk()` above, since it
-  reuses the same re-serialization helper); it never runs during asset import (`AssetPostprocessor`), so it
-  adds no per-import cost. This startup check runs unconditionally — including under `-batchmode` CI runs —
+  currently loaded in memory. This is the only signal this package emits for the BREAKING silent reset
+  described below — previously nothing was logged at all. The check logs nothing only when the file does
+  not exist yet (a normal first run) or when the comparison finds no difference; every other outcome logs a
+  `Debug.LogWarning`: the differing fields (by their serialized field name, e.g. `_postprocessOrder`) when
+  the file could be compared but disagrees with memory; that the file exists but could not be read (e.g. no
+  read permission) when it could not even be opened — previously this case logged nothing at all, the same
+  as a normal first run, which made a genuinely broken file indistinguishable from one that simply did not
+  exist yet; that the file was read but contains none of the settings fields this version writes when it
+  could be opened but not meaningfully compared (e.g. truncated or otherwise unparsable) — previously this
+  case was also silent, for the same reason; or that AddressTeller could not complete the comparison at all
+  on its own side (e.g. it could not re-serialize the in-memory settings for comparison) when none of the
+  above applies — this one says nothing about the file itself. It can still, rarely, emit the same one-off
+  temp-file-cleanup `Debug.LogWarning` described for `SaveToDisk()` above, since it reuses the same
+  re-serialization helper; it never runs during asset import (`AssetPostprocessor`), so it adds no
+  per-import cost. This startup check runs unconditionally — including under `-batchmode` CI runs —
   regardless of the new `-addressTellerFailOnSettingsMismatch` CLI flag: that flag does not gate whether the
-  check runs, only whether a mismatch also fails the run. When specified, `ApplyAllCLI` /
+  check runs, only whether a settings-file problem also fails the run. When specified, `ApplyAllCLI` /
   `ApplyWithValidateCLI` / `CheckCLI` / `ClearCLI` re-run the same comparison before doing anything else and,
-  if a mismatch is found, additionally log an error and exit with code 3 (existing exit code, no new one
-  introduced) — on a run that already has a mismatch, this means the same fields are logged twice (the
-  startup warning, then the CLI error) and the comparison temp file is written twice. Omitting the flag
-  leaves all four CLI entry points' exit-code behavior unchanged; the startup warning still runs either way.
+  if the file does not match, could not be read, or could not be meaningfully compared, additionally log an
+  error and exit with code 3 (existing exit code, no new one introduced) — on a run that already has one of
+  these problems, this means the same details are logged twice (the startup warning, then the CLI error)
+  and the comparison temp file is written twice. This flag never fails the run when AddressTeller could not
+  complete the comparison on its own side, since that case is not a confirmed problem with the file — it
+  only ever logs a warning, with or without the flag. Omitting the flag leaves all four CLI entry points'
+  exit-code behavior unchanged; the startup warning still runs either way.
 
 ### Changed
 

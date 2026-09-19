@@ -57,7 +57,7 @@ Parsed by `AddressTellerCliArgs.TryParse` (source of truth: `Editor/EntryPoints/
 | `-addressTellerDisableRules <names>` | comma-separated rule class full names | empty (no additional exclusions) |
 | `-addressTellerConfirmClear` | presence-only flag (no value) | absent (treated as intentional refusal by `ClearCLI`) |
 | `-addressTellerClearScope <scope>` | `all`, `managed` | `managed` |
-| `-addressTellerFailOnSettingsMismatch` | presence-only flag (no value) | absent (no exit-code failure; the once-per-session startup diagnostic still runs regardless of this flag and may log a warning on its own — see [Project Settings](operations.md#project-settings) in `operations.md`) |
+| `-addressTellerFailOnSettingsMismatch` | presence-only flag (no value) | absent (no exit-code failure; the once-per-session startup diagnostic still runs regardless of this flag and may log a warning on its own — see [Project Settings](operations.md#project-settings) in `operations.md`). When present, only a confirmed problem with the settings file itself (mismatch, unreadable, or unparsable) fails the run; a diagnostic that could not complete on AddressTeller's own side never fails the run, with or without this flag. |
 
 Unrecognized arguments are silently ignored — this is itself part of the contract. A future flag can therefore never break a CI invocation that already happens to pass an argument the package doesn't yet recognize; conversely, this package must not start rejecting unknown arguments as an error in a later release.
 
@@ -76,14 +76,14 @@ From `Documentation~/operations.md`.
 | 0 | No drift, no issues |
 | 1 | Drift detected (changes present, no Validation errors) |
 | 2 | Validation errors present |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — a settings file/memory mismatch) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — the settings file could not be confirmed to match the settings currently in use: it does not match, could not be read, or could not be checked at all) |
 
 `ClearCLI`:
 
 | Exit code | Meaning |
 |---|---|
 | 0 | Clear completed |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `managedGroups` untrustworthy for `scope=managed`, snapshot save failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — a settings file/memory mismatch) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `managedGroups` untrustworthy for `scope=managed`, snapshot save failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — the settings file could not be confirmed to match the settings currently in use: it does not match, could not be read, or could not be checked at all) |
 | 4 | Rejected because `-addressTellerConfirmClear` was not specified |
 
 Adding a **new** exit code value (for either CLI family) is treated as a **major** change, not minor, even though CI scripts that only check specific known codes wouldn't necessarily break. This is because CI scripts commonly branch with an equality check per known code and treat "anything else" as an unexpected failure category (e.g. `case 0/1/2/3: ... ; default: fail the build`); introducing a new code changes what "anything else" catches even if no existing branch's meaning changes.
@@ -197,6 +197,16 @@ them — and re-enter them under `Project Settings > AddressTeller`; otherwise (
 for some other reason, e.g. an external edit or a VCS checkout while the Editor was running), decide which
 side you want to keep and call `AddressTellerSettings.ReloadFromDisk()` or `SaveToDisk()` accordingly (see
 [Project Settings](operations.md#project-settings) in `operations.md` for the full recovery procedure).
+
+That same diagnostic can also log two other kinds of warning that are not a mismatch: one saying the file
+exists but could not be read (for example, no read permission — this warning has no field list, since the
+file was never opened), and one saying the file was read but contains none of the settings fields this
+version writes (for example a truncated or otherwise unparsable file — this warning includes the number of
+characters read, but likewise no field list). Neither of these two implies the other diagnostic outcomes
+above; see [Project Settings](operations.md#project-settings) in `operations.md` for what each one means and
+what to do about it. A fourth, unrelated warning — that AddressTeller could not complete this check at all,
+on its own side — can also appear; it says nothing about the file itself and is not one of the three
+settings-file outcomes above.
 
 Beyond that one-time transition, what would break the reference going forward is losing the `.meta` GUID itself — for example the `.meta` file being deleted, or the `.cs` file being copied or moved outside Unity's AssetDatabase in a way that does not carry its `.meta` along, which causes Unity to generate a new GUID for it. An ordinary in-Editor move or rename of the file keeps the same `.meta` (and therefore the same GUID) and does not have this effect; renaming the type, its namespace, or its assembly is likewise expected to keep resolving correctly as long as the GUID itself stays unchanged. We treat the `.meta` GUID of `Editor/Application/AddressTellerSettingsAsset.cs` as part of this type's compatibility surface going forward and commit to keeping it stable: if it is ever lost or regenerated, the same silent reset-to-defaults failure occurs (see the "Downgrade note" in [CHANGELOG.md](../CHANGELOG.md) for a concrete case that reproduces this, including confirmation that the same silent reset also occurs in the downgrade direction).
 

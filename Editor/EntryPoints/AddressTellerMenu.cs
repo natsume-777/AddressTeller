@@ -188,10 +188,11 @@ namespace AddressTeller.Editor
         /// (under SnapshotFolder/Clear) before running is required, and a failure to save also aborts
         /// with exit code 3.
         /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
-        /// ProjectSettings/AddressTellerSettings.asset on disk does not match the settings currently loaded
-        /// in memory, this also aborts with exit code 3, before doing anything else.
+        /// ProjectSettings/AddressTellerSettings.asset on disk cannot be confirmed to match the settings
+        /// currently loaded in memory (it does not match, could not be read, or could not be checked at
+        /// all), this also aborts with exit code 3, before doing anything else.
         /// Exit codes: 0 = completed, 3 = environment error (including rule configuration errors, snapshot
-        /// save failures, and settings mismatches when -addressTellerFailOnSettingsMismatch is specified),
+        /// save failures, and settings check failures when -addressTellerFailOnSettingsMismatch is specified),
         /// 4 = confirmation flag not specified.
         /// </summary>
         public static void ClearCLI()
@@ -203,7 +204,7 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            if (SettingsMismatchShouldAbortCli(cliArgs))
+            if (SettingsDiagnosticShouldAbortCli(cliArgs))
             {
                 EditorApplication.Exit(3);
                 return;
@@ -330,10 +331,11 @@ namespace AddressTeller.Editor
         /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
         /// -addressTellerReportFormat json|junit (built from the dry-run result computed before Apply runs).
         /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
-        /// ProjectSettings/AddressTellerSettings.asset on disk does not match the settings currently loaded
-        /// in memory, this aborts with exit code 3, before doing anything else.
+        /// ProjectSettings/AddressTellerSettings.asset on disk cannot be confirmed to match the settings
+        /// currently loaded in memory (it does not match, could not be read, or could not be checked at
+        /// all), this aborts with exit code 3, before doing anything else.
         /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
-        /// error (including a settings mismatch when -addressTellerFailOnSettingsMismatch is specified).
+        /// error (including a settings check failure when -addressTellerFailOnSettingsMismatch is specified).
         /// </summary>
         public static void ApplyAllCLI()
         {
@@ -344,7 +346,7 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            if (SettingsMismatchShouldAbortCli(cliArgs))
+            if (SettingsDiagnosticShouldAbortCli(cliArgs))
             {
                 EditorApplication.Exit(3);
                 return;
@@ -398,10 +400,11 @@ namespace AddressTeller.Editor
         /// -addressTellerReportFormat json|junit (built from the pre-Apply dry-run result if Validate
         /// found a problem, or from the dry-run result computed before Apply runs otherwise).
         /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
-        /// ProjectSettings/AddressTellerSettings.asset on disk does not match the settings currently loaded
-        /// in memory, this aborts with exit code 3, before doing anything else.
+        /// ProjectSettings/AddressTellerSettings.asset on disk cannot be confirmed to match the settings
+        /// currently loaded in memory (it does not match, could not be read, or could not be checked at
+        /// all), this aborts with exit code 3, before doing anything else.
         /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
-        /// error (including a settings mismatch when -addressTellerFailOnSettingsMismatch is specified).
+        /// error (including a settings check failure when -addressTellerFailOnSettingsMismatch is specified).
         /// </summary>
         public static void ApplyWithValidateCLI()
         {
@@ -412,7 +415,7 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            if (SettingsMismatchShouldAbortCli(cliArgs))
+            if (SettingsDiagnosticShouldAbortCli(cliArgs))
             {
                 EditorApplication.Exit(3);
                 return;
@@ -462,9 +465,14 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// <c>-addressTellerFailOnSettingsMismatch</c> が指定されている場合のみ、設定ロード診断
-        /// （<see cref="AddressTellerSettingsLoadDiagnostics.DiagnoseMismatch"/>）を実行し、差分が見つかれば
-        /// Error ログを出して true（呼び出し元は Exit(3) して中断すべき）を返す。フラグ未指定時は診断自体を
-        /// 呼ばない（挙動を一切変えない契約。File I/O・一時ファイル書き出しも発生しない）。
+        /// （<see cref="AddressTellerSettingsLoadDiagnostics.Diagnose"/>）を実行する。診断結果が
+        /// 「設定ファイル自体の問題」（<see cref="SettingsLoadDiagnosis.IsSettingsFileProblem"/> が true —
+        /// ファイルとメモリの不一致・読み取り不能・解釈不能のいずれか）であれば Error ログを出して
+        /// true（呼び出し元は Exit(3) して中断すべき）を返す。診断が AddressTeller 側の都合で成立しなかった
+        /// （<see cref="SettingsLoadDiagnosisKind.DiagnosticUnavailable"/>）場合は Warning ログのみで false
+        /// を返す——これは利用者のファイルの問題ではないため、オプトインしたフラグであっても CI を
+        /// 失敗させるべきではない。フラグ未指定時は診断自体を呼ばない（挙動を一切変えない契約。File I/O・
+        /// 一時ファイル書き出しも発生しない）。
         /// </summary>
         /// <remarks>
         /// この診断は Postprocessor/Menu には波及しない CLI 限定のオプトイン機能である
@@ -473,15 +481,23 @@ namespace AddressTeller.Editor
         /// AddressTellerSettings 側に持たせることはできない
         /// （<see cref="AddressTellerSettingsLoadDiagnostics"/> のクラス remarks を参照）。
         /// </remarks>
-        private static bool SettingsMismatchShouldAbortCli(AddressTellerCliArgs cliArgs)
+        private static bool SettingsDiagnosticShouldAbortCli(AddressTellerCliArgs cliArgs)
         {
             if (!cliArgs.FailOnSettingsMismatch) return false;
 
-            var message = AddressTellerSettingsLoadDiagnostics.DiagnoseMismatch();
-            if (message == null) return false;
+            var diagnosis = AddressTellerSettingsLoadDiagnostics.Diagnose();
+            if (diagnosis.Message == null) return false;
 
-            Debug.LogError($"[AddressTeller] {message}");
-            return true;
+            if (diagnosis.IsSettingsFileProblem)
+            {
+                Debug.LogError($"[AddressTeller] {diagnosis.Message}");
+                return true;
+            }
+
+            // DiagnosticUnavailable: AddressTeller 側の都合で診断が成立しなかっただけで、ファイル自体が
+            // 問題だと確認できたわけではない。CI を失敗させず、警告のみで続行する。
+            Debug.LogWarning($"[AddressTeller] {diagnosis.Message}");
+            return false;
         }
 
         /// <summary>
@@ -538,10 +554,11 @@ namespace AddressTeller.Editor
         /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
         /// -addressTellerReportFormat json|junit.
         /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
-        /// ProjectSettings/AddressTellerSettings.asset on disk does not match the settings currently loaded
-        /// in memory, this aborts with exit code 3, before doing anything else.
+        /// ProjectSettings/AddressTellerSettings.asset on disk cannot be confirmed to match the settings
+        /// currently loaded in memory (it does not match, could not be read, or could not be checked at
+        /// all), this aborts with exit code 3, before doing anything else.
         /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
-        /// error (including a settings mismatch when -addressTellerFailOnSettingsMismatch is specified).
+        /// error (including a settings check failure when -addressTellerFailOnSettingsMismatch is specified).
         /// </summary>
         public static void CheckCLI()
         {
@@ -552,7 +569,7 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            if (SettingsMismatchShouldAbortCli(cliArgs))
+            if (SettingsDiagnosticShouldAbortCli(cliArgs))
             {
                 EditorApplication.Exit(3);
                 return;

@@ -22,6 +22,39 @@ namespace AddressTeller.Editor
         internal string MemoryValue { get; }
     }
 
+    /// <summary><see cref="AddressTellerSettingsTextDiff.Compare"/> の戻り値。</summary>
+    internal readonly struct SettingsTextComparison
+    {
+        internal SettingsTextComparison(IReadOnlyList<SettingsFieldDiff> diffs, bool typeIdentifierMatches, bool memoryTextRecognized, int comparableFieldCount)
+        {
+            Diffs = diffs;
+            TypeIdentifierMatches = typeIdentifierMatches;
+            MemoryTextRecognized = memoryTextRecognized;
+            ComparableFieldCount = comparableFieldCount;
+        }
+
+        /// <summary>フィールド名の昇順（Ordinal）に並んだ差分の一覧。</summary>
+        internal IReadOnlyList<SettingsFieldDiff> Diffs { get; }
+
+        /// <summary>
+        /// type identity（<c>m_Script</c>）がディスク側・メモリ側の両方に存在し、かつ両方とも一致しているか。
+        /// </summary>
+        internal bool TypeIdentifierMatches { get; }
+
+        /// <summary>
+        /// メモリ側テキストに、ヘッダ鍵（<see cref="AddressTellerSettingsTextDiff.ExcludedFieldNames"/>）以外の
+        /// トップレベル鍵が1件以上あるか。<c>false</c> は「AddressTeller 自身が書き出したはずのテキストを、
+        /// AddressTeller 自身が解釈できていない」という、ディスク側とは無関係な AddressTeller 側の不調を意味する。
+        /// </summary>
+        internal bool MemoryTextRecognized { get; }
+
+        /// <summary>
+        /// ディスク側・メモリ側の両方に存在する非ヘッダ鍵の件数。<see cref="Diffs"/> はこの部分集合
+        /// （値が一致している鍵は <see cref="Diffs"/> には現れないが、この件数には含まれる）。
+        /// </summary>
+        internal int ComparableFieldCount { get; }
+    }
+
     /// <summary>
     /// <see cref="AddressTellerSettingsAsset"/> が書き出す YAML テキスト2本（ディスク側・メモリ側）を、
     /// ファイル I/O やインスタンス生成を一切行わずに比較する純粋ロジック。
@@ -75,14 +108,13 @@ namespace AddressTeller.Editor
         /// 差分は、メモリ側テキストに現れたトップレベル鍵のうちヘッダ鍵を除いたものを対象に、
         /// ディスク側にも同じ鍵が存在する場合だけ値を比較する（両辺に無い鍵は無視。将来フィールドが
         /// 追加・削除されても誤検知しないようにするため）。
+        /// このメソッド自体は「2本のテキストを見て何が分かったか」を記述するだけに留め、どの観測値を
+        /// 問題とみなし何をログするかの方針は呼び出し元（<see cref="AddressTellerSettingsLoadDiagnostics"/>）
+        /// に委ねる。
         /// </summary>
         /// <param name="diskText">ディスク上のファイルから読んだテキスト。</param>
         /// <param name="memoryText">現在メモリ上にあるインスタンスを再シリアライズしたテキスト。</param>
-        /// <returns>
-        /// フィールド名の昇順（Ordinal）に並んだ差分の一覧と、type identity（<c>m_Script</c>）が
-        /// ディスク側・メモリ側の両方に存在し、かつ両方とも一致しているかどうか。
-        /// </returns>
-        internal static (IReadOnlyList<SettingsFieldDiff> Diffs, bool TypeIdentifierMatches) Compare(string diskText, string memoryText)
+        internal static SettingsTextComparison Compare(string diskText, string memoryText)
         {
             var diskFields = ExtractTopLevelFields(diskText);
             var memoryFields = ExtractTopLevelFields(memoryText);
@@ -92,15 +124,18 @@ namespace AddressTeller.Editor
                 memoryFields.TryGetValue(TypeIdentityFieldName, out var memoryScript) &&
                 string.Equals(diskScript, memoryScript, StringComparison.Ordinal);
 
-            var diffs = memoryFields.Keys
-                .Where(key => !ExcludedFieldNames.Contains(key))
-                .Where(diskFields.ContainsKey)
+            var nonHeaderMemoryKeys = memoryFields.Keys.Where(key => !ExcludedFieldNames.Contains(key)).ToList();
+            var memoryTextRecognized = nonHeaderMemoryKeys.Count > 0;
+
+            var comparableKeys = nonHeaderMemoryKeys.Where(diskFields.ContainsKey).ToList();
+
+            var diffs = comparableKeys
                 .Where(key => !string.Equals(diskFields[key], memoryFields[key], StringComparison.Ordinal))
                 .OrderBy(key => key, StringComparer.Ordinal)
                 .Select(key => new SettingsFieldDiff(key, diskFields[key], memoryFields[key]))
                 .ToList();
 
-            return (diffs, typeIdentifierMatches);
+            return new SettingsTextComparison(diffs, typeIdentifierMatches, memoryTextRecognized, comparableKeys.Count);
         }
 
         /// <summary>

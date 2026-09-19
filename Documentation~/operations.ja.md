@@ -26,7 +26,7 @@
 
 `-addressTellerReport <path>` / `-addressTellerReportFormat json|junit` を指定すると、`CheckCLI` は dry-run、`ApplyAllCLI` / `ApplyWithValidateCLI` は Apply 実行前の差分（dry-run）から構造化レポートをファイル出力します。`-addressTellerReportFormat` を省略した場合、拡張子が `.xml` なら `junit`、それ以外は `json` として扱われます。
 
-`-addressTellerFailOnSettingsMismatch` を指定すると、4つの CLI エントリポイントすべてが、他の処理を行う前に `ProjectSettings/AddressTellerSettings.asset` のディスク上の内容と現在メモリにロードされている設定を比較します（後述の [Project Settings](#project-settings) にある起動時診断と同じ検査を、次の Editor セッションを待たずにその場で実行するものです）。一致しなければ、そのまま処理を続けずエラーログを出して exit code 3 で終了します——設定ファイルの読み込み失敗（このバージョンの [CHANGELOG.ja.md](../CHANGELOG.ja.md) の「Changed」項目を参照）が CI の結果に影響する前に検出するのに使えます。このフラグは検査そのものの実行有無を制御するものではありません——後述の起動時診断はこのフラグの有無に関わらず `-batchmode` でも無条件に実行されます。フラグが制御するのは、不一致が見つかったときに CLI の実行自体を失敗させるかどうかだけです。そのため、不一致がある状態でこのフラグを指定した CI 実行では、同じ差分フィールドが起動時の `Debug.LogWarning` と CLI 側の `Debug.LogError` の2回ログされ、比較用の一時ファイルも2回書き出されます——ログを機械的にパースする場合は注意してください。このフラグを指定しなければ、4つの CLI エントリポイントいずれも挙動は変わりません。
+`-addressTellerFailOnSettingsMismatch` を指定すると、4つの CLI エントリポイントすべてが、他の処理を行う前に `ProjectSettings/AddressTellerSettings.asset` のディスク上の内容が現在メモリにロードされている設定と一致すると確認できるかどうかを検査します（後述の [Project Settings](#project-settings) にある起動時診断と同じ検査を、次の Editor セッションを待たずにその場で実行するものです）。確認できなければ——ファイルが不一致・ファイルが存在するのに読めない・ファイルは読めたが照合そのものができない、のいずれであっても——そのまま処理を続けずエラーログを出して exit code 3 で終了します——設定ファイルの読み込み失敗（このバージョンの [CHANGELOG.ja.md](../CHANGELOG.ja.md) の「Changed」項目を参照）が CI の結果に影響する前に検出するのに使えます。ただし、AddressTeller 自身がメモリ上の設定を比較用に再シリアライズできなかった等、AddressTeller 側の都合で照合そのものが成立しなかった場合（ファイル側の問題だと確認できたわけではない場合）は、このフラグを指定していても実行を失敗させません——この場合は Warning のみで、フラグを指定しない場合と同じです。このフラグは検査そのものの実行有無を制御するものではありません——後述の起動時診断はこのフラグの有無に関わらず `-batchmode` でも無条件に実行されます。フラグが制御するのは、ファイル側の問題が見つかったときに CLI の実行自体を失敗させるかどうかだけです。そのため、ファイル側の問題がある状態でこのフラグを指定した CI 実行では、同じ内容が起動時の `Debug.LogWarning` と CLI 側の `Debug.LogError` の2回ログされ、比較用の一時ファイルも2回書き出されます——ログを機械的にパースする場合は注意してください。このフラグを指定しなければ、4つの CLI エントリポイントいずれも挙動は変わりません。
 
 exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 
@@ -35,14 +35,14 @@ exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 | 0 | 差分なし・問題なし |
 | 1 | ドリフトあり（差分あり、Validation エラーなし） |
 | 2 | Validation エラーあり |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ設定ファイルとメモリの不一致） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ、設定ファイルが現在使用中の設定と一致すると確認できなかった場合——不一致・読み取り不能・照合不能のいずれか） |
 
 `ClearCLI` の exit code:
 
 | exit code | 意味 |
 |---|---|
 | 0 | クリア完了 |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ設定ファイルとメモリの不一致） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ、設定ファイルが現在使用中の設定と一致すると確認できなかった場合——不一致・読み取り不能・照合不能のいずれか） |
 | 4 | `-addressTellerConfirmClear` が指定されていないため実行を拒否（意図的な拒否） |
 
 ### コマンドラインからの非対話実行
@@ -69,13 +69,17 @@ exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
   `-logFile -` の捕捉結果には含まれます。その場合、設定は無言で既定値へフォールバックします（詳細は後述の
   [Project Settings](#project-settings) を参照）。
   この契約は、後述の [Project Settings](#project-settings) にある設定ロード診断（CI 実行時は上記の
-  `-addressTellerFailOnSettingsMismatch` も含む）には及びません。その診断は設定ファイルとメモリの不一致を
-  検出して知らせること自体が目的のため、不一致を見つけるたびに `Debug.LogWarning`（そのフラグ指定時は
-  `Debug.LogError` を出したうえで終了）を出します——これは上記の `SaveToDisk()` / `ReloadFromDisk()` に
-  ついて説明した「書き込み・読み込み自体に問題が無い限り無言」という契約とは別物です。ただしこの診断は
-  `SaveToDisk()` と同じ一時ファイル再シリアライズ処理を再利用しているため、ファイルとメモリが実際には
-  一致している場合でも、上記の一時ファイル後始末失敗時の無関係な `Debug.LogWarning`（2段落前で説明した
-  もの）がまれに同様に出ることがあります。
+  `-addressTellerFailOnSettingsMismatch` も含む）には及びません。その診断は、設定ファイルを現在使用中の
+  設定と照合する際に見つかった問題——ファイルの不一致・ファイルが存在するのに読めない・ファイルが解釈
+  できない——を知らせること自体が目的のため、これらを見つけるたびに `Debug.LogWarning`（そのフラグ指定時
+  かつこの3つのいずれかに該当する場合のみ、`Debug.LogError` を出したうえで終了）を出します——これは上記の
+  `SaveToDisk()` / `ReloadFromDisk()` について説明した「書き込み・読み込み自体に問題が無い限り無言」と
+  いう契約とは別物です。診断そのものが最後まで実行できなかった場合（例えば AddressTeller がメモリ上の
+  設定を比較用に再シリアライズできなかった場合）も同様に `Debug.LogWarning` を出しますが、これはファイル
+  側の問題だと確認できたわけではないため、`-addressTellerFailOnSettingsMismatch` を指定していても CLI
+  実行を失敗させることはありません。この診断は `SaveToDisk()` と同じ一時ファイル再シリアライズ処理を
+  再利用しているため、ファイルとメモリが実際には一致している場合でも、上記の一時ファイル後始末失敗時の
+  無関係な `Debug.LogWarning`（2段落前で説明したもの）がまれに同様に出ることがあります。
 
 ### 論理バンドル分布サマリ
 
@@ -99,16 +103,22 @@ exit code（`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` 共通）:
 
 ただしこのバージョンからは、これを記憶だけに頼って把握する必要はありません。Editor セッションにつき
 1回——同一セッション内でドメインリロードが何度起きても繰り返されない——、AddressTeller が
-`ProjectSettings/AddressTellerSettings.asset` のディスク上の内容と、現在メモリにロードされている設定を
-再シリアライズした結果を比較し、食い違っていれば差分フィールドをシリアライズ名（例:
-`_postprocessOrder`）で列挙した `Debug.LogWarning` と、次に何をすべきかの案内を出します。この検査自体は、
-ファイルがまだ存在しない・読み取れない・メモリと一致する場合はいずれも比較についてのログを出しません
-（唯一の例外は前述の [コマンドラインからの非対話実行](#コマンドラインからの非対話実行) にある一時ファイル
-後始末の注記を参照）。アセットのインポート中には一切実行されないためインポートごとの追加コストもあり
-ません。この起動時検査は `-batchmode` の CI 実行を含め無条件に実行されます。CI で
-`-addressTellerFailOnSettingsMismatch`（前述の [CI 連携](#ci-連携) を参照）を指定すると、警告を出すだけ
-でなく不一致時に実行自体を失敗させることができます——このフラグは検査自体の実行有無を制御するものでは
-ありません。
+`ProjectSettings/AddressTellerSettings.asset` のディスク上の内容と、現在メモリにロードされている
+設定を再シリアライズした結果を比較します。この検査自体が比較についてのログを一切出さないのは、
+ファイルがまだ存在しない場合（正常な初回起動）と、比較の結果ファイルがメモリと一致した場合の2つだけです。
+それ以外の場合は必ず `Debug.LogWarning` を出します——ファイルを比較できたが内容が食い違う場合は差分
+フィールドをシリアライズ名（例: `_postprocessOrder`）で列挙し、ファイルが存在するのに読めなかった場合は
+その旨（読み取り権限が無い等）、ファイルは読めたがこのバージョンが書き出す設定フィールドを1つも含んで
+いなかった場合はその旨、そしていずれにも当てはまらない場合（AddressTeller 側の都合で比較そのものが
+完了できなかった場合）はその旨を、それぞれ次に何をすべきかの案内とともに出します（唯一の例外は前述の
+[コマンドラインからの非対話実行](#コマンドラインからの非対話実行) にある一時ファイル後始末の注記を
+参照）。アセットのインポート中には一切実行されないためインポートごとの追加コストもありません。この
+起動時検査は `-batchmode` の CI 実行を含め無条件に実行されます。CI で
+`-addressTellerFailOnSettingsMismatch`（前述の [CI 連携](#ci-連携) を参照）を指定すると、ファイルが
+不一致・読み取り不能・照合不能のいずれかである場合に、警告ではなく `Debug.LogError` を出して実行自体を
+失敗させることができます——このフラグは検査自体の実行有無を制御するものではなく、また AddressTeller
+側の都合で比較が完了できなかった場合（ファイル側の問題だと確認できたわけではない場合）は実行を失敗
+させません（この場合は常に警告のみです）。
 
 `Project Settings > AddressTeller` に以下の項目があります。
 

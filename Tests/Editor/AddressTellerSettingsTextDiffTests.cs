@@ -92,12 +92,12 @@ MonoBehaviour:
         [Test]
         public void OldFormatNonDefaultOnDisk_VsCurrentDefaultInMemory_DetectsAllDifferingFieldsAndTypeIdentifierMismatch()
         {
-            var (diffs, typeIdentifierMatches) = AddressTellerSettingsTextDiff.Compare(OldFormatNonDefault, CurrentFormatDefault);
+            var comparison = AddressTellerSettingsTextDiff.Compare(OldFormatNonDefault, CurrentFormatDefault);
 
-            Assert.IsFalse(typeIdentifierMatches,
+            Assert.IsFalse(comparison.TypeIdentifierMatches,
                 "m_Script/m_EditorClassIdentifier が旧形式と新形式で異なるため、型識別子は不一致と判定されるべき。");
 
-            var fieldNames = diffs.Select(d => d.FieldName).ToList();
+            var fieldNames = comparison.Diffs.Select(d => d.FieldName).ToList();
             CollectionAssert.AreEqual(
                 new[]
                 {
@@ -111,7 +111,7 @@ MonoBehaviour:
                 fieldNames,
                 "差分フィールドはフィールド名の Ordinal 昇順で決定的に並ぶべき。");
 
-            var postprocessOrderDiff = diffs.Single(d => d.FieldName == "_postprocessOrder");
+            var postprocessOrderDiff = comparison.Diffs.Single(d => d.FieldName == "_postprocessOrder");
             Assert.AreEqual("1234", postprocessOrderDiff.DiskValue);
             Assert.AreEqual("1000", postprocessOrderDiff.MemoryValue);
 
@@ -124,19 +124,19 @@ MonoBehaviour:
         public void OldFormatAllDefaultOnDisk_VsCurrentDefaultInMemory_NoFieldDiffsDespiteTypeIdentifierMismatch()
         {
             // 誤検知しないことの回帰テスト: 旧形式というだけでは差分は出ない。値が実際に食い違っているときだけ出る。
-            var (diffs, typeIdentifierMatches) = AddressTellerSettingsTextDiff.Compare(OldFormatDefault, CurrentFormatDefault);
+            var comparison = AddressTellerSettingsTextDiff.Compare(OldFormatDefault, CurrentFormatDefault);
 
-            Assert.IsFalse(typeIdentifierMatches);
-            CollectionAssert.IsEmpty(diffs);
+            Assert.IsFalse(comparison.TypeIdentifierMatches);
+            CollectionAssert.IsEmpty(comparison.Diffs);
         }
 
         [Test]
         public void CurrentFormatOnBothSides_IdenticalValues_NoDiffsAndTypeIdentifierMatches()
         {
-            var (diffs, typeIdentifierMatches) = AddressTellerSettingsTextDiff.Compare(CurrentFormatDefault, CurrentFormatDefault);
+            var comparison = AddressTellerSettingsTextDiff.Compare(CurrentFormatDefault, CurrentFormatDefault);
 
-            Assert.IsTrue(typeIdentifierMatches);
-            CollectionAssert.IsEmpty(diffs);
+            Assert.IsTrue(comparison.TypeIdentifierMatches);
+            CollectionAssert.IsEmpty(comparison.Diffs);
         }
 
         [Test]
@@ -144,13 +144,13 @@ MonoBehaviour:
         {
             var diskText = CurrentFormatDefault.Replace("_postprocessOrder: 1000", "_postprocessOrder: 2000");
 
-            var (diffs, typeIdentifierMatches) = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
 
-            Assert.IsTrue(typeIdentifierMatches, "m_Script は両側とも新形式で一致するため型識別子は一致するべき。");
-            Assert.AreEqual(1, diffs.Count);
-            Assert.AreEqual("_postprocessOrder", diffs[0].FieldName);
-            Assert.AreEqual("2000", diffs[0].DiskValue);
-            Assert.AreEqual("1000", diffs[0].MemoryValue);
+            Assert.IsTrue(comparison.TypeIdentifierMatches, "m_Script は両側とも新形式で一致するため型識別子は一致するべき。");
+            Assert.AreEqual(1, comparison.Diffs.Count);
+            Assert.AreEqual("_postprocessOrder", comparison.Diffs[0].FieldName);
+            Assert.AreEqual("2000", comparison.Diffs[0].DiskValue);
+            Assert.AreEqual("1000", comparison.Diffs[0].MemoryValue);
         }
 
         [Test]
@@ -164,11 +164,11 @@ MonoBehaviour:
                 "m_EditorClassIdentifier: AddressTeller.Editor::AddressTeller.Editor.AddressTellerSettingsAsset",
                 "m_EditorClassIdentifier: SomeOther.Namespace::SomeOther.Namespace.SomeOtherType");
 
-            var (diffs, typeIdentifierMatches) = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
 
-            Assert.IsTrue(typeIdentifierMatches,
+            Assert.IsTrue(comparison.TypeIdentifierMatches,
                 "m_Script が一致していれば、m_EditorClassIdentifier だけが食い違っても型識別子は一致と判定すべき。");
-            CollectionAssert.IsEmpty(diffs, "m_EditorClassIdentifier は値比較の対象外のため、これだけの相違では diffs に現れない。");
+            CollectionAssert.IsEmpty(comparison.Diffs, "m_EditorClassIdentifier は値比較の対象外のため、これだけの相違では diffs に現れない。");
         }
 
         [Test]
@@ -178,13 +178,13 @@ MonoBehaviour:
                 "_disabledRuleClassNames: []",
                 "_disabledRuleClassNames:\n  - MyNamespace.RuleA\n  - MyNamespace.RuleB");
 
-            var (diffs, typeIdentifierMatches) = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
 
-            Assert.IsTrue(typeIdentifierMatches);
-            Assert.AreEqual(1, diffs.Count);
-            Assert.AreEqual("_disabledRuleClassNames", diffs[0].FieldName);
-            Assert.AreEqual("- MyNamespace.RuleA\n- MyNamespace.RuleB", diffs[0].DiskValue);
-            Assert.AreEqual("[]", diffs[0].MemoryValue);
+            Assert.IsTrue(comparison.TypeIdentifierMatches);
+            Assert.AreEqual(1, comparison.Diffs.Count);
+            Assert.AreEqual("_disabledRuleClassNames", comparison.Diffs[0].FieldName);
+            Assert.AreEqual("- MyNamespace.RuleA\n- MyNamespace.RuleB", comparison.Diffs[0].DiskValue);
+            Assert.AreEqual("[]", comparison.Diffs[0].MemoryValue);
         }
 
         [Test]
@@ -194,10 +194,10 @@ MonoBehaviour:
             var diskText = CurrentFormatDefault.Replace("_disabledRuleClassNames: []", blockList);
             var memoryText = CurrentFormatDefault.Replace("_disabledRuleClassNames: []", blockList);
 
-            var (diffs, typeIdentifierMatches) = AddressTellerSettingsTextDiff.Compare(diskText, memoryText);
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, memoryText);
 
-            Assert.IsTrue(typeIdentifierMatches);
-            CollectionAssert.IsEmpty(diffs);
+            Assert.IsTrue(comparison.TypeIdentifierMatches);
+            CollectionAssert.IsEmpty(comparison.Diffs);
         }
 
         [Test]
@@ -208,10 +208,10 @@ MonoBehaviour:
                 "_postprocessOrder: 1000",
                 "_postprocessOrder: 1000\n  _futureFieldNotYetKnown: 5");
 
-            var (diffs, typeIdentifierMatches) = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
 
-            Assert.IsTrue(typeIdentifierMatches);
-            CollectionAssert.IsEmpty(diffs);
+            Assert.IsTrue(comparison.TypeIdentifierMatches);
+            CollectionAssert.IsEmpty(comparison.Diffs);
         }
 
         [Test]
@@ -221,10 +221,10 @@ MonoBehaviour:
             // 両辺に存在する鍵だけを比較する契約により無視される。
             var diskText = CurrentFormatDefault.Replace("  _autoCreateMissingGroups: 0\n", "");
 
-            var (diffs, typeIdentifierMatches) = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
 
-            Assert.IsTrue(typeIdentifierMatches);
-            CollectionAssert.IsEmpty(diffs);
+            Assert.IsTrue(comparison.TypeIdentifierMatches);
+            CollectionAssert.IsEmpty(comparison.Diffs);
         }
 
         [Test]
@@ -232,10 +232,173 @@ MonoBehaviour:
         {
             var diskTextCrlf = CurrentFormatDefault.Replace("\n", "\r\n");
 
-            var (diffs, typeIdentifierMatches) = AddressTellerSettingsTextDiff.Compare(diskTextCrlf, CurrentFormatDefault);
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskTextCrlf, CurrentFormatDefault);
 
-            Assert.IsTrue(typeIdentifierMatches);
-            CollectionAssert.IsEmpty(diffs);
+            Assert.IsTrue(comparison.TypeIdentifierMatches);
+            CollectionAssert.IsEmpty(comparison.Diffs);
+        }
+
+        // --- SettingsTextComparison.MemoryTextRecognized / ComparableFieldCount ---
+        // AddressTellerSettingsLoadDiagnostics.Diagnose() が FileUnparsable / DiagnosticUnavailable を
+        // 判定する基準そのものを、Compare() 単体のレベルで固定する。
+
+        [Test]
+        public void CurrentFormatBothSides_GoldenComparableFieldCount_IsEightNonHeaderFields()
+        {
+            // ゴールデン: 現行スキーマの非ヘッダフィールド数（誤検知の境界を固定する）。
+            // 実測未確認のため 8 は推定値——実行結果と食い違えばこちらを実測値に合わせること。
+            var comparison = AddressTellerSettingsTextDiff.Compare(CurrentFormatDefault, CurrentFormatDefault);
+
+            Assert.AreEqual(8, comparison.ComparableFieldCount);
+            Assert.IsTrue(comparison.MemoryTextRecognized);
+        }
+
+        [Test]
+        public void OldFormatNonDefaultOnDisk_ComparableFieldCount_MatchesCurrentFieldCount()
+        {
+            // 回帰: 旧形式ファイルは全フィールド名が現行と完全に同名のため、ComparableFieldCount は
+            // 0 にならない——つまり Diagnose() は FileUnparsable ではなく、従来どおり variant A の
+            // Mismatch に分類される。
+            var comparison = AddressTellerSettingsTextDiff.Compare(OldFormatNonDefault, CurrentFormatDefault);
+
+            Assert.AreEqual(8, comparison.ComparableFieldCount);
+        }
+
+        [Test]
+        public void DiskTextEmpty_ComparableFieldCountIsZero_ButMemoryTextRecognized()
+        {
+            var comparison = AddressTellerSettingsTextDiff.Compare(string.Empty, CurrentFormatDefault);
+
+            Assert.AreEqual(0, comparison.ComparableFieldCount);
+            Assert.IsTrue(comparison.MemoryTextRecognized);
+        }
+
+        [Test]
+        public void DiskTextIndentedWithThreeSpaces_NotRecognizedAsTopLevelFields_ComparableFieldCountIsZero()
+        {
+            // トップレベル鍵の検出は2スペースインデント固定。3スペースインデントは検出されない
+            // （ネストした値・リスト継続行と区別できないため）。
+            var diskText = string.Join("\n", CurrentFormatDefault.Split('\n').Select(line =>
+                line.StartsWith("  ") ? " " + line : line));
+
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+
+            Assert.AreEqual(0, comparison.ComparableFieldCount);
+            Assert.IsTrue(comparison.MemoryTextRecognized);
+        }
+
+        [Test]
+        public void DiskTextWithNoIndentation_ComparableFieldCountIsZero()
+        {
+            var diskText = string.Join("\n", CurrentFormatDefault.Split('\n').Select(line => line.TrimStart()));
+
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+
+            Assert.AreEqual(0, comparison.ComparableFieldCount);
+            Assert.IsTrue(comparison.MemoryTextRecognized);
+        }
+
+        [Test]
+        public void DiskTextNotYaml_ComparableFieldCountIsZero()
+        {
+            var diskText = "this is not a YAML settings file at all, just some unrelated binary-ish garbage";
+
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+
+            Assert.AreEqual(0, comparison.ComparableFieldCount);
+            Assert.IsTrue(comparison.MemoryTextRecognized);
+        }
+
+        [Test]
+        public void DiskTextHeaderKeysOnly_ComparableFieldCountIsZero()
+        {
+            var diskText = @"%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &1
+MonoBehaviour:
+  m_ObjectHideFlags: 53
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca9673d549a3412b8f0dd5755bb580cd, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: AddressTeller.Editor::AddressTeller.Editor.AddressTellerSettingsAsset
+";
+
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+
+            Assert.AreEqual(0, comparison.ComparableFieldCount);
+            Assert.IsTrue(comparison.MemoryTextRecognized);
+        }
+
+        [Test]
+        public void DiskTextNonHeaderKeysDoNotOverlapCurrentSchema_ComparableFieldCountIsZero()
+        {
+            // ディスク側に非ヘッダ鍵は抽出できるが、現行スキーマの鍵と1つも名前が重ならない
+            // （全く別の型のアセットを読んだ場合を想定）。「抽出鍵ゼロ」より広い判定基準であることの固定。
+            var diskText = @"%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &1
+MonoBehaviour:
+  m_ObjectHideFlags: 53
+  m_Script: {fileID: 11500000, guid: 0000000000000000000000000000000, type: 3}
+  m_Name:
+  _someCompletelyUnrelatedFieldName: 42
+  _anotherUnrelatedField: hello
+";
+
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+
+            Assert.AreEqual(0, comparison.ComparableFieldCount);
+            Assert.IsTrue(comparison.MemoryTextRecognized);
+        }
+
+        [Test]
+        public void MemoryTextEmpty_MemoryTextRecognizedIsFalse_EvenWhenDiskTextIsAlsoUnparsable()
+        {
+            // メモリ側優先の固定: ディスク側も解釈不能な場合でも、判定は MemoryTextRecognized 側が優先される
+            // （AddressTellerSettingsLoadDiagnostics.Diagnose がこの順序に依存している）。
+            var comparison = AddressTellerSettingsTextDiff.Compare(string.Empty, string.Empty);
+
+            Assert.IsFalse(comparison.MemoryTextRecognized);
+            Assert.AreEqual(0, comparison.ComparableFieldCount);
+        }
+
+        [Test]
+        public void MemoryTextNotYaml_MemoryTextRecognizedIsFalse()
+        {
+            var comparison = AddressTellerSettingsTextDiff.Compare(CurrentFormatDefault, "not yaml at all");
+
+            Assert.IsFalse(comparison.MemoryTextRecognized);
+        }
+
+        [Test]
+        public void DiskTextWithLeadingUtf8Bom_DoesNotProduceSpuriousFileUnparsableClassification()
+        {
+            // BOM (U+FEFF) を char キャストで組み立てる。文字列リテラルへ直接埋め込むと、ツール経由の
+            // エスケープシーケンス解釈により意図と異なるバイト列が書き込まれる事故が起きやすいため。
+            var diskText = ((char)0xFEFF) + CurrentFormatDefault;
+
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+
+            // BOM は先頭行 "%YAML 1.1" の識別を壊しうるが、トップレベル鍵の抽出（2スペースインデント行の
+            // 正規表現マッチ）自体には影響しない行から始まるため、フィールドは通常どおり認識される。
+            Assert.AreEqual(8, comparison.ComparableFieldCount);
+            CollectionAssert.IsEmpty(comparison.Diffs);
+        }
+
+        [Test]
+        public void DiskTextWithLeadingBlankLine_DoesNotProduceSpuriousFileUnparsableClassification()
+        {
+            var diskText = "\n" + CurrentFormatDefault;
+
+            var comparison = AddressTellerSettingsTextDiff.Compare(diskText, CurrentFormatDefault);
+
+            Assert.AreEqual(8, comparison.ComparableFieldCount);
+            CollectionAssert.IsEmpty(comparison.Diffs);
         }
     }
 }
