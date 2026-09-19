@@ -22,8 +22,9 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 - `AddressTellerSettings.ReloadFromDisk()`: reloads `ProjectSettings/AddressTellerSettings.asset` into
   memory by discarding the current in-memory settings object and letting Unity recreate it from disk; does
   not write to disk. This changes the identity of the internal settings object, and any unsaved in-memory
-  changes are lost. Returns `false` without changing memory only when the file does not exist or is not
-  accessible (e.g. first run in a project that has never saved this asset). If the file exists but is
+  changes are lost. Returns `false` without changing memory when the file does not exist or is not
+  accessible (e.g. first run in a project that has never saved this asset), or, with a logged error, if
+  discarding and recreating the internal settings object itself fails unexpectedly. If the file exists but is
   corrupted or otherwise unreadable, the result is the same as what happens when the Editor itself starts
   up and reads that file — Unity's own deserializer may log a parse error to the Console while doing so
   (this is a log from Unity, not from AddressTeller), and the settings may reset to their defaults. This
@@ -32,30 +33,54 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   session (tracked via `SessionState`, which persists across domain reloads) — AddressTeller compares
   `ProjectSettings/AddressTellerSettings.asset` on disk against a fresh re-serialization of the settings
   currently loaded in memory. This is the only signal this package emits for the BREAKING silent reset
-  described below — previously nothing was logged at all. The check logs nothing only when the file does
-  not exist yet (a normal first run) or when the comparison finds no difference; every other outcome logs a
-  `Debug.LogWarning`: the differing fields (by their serialized field name, e.g. `_postprocessOrder`) when
-  the file could be compared but disagrees with memory; that the file exists but could not be read (e.g. no
-  read permission) when it could not even be opened — previously this case logged nothing at all, the same
-  as a normal first run, which made a genuinely broken file indistinguishable from one that simply did not
-  exist yet; that the file was read but contains none of the settings fields this version writes when it
-  could be opened but not meaningfully compared (e.g. truncated or otherwise unparsable) — previously this
-  case was also silent, for the same reason; or that AddressTeller could not complete the comparison at all
-  on its own side (e.g. it could not re-serialize the in-memory settings for comparison) when none of the
-  above applies — this one says nothing about the file itself. It can still, rarely, emit the same one-off
-  temp-file-cleanup `Debug.LogWarning` described for `SaveToDisk()` above, since it reuses the same
-  re-serialization helper; it never runs during asset import (`AssetPostprocessor`), so it adds no
-  per-import cost. This startup check runs unconditionally — including under `-batchmode` CI runs —
-  regardless of the new `-addressTellerFailOnSettingsMismatch` CLI flag: that flag does not gate whether the
-  check runs, only whether a settings-file problem also fails the run. When specified, `ApplyAllCLI` /
-  `ApplyWithValidateCLI` / `CheckCLI` / `ClearCLI` re-run the same comparison before doing anything else and,
-  if the file does not match, could not be read, or could not be meaningfully compared, additionally log an
-  error and exit with code 3 (existing exit code, no new one introduced) — on a run that already has one of
-  these problems, this means the same details are logged twice (the startup warning, then the CLI error)
-  and the comparison temp file is written twice. This flag never fails the run when AddressTeller could not
-  complete the comparison on its own side, since that case is not a confirmed problem with the file — it
-  only ever logs a warning, with or without the flag. Omitting the flag leaves all four CLI entry points'
-  exit-code behavior unchanged; the startup warning still runs either way.
+  described below — previously nothing was logged at all. This never throws — an unexpected failure at any
+  stage is treated the same as AddressTeller being unable to complete the check on its own side (see below).
+  The check logs nothing only when the file does not exist yet (a normal first run) or when the comparison
+  finds no difference; every other outcome logs a `Debug.LogWarning`. AddressTeller works through this in a
+  fixed sequence: it first determines the absolute path to the settings file, then reads the file at that
+  path — a "file does not exist" exception here is the normal first-run case (nothing is logged); any other
+  exception here is reported as reading the file having raised an exception other than the "file does not
+  exist" kind (e.g. no read permission; this does not by itself confirm the file exists) — previously this
+  case logged nothing at all, the same as a normal first run, which made a genuinely broken file
+  indistinguishable from one that simply did not exist yet — and only once the file has been read does
+  AddressTeller re-serialize the settings currently in memory for comparison, going on to compare field
+  values only once that re-serialization produces something it recognizes: reporting either that none of the
+  settings fields this version writes were found in a position AddressTeller's extraction rule recognizes
+  (e.g. truncated or otherwise unparsable) — previously this case was also silent, for the same reason as
+  above — or, if the file could be opened and meaningfully compared, the differing fields (by their
+  serialized field name, e.g. `_postprocessOrder`). Both of the previously-silent cases above also note that,
+  if the file failed to load the same way when Unity itself read it at startup, the settings currently in use
+  are likely already at their defaults, so overwriting the file with `SaveToDisk()` — or, in fact, any
+  settings change at all, since every property setter also persists on change — would discard whatever the
+  file currently holds. "AddressTeller being unable to complete the comparison on its own side" is not a
+  single fallback checked only once every other outcome has been ruled out — it can occur at several
+  different points along the sequence above instead: if it cannot determine the file's location at all, if
+  reading the file raises certain path-related exceptions that are AddressTeller's own doing rather than the
+  file's (e.g. an excessively long or otherwise invalid path resulting from how AddressTeller resolved the
+  location, as opposed to a problem with the file), if it cannot re-serialize the settings currently in
+  memory, or if that re-serialization does not produce anything it recognizes. Only the last of these has a
+  settled priority against a specific alternative: when an unrecognized re-serialization result coincides
+  with the file itself containing no recognized settings fields, this is reported instead of the file being
+  unparsable. It can still, rarely, emit the same one-off temp-file-cleanup `Debug.LogWarning` described for
+  `SaveToDisk()` above, since it reuses the same re-serialization helper; it never runs during asset import
+  (`AssetPostprocessor`), so it adds no per-import cost. This startup check runs unconditionally — including
+  under `-batchmode` CI runs — regardless of the new `-addressTellerFailOnSettingsMismatch` CLI flag: that
+  flag does not gate whether the check runs, only whether a settings-file problem also fails the run. When
+  specified, `ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` / `ClearCLI` check the same result before
+  doing anything else and, if the file does not match, could not be read, or could not be meaningfully
+  compared, additionally log an error and exit with code 3 (existing exit code, no new one introduced) — on a
+  run that already has one of these problems, this means the same details are logged twice (the startup
+  warning, then the CLI error), but the comparison itself (including the temp file it writes and reads for
+  that comparison) runs only once per Editor domain — this flag's check reuses the startup diagnostic's
+  result instead of re-running the comparison. This flag never fails the run when AddressTeller could not
+  complete the comparison on its own side, since that case is not a confirmed problem with the file — it only
+  ever logs a `Debug.LogWarning`, the same severity as when the flag is omitted. Because that check also
+  reuses the startup diagnostic's already-computed result, on a run that hits this case the exact same
+  warning text is logged twice (once from the startup diagnostic, once from this flag's own check), unlike a
+  genuine settings-file problem, which is logged once as a Warning and once as an Error. Omitting the flag
+  leaves all four CLI entry points' exit-code behavior unchanged; the startup warning still runs either way. `AddressTellerSettings.SaveToDisk()` and `ReloadFromDisk()` (see
+  above) each discard this cached result on every call, regardless of outcome, so a subsequent check reflects
+  that call rather than a stale conclusion from before it.
 
 ### Changed
 

@@ -246,7 +246,11 @@ MonoBehaviour:
         public void CurrentFormatBothSides_GoldenComparableFieldCount_IsEightNonHeaderFields()
         {
             // ゴールデン: 現行スキーマの非ヘッダフィールド数（誤検知の境界を固定する）。
-            // 実測未確認のため 8 は推定値——実行結果と食い違えばこちらを実測値に合わせること。
+            // 8 は実測で確認済み（628件greenの時点で確定）。この値が変わるのは AddressTellerSettingsAsset の
+            // [SerializeField] フィールドが増減したときだけであり、その場合は本ファイルの
+            // CurrentFormatDefault 等のフィクスチャも同時に更新すること（この2つ目のゴールデン
+            // （OldFormatNonDefaultOnDisk_ComparableFieldCount_MatchesCurrentFieldCount）も同じ8を使うため、
+            // 意図はここ1箇所にまとめている）。
             var comparison = AddressTellerSettingsTextDiff.Compare(CurrentFormatDefault, CurrentFormatDefault);
 
             Assert.AreEqual(8, comparison.ComparableFieldCount);
@@ -258,7 +262,7 @@ MonoBehaviour:
         {
             // 回帰: 旧形式ファイルは全フィールド名が現行と完全に同名のため、ComparableFieldCount は
             // 0 にならない——つまり Diagnose() は FileUnparsable ではなく、従来どおり variant A の
-            // Mismatch に分類される。
+            // Mismatch に分類される。8 の由来は上のテストのコメント参照。
             var comparison = AddressTellerSettingsTextDiff.Compare(OldFormatNonDefault, CurrentFormatDefault);
 
             Assert.AreEqual(8, comparison.ComparableFieldCount);

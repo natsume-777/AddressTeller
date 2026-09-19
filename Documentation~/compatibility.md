@@ -198,15 +198,27 @@ for some other reason, e.g. an external edit or a VCS checkout while the Editor 
 side you want to keep and call `AddressTellerSettings.ReloadFromDisk()` or `SaveToDisk()` accordingly (see
 [Project Settings](operations.md#project-settings) in `operations.md` for the full recovery procedure).
 
-That same diagnostic can also log two other kinds of warning that are not a mismatch: one saying the file
-exists but could not be read (for example, no read permission — this warning has no field list, since the
-file was never opened), and one saying the file was read but contains none of the settings fields this
-version writes (for example a truncated or otherwise unparsable file — this warning includes the number of
-characters read, but likewise no field list). Neither of these two implies the other diagnostic outcomes
-above; see [Project Settings](operations.md#project-settings) in `operations.md` for what each one means and
-what to do about it. A fourth, unrelated warning — that AddressTeller could not complete this check at all,
-on its own side — can also appear; it says nothing about the file itself and is not one of the three
-settings-file outcomes above.
+That same diagnostic can also log two other kinds of warning that are not a mismatch: one saying reading the
+file raised an exception other than the "file does not exist" kind (for example, no read permission — this
+does not actually confirm the file exists, only that some other exception occurred; this warning has no field
+list, since the file was never opened), and one saying the file was read but none of the settings fields this
+version writes were found in a position AddressTeller's line-based extraction recognizes (for example a
+truncated or otherwise unparsable file — this warning includes the number of characters read, but likewise no
+field list). Neither of these two implies the other diagnostic outcomes above; see
+[Project Settings](operations.md#project-settings) in `operations.md` for what each one means. Each of these
+two states its own applicable follow-up directly in the warning text itself — they are not identical to each
+other (the "could not be read" one points at both `ReloadFromDisk()` and `SaveToDisk()`; the "unparsable" one
+points at `SaveToDisk()` only) — unlike the mismatch case above, there is no separate step-by-step recovery
+procedure for these two beyond what the warning text itself says. A fourth, unrelated warning — that
+AddressTeller could not complete this check at all, on its own side — can also appear; it says nothing about
+the file itself and is not one of the three settings-file outcomes above. It is not a last-resort fallback
+checked only once the other three have been ruled out, either — reading the file is attempted before
+AddressTeller ever tries to re-serialize the in-memory settings for comparison, so a read problem is decided
+first, not this one; this warning can instead result from several different earlier or later failures on
+AddressTeller's own side (failing to locate the file at all, certain path-shaped read exceptions that are
+AddressTeller's own doing rather than the file's, failing to re-serialize the in-memory settings, or that
+re-serialization not producing anything AddressTeller itself recognizes) — see
+[Project Settings](operations.md#project-settings) in `operations.md` for the exact sequence.
 
 Beyond that one-time transition, what would break the reference going forward is losing the `.meta` GUID itself — for example the `.meta` file being deleted, or the `.cs` file being copied or moved outside Unity's AssetDatabase in a way that does not carry its `.meta` along, which causes Unity to generate a new GUID for it. An ordinary in-Editor move or rename of the file keeps the same `.meta` (and therefore the same GUID) and does not have this effect; renaming the type, its namespace, or its assembly is likewise expected to keep resolving correctly as long as the GUID itself stays unchanged. We treat the `.meta` GUID of `Editor/Application/AddressTellerSettingsAsset.cs` as part of this type's compatibility surface going forward and commit to keeping it stable: if it is ever lost or regenerated, the same silent reset-to-defaults failure occurs (see the "Downgrade note" in [CHANGELOG.md](../CHANGELOG.md) for a concrete case that reproduces this, including confirmation that the same silent reset also occurs in the downgrade direction).
 

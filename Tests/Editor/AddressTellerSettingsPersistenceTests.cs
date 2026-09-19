@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.TestTools;
 
@@ -202,6 +203,64 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(result);
             Assert.IsFalse(AddressTellerSettings.IsRuleEnabled(ruleClassName),
                 "List<string> フィールドの内容がシリアライズ往復後も保持されていること。");
+
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        // --- SaveToDisk()/ReloadFromDisk() による AddressTellerSettingsLoadDiagnostics
+        //     ドメインスコープキャッシュの無効化 ---
+        // AddressTellerSettingsLoadDiagnosticsTests.cs は実ファイルを経由しない制約のクラスのため、
+        // 実際に SaveToDisk()/ReloadFromDisk() を呼んでキャッシュが無効化されることの確認はここに置く。
+        // 「直したはずの不一致が古い診断結果のせいで -addressTellerFailOnSettingsMismatch 指定時に誤って
+        // 中断させる」偽陽性を防ぐための無効化なので、この2件は今回追加した中で最も回帰リスクが高い。
+
+        private static readonly FieldInfo DomainCacheField = typeof(AddressTellerSettingsLoadDiagnostics).GetField(
+            "s_diagnosisThisDomain", BindingFlags.NonPublic | BindingFlags.Static);
+
+        [Test]
+        public void SaveToDisk_DomainCacheWasPopulated_InvalidatesItRegardlessOfOutcome()
+        {
+            AddressTellerSettings.PostprocessOrder = DistinctFrom(_originalPostprocessOrderField, 654);
+
+            // Diagnose() を経由せず、キャッシュへ直接マーカー値を書き込む（この呼び出し自体はまだ
+            // ファイルに触れない）。
+            DomainCacheField.SetValue(null, (SettingsLoadDiagnosis?)SettingsLoadDiagnosis.Mismatch(
+                "cache-probe-marker (SaveToDisk invalidation test)"));
+            try
+            {
+                Assert.IsTrue(AddressTellerSettings.SaveToDisk());
+
+                Assert.IsNull(DomainCacheField.GetValue(null),
+                    "SaveToDisk() はキャッシュを無条件に無効化するはずで、成功時も例外ではない。");
+            }
+            finally
+            {
+                // アサーションが失敗して早期終了した場合でも、他のテストへマーカー値が漏れないようにする。
+                AddressTellerSettingsLoadDiagnostics.InvalidateDomainCache();
+            }
+
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void ReloadFromDisk_DomainCacheWasPopulated_InvalidatesItRegardlessOfOutcome()
+        {
+            AddressTellerSettings.PostprocessOrder = DistinctFrom(_originalPostprocessOrderField, 456);
+            Assert.IsTrue(AddressTellerSettings.SaveToDisk());
+
+            DomainCacheField.SetValue(null, (SettingsLoadDiagnosis?)SettingsLoadDiagnosis.Mismatch(
+                "cache-probe-marker (ReloadFromDisk invalidation test)"));
+            try
+            {
+                Assert.IsTrue(AddressTellerSettings.ReloadFromDisk());
+
+                Assert.IsNull(DomainCacheField.GetValue(null),
+                    "ReloadFromDisk() はキャッシュを無条件に無効化するはずで、成功時も例外ではない。");
+            }
+            finally
+            {
+                AddressTellerSettingsLoadDiagnostics.InvalidateDomainCache();
+            }
 
             LogAssert.NoUnexpectedReceived();
         }

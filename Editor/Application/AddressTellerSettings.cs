@@ -235,40 +235,53 @@ namespace AddressTeller.Editor
         /// parse the file back). Returns false, and logs an error, if writing the file, re-serializing the
         /// settings for the comparison, or reading either file fails (for example, no read/write
         /// permission), or if that comparison does not match.
+        /// Also discards AddressTeller's cached settings-load diagnostic (used by the once-per-session
+        /// startup check and by <c>-addressTellerFailOnSettingsMismatch</c>) regardless of outcome, so the
+        /// next check reflects this call rather than a stale conclusion from before it.
         /// </remarks>
         public static bool SaveToDisk()
         {
-            var asset = AddressTellerSettingsAsset.instance;
-
-            string diskText;
-            string reserializedText;
             try
             {
-                asset.SaveChanges();
-                diskText = File.ReadAllText(AddressTellerSettingsAsset.GetAbsoluteFilePath());
-                reserializedText = AddressTellerSettingsAsset.SaveCurrentInstanceToTempFileAndReadText();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError("[AddressTeller] SaveToDisk: writing or verifying " +
-                    $"ProjectSettings/AddressTellerSettings.asset failed ({ex.GetType().Name}: {ex.Message}).");
+                string diskText;
+                string reserializedText;
+                try
+                {
+                    var asset = AddressTellerSettingsAsset.instance;
+                    asset.SaveChanges();
+                    diskText = File.ReadAllText(AddressTellerSettingsAsset.GetAbsoluteFilePath());
+                    reserializedText = AddressTellerSettingsAsset.SaveCurrentInstanceToTempFileAndReadText();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError("[AddressTeller] SaveToDisk: writing or verifying " +
+                        $"ProjectSettings/AddressTellerSettings.asset failed ({ex.GetType().Name}: {ex.Message}).");
+                    return false;
+                }
+
+                if (reserializedText == null)
+                {
+                    Debug.LogError("[AddressTeller] SaveToDisk: could not re-serialize the current settings to " +
+                        "a temporary file for verification. This does not necessarily mean the write to " +
+                        "ProjectSettings/AddressTellerSettings.asset itself failed.");
+                    return false;
+                }
+
+                if (reserializedText == diskText) return true;
+
+                Debug.LogError("[AddressTeller] SaveToDisk: the file content read back after writing does not " +
+                    "match a fresh re-serialization of the in-memory settings. " +
+                    "ProjectSettings/AddressTellerSettings.asset may not reflect the current settings.");
                 return false;
             }
-
-            if (reserializedText == null)
+            finally
             {
-                Debug.LogError("[AddressTeller] SaveToDisk: could not re-serialize the current settings to " +
-                    "a temporary file for verification. This does not necessarily mean the write to " +
-                    "ProjectSettings/AddressTellerSettings.asset itself failed.");
-                return false;
+                // 成功・失敗・例外いずれの経路でも、この呼び出しの後は「診断はこの呼び出しを踏まえた結論を
+                // 出すべき」という前提が変わりうる（成功時はファイルとメモリの関係が変わったかもしれない。
+                // 失敗時でも SaveChanges 自体は走っていたかもしれない）ため、無条件にキャッシュを破棄する。
+                // AddressTellerSettingsLoadDiagnostics.GetOrDiagnoseForThisDomain の XML doc 参照。
+                AddressTellerSettingsLoadDiagnostics.InvalidateDomainCache();
             }
-
-            if (reserializedText == diskText) return true;
-
-            Debug.LogError("[AddressTeller] SaveToDisk: the file content read back after writing does not " +
-                "match a fresh re-serialization of the in-memory settings. " +
-                "ProjectSettings/AddressTellerSettings.asset may not reflect the current settings.");
-            return false;
         }
 
         /// <summary>
@@ -293,37 +306,61 @@ namespace AddressTeller.Editor
         /// true in that case.
         /// Returns false, without changing memory, only when the file does not exist or is not accessible
         /// (e.g. on first run in a project that has never saved this asset, or if the process lacks read
-        /// permission).
+        /// permission), or if discarding and recreating the internal settings object itself fails
+        /// unexpectedly (in which case an error is also logged).
+        /// Also discards AddressTeller's cached settings-load diagnostic (used by the once-per-session
+        /// startup check and by <c>-addressTellerFailOnSettingsMismatch</c>) regardless of outcome, so the
+        /// next check reflects this call rather than a stale conclusion from before it.
         /// </remarks>
         public static bool ReloadFromDisk()
         {
-            var path = AddressTellerSettingsAsset.GetAbsoluteFilePath();
-
-            // File.Exists は「存在するが読めない」を確実に判別できるとは限らないため、実際に開けるかどうか
-            // で判定する。ファイルが存在しない場合もこの catch に落ちるが、この段階ではログは出さない
-            // （ログが出うるのは、この後 Unity 自身が壊れたファイルを読む場合のみ。XML doc 参照）。
-            // また、開けないファイルをそのまま下の破棄→再取得の経路（Unity 自身の再読み込み処理）へ渡すと、
-            // Editor のメインスレッドが長時間ブロックされる事象を1回の実測で観測した（再現性・原因ともに
-            // 未確認）。ここで事前に弾くことで、その経路へ入ること自体を避けている（この事前チェック自体は、
-            // 上記の観測結果とは独立に、「アクセスできない場合は false を返す」という契約を満たすために
-            // 元々必要なもの）。
             try
             {
-                using (File.OpenRead(path)) { }
+                // File.Exists は「存在するが読めない」を確実に判別できるとは限らないため、実際に開けるかどうか
+                // で判定する。ファイルが存在しない場合もこの catch に落ちるが、この段階ではログは出さない
+                // （ログが出うるのは、この後 Unity 自身が壊れたファイルを読む場合のみ。XML doc 参照）。
+                // また、開けないファイルをそのまま下の破棄→再取得の経路（Unity 自身の再読み込み処理）へ渡すと、
+                // Editor のメインスレッドが長時間ブロックされる事象を1回の実測で観測した（再現性・原因ともに
+                // 未確認）。ここで事前に弾くことで、その経路へ入ること自体を避けている（この事前チェック自体は、
+                // 上記の観測結果とは独立に、「アクセスできない場合は false を返す」という契約を満たすために
+                // 元々必要なもの）。
+                try
+                {
+                    var path = AddressTellerSettingsAsset.GetAbsoluteFilePath();
+                    using (File.OpenRead(path)) { }
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
+
+                // メモリ上の唯一のインスタンスを破棄してから instance に再アクセスすることで、
+                // ScriptableSingleton にディスクから読み直させる（Unity の内部読み込み経路に委ねる）。
+                // 同じファイルを2個目のオブジェクトとして読む方式は ScriptableSingleton のコンストラクタが
+                // 既存インスタンスの存在を検知して Debug.LogError を出す実装と衝突するため採用しない。
+                // DestroyImmediate / 再アクセスによる instance の再生成（CreateAndLoad 相当）が実際に
+                // どのような条件で例外を投げるかは未実測。ここでは「投げるかどうか」を断定せず、
+                // SaveToDisk() と対称に「投げても false を返す契約を満たす」ことだけを保証する。
+                try
+                {
+                    UnityEngine.Object.DestroyImmediate(AddressTellerSettingsAsset.instance);
+                    _ = AddressTellerSettingsAsset.instance;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError("[AddressTeller] ReloadFromDisk: discarding and recreating the settings " +
+                        $"object failed unexpectedly ({ex.GetType().Name}: {ex.Message}).");
+                    return false;
+                }
+
+                return true;
             }
-            catch (Exception)
+            finally
             {
-                return false;
+                // SaveToDisk() と同じ理由で無条件に破棄する（AddressTellerSettingsLoadDiagnostics.
+                // GetOrDiagnoseForThisDomain の XML doc 参照）。
+                AddressTellerSettingsLoadDiagnostics.InvalidateDomainCache();
             }
-
-            // メモリ上の唯一のインスタンスを破棄してから instance に再アクセスすることで、
-            // ScriptableSingleton にディスクから読み直させる（Unity の内部読み込み経路に委ねる）。
-            // 同じファイルを2個目のオブジェクトとして読む方式は ScriptableSingleton のコンストラクタが
-            // 既存インスタンスの存在を検知して Debug.LogError を出す実装と衝突するため採用しない。
-            UnityEngine.Object.DestroyImmediate(AddressTellerSettingsAsset.instance);
-            _ = AddressTellerSettingsAsset.instance;
-
-            return true;
         }
 
         /// <summary>Enables or disables the given rule class.</summary>

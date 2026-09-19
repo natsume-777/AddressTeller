@@ -465,14 +465,18 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// <c>-addressTellerFailOnSettingsMismatch</c> が指定されている場合のみ、設定ロード診断
-        /// （<see cref="AddressTellerSettingsLoadDiagnostics.Diagnose"/>）を実行する。診断結果が
-        /// 「設定ファイル自体の問題」（<see cref="SettingsLoadDiagnosis.IsSettingsFileProblem"/> が true —
-        /// ファイルとメモリの不一致・読み取り不能・解釈不能のいずれか）であれば Error ログを出して
+        /// （<see cref="AddressTellerSettingsLoadDiagnostics.GetOrDiagnoseForThisDomain"/>）を実行する。
+        /// 診断結果が「設定ファイル自体の問題」（<see cref="SettingsLoadDiagnosis.IsSettingsFileProblem"/> が
+        /// true — ファイルとメモリの不一致・読み取り不能・解釈不能のいずれか）であれば Error ログを出して
         /// true（呼び出し元は Exit(3) して中断すべき）を返す。診断が AddressTeller 側の都合で成立しなかった
         /// （<see cref="SettingsLoadDiagnosisKind.DiagnosticUnavailable"/>）場合は Warning ログのみで false
         /// を返す——これは利用者のファイルの問題ではないため、オプトインしたフラグであっても CI を
         /// 失敗させるべきではない。フラグ未指定時は診断自体を呼ばない（挙動を一切変えない契約。File I/O・
         /// 一時ファイル書き出しも発生しない）。
+        /// 診断結果は起動時診断（<see cref="AddressTellerSettingsLoadDiagnostics"/> の
+        /// <c>[InitializeOnLoadMethod]</c>）とこのドメイン内で共有される（
+        /// <see cref="AddressTellerSettingsLoadDiagnostics.GetOrDiagnoseForThisDomain"/> のキャッシュ）ため、
+        /// 起動時診断が既に一時ファイルの書き出し・比較を終えている場合、このメソッドはそれを再実行しない。
         /// </summary>
         /// <remarks>
         /// この診断は Postprocessor/Menu には波及しない CLI 限定のオプトイン機能である
@@ -485,19 +489,32 @@ namespace AddressTeller.Editor
         {
             if (!cliArgs.FailOnSettingsMismatch) return false;
 
-            var diagnosis = AddressTellerSettingsLoadDiagnostics.Diagnose();
-            if (diagnosis.Message == null) return false;
-
-            if (diagnosis.IsSettingsFileProblem)
+            try
             {
-                Debug.LogError($"[AddressTeller] {diagnosis.Message}");
-                return true;
-            }
+                var diagnosis = AddressTellerSettingsLoadDiagnostics.GetOrDiagnoseForThisDomain();
+                if (diagnosis.Message == null) return false;
 
-            // DiagnosticUnavailable: AddressTeller 側の都合で診断が成立しなかっただけで、ファイル自体が
-            // 問題だと確認できたわけではない。CI を失敗させず、警告のみで続行する。
-            Debug.LogWarning($"[AddressTeller] {diagnosis.Message}");
-            return false;
+                if (diagnosis.IsSettingsFileProblem)
+                {
+                    Debug.LogError($"[AddressTeller] {diagnosis.Message}");
+                    return true;
+                }
+
+                // DiagnosticUnavailable: AddressTeller 側の都合で診断が成立しなかっただけで、ファイル自体が
+                // 問題だと確認できたわけではない。CI を失敗させず、警告のみで続行する。
+                Debug.LogWarning($"[AddressTeller] {diagnosis.Message}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                // Diagnose() は例外を投げない契約だが（AddressTellerSettingsLoadDiagnostics.Diagnose の
+                // XML doc 参照）、その契約を過信せずここでも保護する。診断自体が想定外の理由で失敗しても、
+                // AddressTeller 側の都合で利用者の CI を落とすべきではない——中断せず続行する。
+                Debug.LogWarning("[AddressTeller] SettingsDiagnosticShouldAbortCli: unexpected error while " +
+                    $"running the settings load diagnostic ({ex.GetType().Name}: {ex.Message}). This says " +
+                    "nothing about the settings file itself; continuing without aborting.");
+                return false;
+            }
         }
 
         /// <summary>
