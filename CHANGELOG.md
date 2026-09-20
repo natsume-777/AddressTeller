@@ -97,9 +97,9 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   listing the fields that differ, so the reset no longer goes completely unnoticed on an Editor upgraded to
   this version or later — it just does not happen at the exact moment the reset itself occurs.
   **Before upgrading**, note down your current values from `Project Settings > AddressTeller` — Auto-apply
-  on import, Postprocessor execution order, Remove unmatched entries, Snapshot folder, Save auto-snapshot
-  before Apply, Auto-snapshot retention count, and the enable/disable state of any rule classes — and
-  re-apply them after upgrading.
+  on import, Postprocessor order, Remove unmatched entries, Auto-create missing groups, Snapshot folder,
+  Auto-snapshot before Apply, Auto-snapshot retention count, and the enable/disable state of any rule
+  classes — and re-apply them after upgrading.
   Once loaded by this version, the file's serialized representation of *how the type is identified* is
   rewritten: `m_Script` changes from `{fileID: 0}` to a real `MonoScript` reference (the `.meta` GUID of
   `Editor/Application/AddressTellerSettingsAsset.cs`), and `m_EditorClassIdentifier` changes from

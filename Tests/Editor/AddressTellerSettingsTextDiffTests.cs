@@ -250,7 +250,11 @@ MonoBehaviour:
             // [SerializeField] フィールドが増減したときだけであり、その場合は本ファイルの
             // CurrentFormatDefault 等のフィクスチャも同時に更新すること（この2つ目のゴールデン
             // （OldFormatNonDefaultOnDisk_ComparableFieldCount_MatchesCurrentFieldCount）も同じ8を使うため、
-            // 意図はここ1箇所にまとめている）。
+            // 意図はここ1箇所にまとめている）。同じ理由で CHANGELOG.md/.ja.md の `Before upgrading` /
+            // `アップデート前に` で始まるチェックリストの項目数、および Documentation~/operations.md/.ja.md
+            // の `## Project Settings` 節（Project Settings 箇条書き・`Auto Safety Snapshot` 箇条書き・
+            // ルール有効/無効の段落の3箇所に分散しているが合計で全8フィールドを説明している）も、この8との
+            // 対応を保つこと（詳細は AddressTellerSettingsAsset.cs のフィールド宣言直上のコメント参照）。
             var comparison = AddressTellerSettingsTextDiff.Compare(CurrentFormatDefault, CurrentFormatDefault);
 
             Assert.AreEqual(8, comparison.ComparableFieldCount);

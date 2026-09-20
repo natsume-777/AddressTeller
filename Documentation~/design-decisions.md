@@ -17,7 +17,7 @@ Unlike addresses, labels accumulate from all matching rules (multiple labels can
 
 ## Missing Groups Are an Error (Default)
 
-By default, if a rule specifies a group that does not exist, it is an error — groups are not created automatically. Groups are architectural units that carry bundle settings (compression and splitting policies), and silently creating groups from typos can go unnoticed. Group creation is left as an explicit operation. An opt-in setting (off by default) is available for cases where automatic creation is needed.
+By default, if a rule specifies a group that does not exist, it is an error — groups are not created automatically. Groups are architectural units that carry bundle settings (compression and splitting policies), and silently creating groups from typos can go unnoticed. Group creation is left as an explicit operation. An opt-in setting (off by default) is available for cases where automatic creation is needed — **Auto-create missing groups** (`AutoCreateMissingGroups`) under `Project Settings > AddressTeller`; see [Project Settings](operations.md#project-settings) for details.
 
 ## Deletions Are Determined by Per-Asset Ownership
 

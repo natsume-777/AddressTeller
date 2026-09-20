@@ -30,6 +30,12 @@ namespace AddressTeller.Editor
     [FilePath("ProjectSettings/AddressTellerSettings.asset", FilePathAttribute.Location.ProjectFolder)]
     internal sealed class AddressTellerSettingsAsset : ScriptableSingleton<AddressTellerSettingsAsset>
     {
+        // 以下の [SerializeField] は現在8個。増減した場合は、この数を前提にしている以下の箇所も
+        // 同時に更新すること: CHANGELOG.md/.ja.md の `Before upgrading` / `アップデート前に` で始まる
+        // チェックリストの項目数（8個）、Documentation~/operations.md/.ja.md の `## Project Settings`
+        // 節（Project Settings 箇条書き・`Auto Safety Snapshot` 箇条書き・ルール有効/無効の段落の3箇所に
+        // 分散しているが、合計で全8フィールドを説明している）、Tests/Editor/AddressTellerSettingsTextDiffTests.cs
+        // の ComparableFieldCount == 8 ゴールデン。
         [SerializeField] internal bool _cleanupStaleEntries = true;
         [SerializeField] internal bool _postprocessEnabled = true;
         [SerializeField] internal string _snapshotFolder = AddressTellerSettings.DefaultSnapshotFolder;
