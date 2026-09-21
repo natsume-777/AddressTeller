@@ -80,7 +80,7 @@ namespace AddressTeller.Editor
         /// Restores the Addressables state from the latest automatic snapshot (saved immediately before
         /// running the Apply All / Apply with Validate menu items). Undoes address changes and label
         /// assignments made by Apply, as well as removing entries that Apply newly added (limited to
-        /// entries in groups managed by AddressTeller; manually created entries in unmanaged groups are
+        /// entries in groups AddressTeller owns; manually created entries in groups it does not own are
         /// excluded from removal by the ownership check, and their count is shown in the confirmation
         /// dialog). Uses the dedicated path that also removes entries
         /// (<see cref="AddressTellerSnapshotService.RestoreExactWithRemoval"/>).
@@ -88,6 +88,8 @@ namespace AddressTeller.Editor
         [MenuItem("Tools/AddressTeller/Undo Last Apply")]
         public static void UndoLastApply()
         {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
@@ -113,12 +115,12 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            // 削除追従の所有権判定（managedGroups）は、有効/無効に関わらず全ルールを対象にする。
-            // ルールが Off でも過去に付与されたエントリの所属グループは一貫して管理下として扱うため
+            // 削除追従の所有権判定（ownedGroups）は、有効/無効に関わらず全ルールを対象にする。
+            // ルールが Off でも過去に付与されたエントリの所属グループは一貫して所有下として扱うため
             // （RemoveEntriesForDeletedAssets と同じ考え方）。
             var setup = RuleEvaluationPipeline.BuildSetup(settings, RuleCollector.CollectRules());
-            var managedGroups = setup.ManagedGroups;
-            var removable = diff.Removed.Where(e => managedGroups.Contains(e.GroupName)).ToList();
+            var ownedGroups = setup.OwnedGroups;
+            var removable = diff.Removed.Where(e => ownedGroups.Contains(e.GroupName)).ToList();
             var keptCount = diff.Removed.Count - removable.Count;
 
             var message =
@@ -126,9 +128,9 @@ namespace AddressTeller.Editor
                 $"Entries to add: {diff.Added.Count}\n" +
                 $"Entries to remove: {removable.Count}\n" +
                 $"Entries to change: {diff.Changed.Count}\n\n" +
-                (keptCount > 0 ? $"{keptCount} entry/entries in unmanaged groups will be kept.\n\n" : "") +
-                // ルールの Configure() が1件でも失敗していると managedGroups が不完全な可能性がある
-                // （本来 managed のはずのグループが「未検出」として扱われうる）ことをユーザーに明示する。
+                (keptCount > 0 ? $"{keptCount} entry/entries in unowned groups will be kept.\n\n" : "") +
+                // ルールの Configure() が1件でも失敗していると ownedGroups が不完全な可能性がある
+                // （本来所有しているはずのグループが「未検出」として扱われうる）ことをユーザーに明示する。
                 // RuleCollector.CollectRules() は無効化中のルールも含むため、Project Settings で無効化しても
                 // この警告は解除されない（ルールの Configure() 自体を修正する必要がある）旨も添える。
                 (setup.ConfigureFailures.Count > 0

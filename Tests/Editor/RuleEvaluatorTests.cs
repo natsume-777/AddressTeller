@@ -37,7 +37,8 @@ namespace AddressTeller.Editor.Tests
                 sourceClass: null,
                 description: null,
                 ruleIndex: 0,
-                includesFolders: includeFolders
+                includesFolders: includeFolders,
+                order: 0
             );
         }
 
@@ -174,6 +175,22 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(1, result.AddressCandidates.Count);
             Assert.AreEqual("FolderA", result.AddressCandidates[0].Address);
+        }
+
+        [Test]
+        public void CandidateOrder_MatchesEntryOrder()
+        {
+            // AddressRuleEntry.Order (ビルダー経由でルールクラスの AddressRuleBase.Order から刻印される)
+            // が AddressCandidate.Order まで正しく運ばれることを確認する。
+            var entry = new AddressRuleEntry(
+                "G", _ => true, _ => "addr",
+                new List<System.Func<AssetContext, string>>(),
+                sourceClass: null, description: null, ruleIndex: 0, includesFolders: false, order: 7);
+
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), new[] { entry });
+
+            Assert.AreEqual(1, result.AddressCandidates.Count);
+            Assert.AreEqual(7, result.AddressCandidates[0].Order);
         }
 
         [Test]

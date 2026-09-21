@@ -7,7 +7,10 @@ namespace AddressTeller.Editor
 {
     /// <summary>
     /// Command-line arguments for the AddressTeller CLI (e.g. <see cref="AddressTellerMenu.CheckCLI"/>).
-    /// Pass an array such as `Environment.GetCommandLineArgs()` to parse it.
+    /// Pass an array such as `Environment.GetCommandLineArgs()` to parse it. Arguments not starting with
+    /// "-addressTeller" are ignored (Unity itself passes many unrelated arguments); an argument that does
+    /// start with "-addressTeller" but does not match a known flag is a parse error (see
+    /// <see cref="TryParse"/>).
     /// </summary>
     public sealed class AddressTellerCliArgs
     {
@@ -42,24 +45,21 @@ namespace AddressTeller.Editor
         /// </summary>
         public ClearScope ClearScope { get; private set; } = ClearScope.Managed;
 
-        /// <summary>
-        /// Whether -addressTellerFailOnSettingsMismatch was specified. When set, each CLI entry point
-        /// (<see cref="AddressTellerMenu.ApplyAllCLI"/>, <see cref="AddressTellerMenu.ApplyWithValidateCLI"/>,
-        /// <see cref="AddressTellerMenu.CheckCLI"/>, <see cref="AddressTellerMenu.ClearCLI"/>) checks, before
-        /// doing anything else, whether ProjectSettings/AddressTellerSettings.asset on disk can be confirmed
-        /// to match the settings currently loaded in memory. If it cannot — the file does not match, reading
-        /// it raised an exception other than the "file does not exist" kind, or the file could not be checked
-        /// against the current settings at all — the run logs an error and exits with code 3 instead of
-        /// proceeding. Defaults to false (no check performed; existing behavior is unchanged).
-        /// </summary>
-        public bool FailOnSettingsMismatch { get; private set; }
+        /// <summary>全フラグに共通のプレフィックス。未知引数の判定（<see cref="TryParse"/> の switch の default 節）
+        /// と、この XML doc コメント冒頭の説明の、2箇所で重複していた文字列リテラルをここに集約する。</summary>
+        private const string FlagPrefix = "-addressTeller";
 
-        private const string ReportPathFlag = "-addressTellerReport";
-        private const string ReportFormatFlag = "-addressTellerReportFormat";
-        private const string DisableRulesFlag = "-addressTellerDisableRules";
-        private const string ConfirmClearFlag = "-addressTellerConfirmClear";
-        private const string ClearScopeFlag = "-addressTellerClearScope";
-        private const string FailOnSettingsMismatchFlag = "-addressTellerFailOnSettingsMismatch";
+        private const string ReportPathFlag = FlagPrefix + "Report";
+        private const string ReportFormatFlag = FlagPrefix + "ReportFormat";
+        private const string DisableRulesFlag = FlagPrefix + "DisableRules";
+        private const string ConfirmClearFlag = FlagPrefix + "ConfirmClear";
+        private const string ClearScopeFlag = FlagPrefix + "ClearScope";
+
+        /// <summary>エラーメッセージに列挙する既知フラグ名一覧（<see cref="TryParse"/> の未知フラグエラー用）。</summary>
+        private static readonly string[] KnownFlags =
+        {
+            ReportPathFlag, ReportFormatFlag, DisableRulesFlag, ConfirmClearFlag, ClearScopeFlag,
+        };
 
         /// <summary>
         /// Parses an argument array.
@@ -84,7 +84,6 @@ namespace AddressTeller.Editor
             IReadOnlyList<string> disableRuleFullNames = Array.Empty<string>();
             var confirmClear = false;
             var clearScope = ClearScope.Managed;
-            var failOnSettingsMismatch = false;
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -137,10 +136,6 @@ namespace AddressTeller.Editor
                         confirmClear = true;
                         break;
 
-                    case FailOnSettingsMismatchFlag:
-                        failOnSettingsMismatch = true;
-                        break;
-
                     case ClearScopeFlag:
                         if (i + 1 >= args.Length)
                         {
@@ -161,6 +156,23 @@ namespace AddressTeller.Editor
                                 return false;
                         }
                         break;
+
+                    default:
+                        // "-addressTeller" で始まらない引数は Unity 自身が多数渡してくるため無視する。
+                        // "-addressTeller" で始まるのに上記いずれの case にも一致しない引数は、
+                        // フラグ名の typo である可能性が高い。値の typo（上記の各 default 節）と対称に、
+                        // 黙って無視せずエラーにする。
+                        // プレフィックスの判定だけ OrdinalIgnoreCase にする（switch 本体のフラグ名一致は
+                        // 大文字小文字を区別したまま）。フラグ名の先頭を誤って大文字にする（例:
+                        // -AddressTellerReport）typo は、プレフィックス自体が一致しなくなり default にも
+                        // 入らず黙って無視される最悪の失敗パターンになるため、ここだけ緩めて確実に捕まえる。
+                        // Unity 自身が "-AddressTeller" で始まる引数を渡すことはないため誤爆リスクは無い。
+                        if (args[i].StartsWith(FlagPrefix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            error = $"Unknown AddressTeller CLI flag (must be one of: {string.Join(", ", KnownFlags)}): {args[i]}";
+                            return false;
+                        }
+                        break;
                 }
             }
 
@@ -174,7 +186,6 @@ namespace AddressTeller.Editor
                 DisableRuleFullNames = disableRuleFullNames,
                 ConfirmClear = confirmClear,
                 ClearScope = clearScope,
-                FailOnSettingsMismatch = failOnSettingsMismatch,
             };
             return true;
         }

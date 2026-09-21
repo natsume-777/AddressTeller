@@ -64,6 +64,17 @@ namespace AddressTeller.Editor.Tests
             }
         }
 
+        /// <summary>Order() が既定(0)以外のルール。AddressRuleEntry.Order への刻印を検証するためのスタブ。</summary>
+        private sealed class CustomOrderRule : AddressRuleBase
+        {
+            public override int Order => 5;
+
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("G").Address("addr");
+            }
+        }
+
         [Test]
         public void Collect_NullRule_ThrowsArgumentNullException()
         {
@@ -203,6 +214,17 @@ namespace AddressTeller.Editor.Tests
         public void IsUnresolvedDefaultGroup_GroupLiterallyNamedDefaultGroupPlaceholder_ReturnsFalse()
         {
             Assert.IsFalse(RuleInspector.IsUnresolvedDefaultGroup("(Default Group)"));
+        }
+
+        [Test]
+        public void Collect_EntryOrder_MatchesRuleClassOrder()
+        {
+            // AddressRuleBase.Order がビルダー経由で AddressRuleEntry.Order まで刻印されることを確認する
+            // (rule.Order -> AddressRuleBuilderImpl._order -> AddressRuleEntry.Order の配線)。
+            var entries = RuleInspector.Collect(new CustomOrderRule());
+
+            Assert.AreEqual(1, entries.Count);
+            Assert.AreEqual(5, entries[0].Order);
         }
     }
 }

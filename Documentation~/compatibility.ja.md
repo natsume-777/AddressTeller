@@ -57,33 +57,47 @@
 | `-addressTellerDisableRules <names>` | カンマ区切りのルールクラス完全修飾名 | 空（追加除外なし） |
 | `-addressTellerConfirmClear` | 値を取らない存在フラグ | 未指定（`ClearCLI` は意図的な拒否として扱う） |
 | `-addressTellerClearScope <scope>` | `all`, `managed` | `managed` |
-| `-addressTellerFailOnSettingsMismatch` | 値を取らない存在フラグ | 未指定（exit code は失敗にならない。ただしセッションにつき1回の起動時診断はこのフラグの有無に関わらず実行され、それ単独で警告をログすることがある。`operations.ja.md` の [Project Settings](operations.ja.md#project-settings) 参照）。指定時も、設定ファイル自体の問題（不一致・読み取り不能・解釈不能）だと確認できた場合のみ実行を失敗させる。AddressTeller 側の都合で診断が完了できなかった場合はこのフラグの有無に関わらず実行を失敗させない |
 
-未知の引数は黙って無視されます。これ自体が契約の一部です。したがって、将来追加されるフラグが、既にそのフラグ名を（無関係な目的で）渡しているCI実行を壊すことはありません。逆に、このパッケージが将来のリリースで未知の引数をエラーとして拒否し始めることも許されません。
+`managed` が対象にするのは AddressTeller が所有するグループである。所有権の現在の定義は
+[設計上の決定事項: 削除は資産単位の所有権で判定する](design-decisions.ja.md#削除は資産単位の所有権で判定する)
+を参照。本節が固定するのはフラグの名前と値語彙であり、この所有権の定義そのものではない——
+何を所有とみなすかの変更は CHANGELOG.md に記載されるが、本節の変更にはあたらない。
+
+`-addressTeller` で始まらない引数は無視されます——Unity 自身がこのパッケージと無関係な引数を数多く渡してくるためです。`-addressTeller` で始まるのに上記いずれのフラグにも一致しない引数はパースエラー（exit code 3）になります。これは、成功したように見えながら実は何もしていないフラグ名の typo（例: `-addressTellerRepot`）を検知するためです。
 
 **非破壊的**: 新規フラグの追加、既存フラグの値語彙への新しい値の追加（例: `-addressTellerClearScope` の3つ目の値）。
 
-**破壊的**: フラグ名の変更、値語彙からの値の削除、フラグ省略時の既定値の変更。
+**破壊的**: フラグ名の変更、値語彙からの値の削除、フラグ省略時の既定値の変更、`-addressTeller` で始まる未知の引数をエラーとして扱うかどうかの変更。
 
 ### 4. Exit Code
 
 `Documentation~/operations.ja.md` より。
 
-`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI`:
+`CheckCLI`（読み取り専用。書き込みを一切行わない）:
 
 | exit code | 意味 |
 |---|---|
 | 0 | 差分なし・問題なし |
 | 1 | ドリフトあり（差分あり、Validation エラーなし） |
 | 2 | Validation エラーあり |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ、設定ファイルが現在使用中の設定と一致すると確認できなかった場合——不一致・読み取り不能・照合不能のいずれか） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または設定ファイルの読み込み失敗） |
+
+`ApplyAllCLI` / `ApplyWithValidateCLI`（成功時に書き込みを行う。exit code は差分の有無に依存しない）:
+
+| exit code | 意味 |
+|---|---|
+| 0 | 差分の有無を問わず、適用に成功した |
+| 2 | Validation エラーあり |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または設定ファイルの読み込み失敗） |
+
+この2メソッドは 1 を返しません——Apply が完了した以上、何かを変更したこと自体は失敗ではないからです。差分だけを（適用せずに）検出したい場合は `CheckCLI` を使ってください。
 
 `ClearCLI`:
 
 | exit code | 意味 |
 |---|---|
 | 0 | クリア完了 |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `managedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗、または `-addressTellerFailOnSettingsMismatch` 指定時のみ、設定ファイルが現在使用中の設定と一致すると確認できなかった場合——不一致・読み取り不能・照合不能のいずれか） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `ownedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗、または設定ファイルの読み込み失敗） |
 | 4 | `-addressTellerConfirmClear` が指定されていないため拒否 |
 
 新しい exit code 値の追加（いずれのCLI系統でも）は、既知のコードだけをチェックするCIスクリプトを必ずしも壊さないとしても、**メジャー**変更として扱います。理由は、CIスクリプトは既知コードごとの等値判定で分岐し「それ以外」を予期しない失敗区分として扱う書き方が一般的だからです（例: `case 0/1/2/3: ... ; default: ビルド失敗`）。新しいコードを追加すると、既存の分岐の意味が変わらなくても「それ以外」が捕捉する範囲が変わってしまいます。
@@ -128,9 +142,10 @@ SchemaVersion                                         (System.Int32)
 **JUnit XML**（`AddressTellerReportWriter.ToJUnitXml`）:
 
 - `<testsuite name="AddressTeller" tests="..." failures="...">` — `name` 属性は `"AddressTeller"` に固定。
-- drift 全体で1つの `<testcase>`: `name="drift"`、`classname="AddressTeller.Drift"`。
-- レポートの issues に含まれる `ValidationStatus` の種類ごとに1つの `<testcase>`: `name="<ステータス名>"`（例: `"ConflictingAddress"`）、`classname="AddressTeller.Validation"`。
+- drift 全体で1つの `<testcase>`: `name="drift"`、`classname="AddressTeller.Drift"`。`Drift[]` が空でないときにこの testcase へ入れ子の `<failure>` を付けるかどうかは、そのレポートを書き出した際の `treatDriftAsFailure` パラメータ（後述）に依存する——`CheckCLI` は `true` で書き出す（drift の検出自体が目的のため）。`ApplyAllCLI` / `ApplyWithValidateCLI` は `false` で書き出す（Apply は既に成功しており、その drift 自体は失敗ではないため）。
+- レポートの issues に含まれる `ValidationStatus` の種類ごとに1つの `<testcase>`: `name="<ステータス名>"`（例: `"ConflictingAddress"`）、`classname="AddressTeller.Validation"`。`treatDriftAsFailure` の影響を受けない。
 - `tests` / `failures` の件数、および入れ子の `<failure>` 要素の有無は、標準的なJUnit消費者の期待に従います（`<failure>` の無い `<testcase>` は成功、有る場合は失敗）。
+- `treatDriftAsFailure`（`AddressTellerReportWriter.ToJUnitXml` / `WriteToFile`、既定 `true`）: 上記どちらの挙動になるかを切り替えるパラメータ。どの CLI エントリポイントがどちらの値を渡すかは前述の通りであり、既定値そのものが契約ではない——将来のエントリポイントがどちらを必要とするかは個別に妥当。
 
 **消費者側の義務**: 未知のJSONフィールドは無視する（追加で失敗しない）こと。`SchemaVersion` を自分が理解している最大バージョンと比較し、それより大きければ形状を推測せず未対応として扱うこと。
 
@@ -161,11 +176,11 @@ SchemaVersion                             (System.Int32)
 
 ### 7. Settings Asset
 
-`ProjectSettings/AddressTellerSettings.asset`（`ScriptableSingleton`、`Editor/Application/AddressTellerSettingsAsset.cs`）に永続化され、バージョン管理に含めてチームで共有されることを想定しています。
+`ProjectSettings/AddressTellerSettings.json`（`Editor/Application/AddressTellerSettingsAsset.cs`）に永続化され、バージョン管理に含めてチームで共有されることを想定しています。
 
-**シリアライズされるフィールド名**（すべて `AddressTellerSettingsAsset` 上の `[SerializeField] internal`）:
+**JSON キー**（すべてトップレベル）:
 
-| フィールド | 型 | 既定値 |
+| キー | 型 | 既定値 |
 |---|---|---|
 | `_cleanupStaleEntries` | `bool` | `true` |
 | `_postprocessEnabled` | `bool` | `true` |
@@ -173,53 +188,13 @@ SchemaVersion                             (System.Int32)
 | `_autoSnapshotBeforeApplyAll` | `bool` | `true` |
 | `_autoSnapshotRetention` | `int` | `10` |
 | `_autoCreateMissingGroups` | `bool` | `false` |
-| `_postprocessOrder` | `int` | `1000`（後述） |
-| `_disabledRuleClassNames` | `List<string>` | 空 |
+| `_postprocessOrder` | `int` | `1000` |
+| `_disabledRuleClassNames` | `string[]` | 空 |
+| `_marker` | `string` | 内部専用、利用者が設定するものではない（後述） |
 
-これらのフィールドを、旧名を指す `[FormerlySerializedAs]` を付けずにリネームすることは禁止です。付けずにリネームすると、既に `AddressTellerSettings.asset` をコミット済みのすべてのプロジェクトで、該当設定がエラーも警告もなく既定値へ黙って戻ってしまいます。フィールドの既定値の変更は**メジャー**（破壊的）変更です。明示的に設定していないプロジェクトの挙動が変わるためです。
+これらのキーをリネームすることは禁止です。`JsonUtility` は、JSON に対応するキーが無いフィールドをその C# の初期化子の値のまま残すため、リネームすると、既に `AddressTellerSettings.json` をコミット済みのすべてのプロジェクトで、該当設定がエラーも警告もなく既定値へ黙って戻ってしまいます。キーの既定値の変更は**メジャー**（破壊的）変更です。明示的に設定していないプロジェクトの挙動が変わるためです。
 
-`_postprocessOrder` の `0` は「未設定」を表す予約値です。この設定が追加される前からある既存アセット（フィールドがゼロ値の既定のまま）と、明示的に `0` を設定したプロジェクトのどちらも、読み込み時は `AddressTellerSettings.DefaultPostprocessOrder`（`1000`）として扱われます。これは上記のフィールドリネーム規則の必然的な帰結です。Unityがシリアライズする `int` では「一度も設定されていない」と「明示的に0を設定した」を区別できないため、両方を同じフォールバックにまとめています。
-
-このファイルには、`AddressTellerSettingsAsset` という型自体をどう同定するかも焼き込まれています。`m_Script` は `Editor/Application/AddressTellerSettingsAsset.cs` の `.meta` GUID をキーとする `MonoScript` 参照であり、`m_EditorClassIdentifier` には型の完全名とアセンブリ名が追加で埋め込まれます。この型を導入したファイル分割をまたいでアップデートする全プロジェクトに、実測で確認済みの実害があります。このファイル分割より前のバージョンが保存したファイルは、`MonoScript` 参照ではなく `m_Script: {fileID: 0}`（GUID 参照が一切無い状態）を持っており、このバージョンの設定保存機構はこの形式を解決できません——そのようなファイルを読み込むと、全フィールドが既定値へ静かにリセットされます（エラーも警告も出ない。実測で確認済み）。対象となる設定項目と推奨される対処については、このバージョンの [CHANGELOG.ja.md](../CHANGELOG.ja.md) の「Changed」項目を参照してください。
-
-この診断が導入されたバージョン以降は、上記のような設定ロードの不一致（それ以外の、ファイルと実際に
-メモリへ読み込まれた内容とのずれも含む）は、Editor セッションにつき1回出力される `Debug.LogWarning` で
-可視化されます（該当バージョンの [CHANGELOG.ja.md](../CHANGELOG.ja.md) の「Added」項目、および
-`operations.ja.md` の [Project Settings](operations.ja.md#project-settings) /
-[CI 連携](operations.ja.md#ci-連携)（`-addressTellerFailOnSettingsMismatch` CLI フラグを含む）を参照して
-ください）。この警告が出た場合: 影響を受けたフィールドは上の表と同じシリアライズ名で列挙されます。
-警告が「このバージョンでは読めない形式で書かれていた」と言っている場合（この診断は `m_Script` のみを見て
-判定します——上記の移行ケースでは `m_Script` と `m_EditorClassIdentifier` が一緒に変わりますが、
-文面の判定基準は `m_Script` だけです）は、警告本文に列挙された値を控えてください——その時点ではファイル側の旧い値は
-まだディスク上に未解決のまま残っていますが、次に（Project Settings UI を含む）どこからか設定が変更
-されるとそのまま上書きされます——控えた値を `Project Settings > AddressTeller` へ再入力してください。
-それ以外の理由でファイルとメモリが食い違っている場合（Editor 実行中の外部編集や VCS チェックアウト等）
-は、どちらの値を残したいかを決めたうえで `AddressTellerSettings.ReloadFromDisk()` または `SaveToDisk()`
-を呼んでください（完全な復旧手順は `operations.ja.md` の
-[Project Settings](operations.ja.md#project-settings) を参照）。
-
-同じ診断は、不一致とは別の2種類の警告も出すことがあります。1つは読み取りが「ファイルが存在しない」
-以外の例外を出した場合（例: 読み取り権限が無い——これはファイルが実際に存在することまでは確認して
-いない点に注意。単に別種の例外が発生したという意味。この警告にはフィールド一覧がありません。ファイルを
-開けていないためです）、もう1つはファイルは読めたが、AddressTeller の行単位の抽出規則が認識できる位置に
-このバージョンが書き出す設定フィールドが1つも見つからなかった場合（例: 途中で切り詰められた、または
-解釈できない形式のファイル——この警告には読み取れた文字数が含まれますが、同じくフィールド一覧は
-ありません）です。これら2つは上記のいずれの結論も意味しません。それぞれの意味については
-`operations.ja.md` の [Project Settings](operations.ja.md#project-settings) を参照してください。この2つは
-それぞれ該当する対処を警告本文にそのまま書いています——ただし内容は同一ではありません（「読み取れない」
-方は `ReloadFromDisk()` と `SaveToDisk()` の両方を挙げますが、「解釈できない」方は `SaveToDisk()` のみです）
-——上記の不一致の場合とは異なり、それ以上の段階的な復旧手順は別途用意していません。
-さらに、これらとは無関係な4つ目の警告として、AddressTeller 側の都合でこの検査そのものが完了できなかった
-旨のものもあります——これはファイル自体について何も述べておらず、上記3つの結論のいずれでもありません。
-また、これは他の3つがすべて否定された後に初めて確認される最後のフォールバックでもありません——
-ファイルの読み取りは、メモリ上の設定を比較用に再シリアライズするより前に試みられるため、読み取りに
-関する結論の方がこれより先に決まります。この警告はむしろ、手順のもっと様々な場所で個別に生じえます
-（ファイルの場所を特定できなかった場合、ファイル自体ではなく AddressTeller 側のパス組み立てに起因する
-特定の例外を読み取りが出した場合、メモリ上の設定を再シリアライズできなかった場合、あるいは
-再シリアライズ結果を自分自身で認識できなかった場合）。正確な判定手順は `operations.ja.md` の
-[Project Settings](operations.ja.md#project-settings) を参照してください。
-
-このファイル分割時点の一度限りの移行を除けば、今後この参照が壊れうるのは GUID そのものを失った場合です——例えば `.meta` ファイルが削除された場合や、`.cs` ファイルが Unity の AssetDatabase を経由せずに `.meta` を伴わない形でコピー・移動され、Unity が新しい GUID を生成してしまった場合です。Unity エディタ上での通常の移動・改名操作は同じ `.meta`（したがって同じ GUID）を保ったままなのでこれには当たりません。同様に、型・名前空間・アセンブリのリネームも、GUID 自体が変わらない限りは引き続き解決できると見込まれます。今後については、`Editor/Application/AddressTellerSettingsAsset.cs` の `.meta` GUID をこの型の互換性表面の一部として扱い、安定させ続けることを約束します。もしこの GUID が失われる・再生成されると、同じ「静かに既定値へリセットされる」失敗が起こります（この事象を再現した具体例、および同じ現象がダウングレード方向でも起きることの確認は [CHANGELOG.ja.md](../CHANGELOG.ja.md) の「ダウングレードに関する注記」を参照）。
+**`_marker`** は、そのファイルが AddressTeller 自身が書き出したものであることを示す鍵です。このキーが無い、または値が AddressTeller の認識するものと一致しないファイルは無条件に拒否されます——AddressTeller はエラーをログし、ファイルが修正または置き換えられるまで Apply/Validate/Preview/Explain/CLI の実行を拒否します（Project Settings 画面自体は開けるため、そこから直せます）。この文字列の実際の値は内部実装の詳細であり、この契約の対象外です——保証されるのは、認識可能な `_marker` の有無だけです。
 
 Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバイダーパス `Project/AddressTeller` で登録）は保証対象**外**です。レイアウト・項目順序・説明文は自由に変更されえます。
 
@@ -245,13 +220,13 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 `AddressRuleBase` サブクラスの収集・評価に関する以下の挙動は保証対象です。利用者のルールクラスはこの挙動を前提に書かれるためです。
 
 - **収集方法**: ロード済みの全アセンブリ（`nunit.framework` を参照するアセンブリを除く）からリフレクションで検出します。abstract でない型で、public な引数なしコンストラクタを持つことが条件です。オープンジェネリック型は別途フィルタされているわけではありません。コンストラクタの存在チェック自体は通過しますが、実際のインスタンス化時に `Activator.CreateInstance` が例外を投げるため、コンストラクタが例外を投げるルールクラスと同じ扱い（警告ログを出したうえでスキップ、収集全体は中断しない）になります。
-- **Order**: `Order` の昇順で評価されます。同値の場合はルールクラスの完全修飾型名（Ordinal）で決定的にタイブレークします。クラス間で `Order` が重複していても警告が出るだけでエラーにはなりません。
-- **競合**: 同一アセットに対して2件以上のマッチしたルールが `Address()` を呼んだ場合は競合（`ValidationStatus.ConflictingAddress`）となり、そのアセットへのアドレス・ラベルとも書き込まれません（アドレスだけでなく、そのアセットへの書き込み自体がスキップされます）。
-- **ラベルの蓄積**: マッチした全ルールからの `Label()` 呼び出しがアセットに蓄積されます。マッチしなくなったルールによってラベルが暗黙に削除されることはありません（唯一ラベルを削除するのは `CleanupStaleEntries` によるエントリ全体の削除です）。
+- **Order**: `Order` の昇順で評価されます。評価順序の同値タイブレークはルールクラスの完全修飾型名（Ordinal）で決定的に行われます。`Order` はアドレス競合を解決する優先順位も兼ねており（下記の**競合**を参照）、値が小さい方が勝ちます。クラス間で `Order` が重複していると警告が出ます。同じ `Order` の2ルールが同一アセットに対してともにアドレスを発行すると競合するためです。
+- **競合**: 同一アセットに対して2件以上のマッチしたルールが `Address()` を呼んだ場合、`Order` が最小の候補が勝ちそのアドレスが書き込まれます。`Order` がより大きい候補は単に採用されません。競合（`ValidationStatus.ConflictingAddress`）——そのアセットへのアドレス・ラベルとも書き込まれない（アドレスだけでなく、そのアセットへの書き込み自体がスキップされる）——になるのは、*Order が最小*の候補が2件以上で同点だった場合のみです。
+- **ラベルの蓄積**: マッチした全ルールからの `Label()` 呼び出しは、既存エントリがどのグループに属していても（所有権を問わず）アセットに蓄積されます。マッチしなくなったルールによってラベルが暗黙に削除されることはありません（唯一ラベルを削除するのは `CleanupStaleEntries` によるエントリ全体の削除です）。
 - **`Where()` / `Address()` / `IncludeFolders()` の単回呼び出し制約**: 同一ルールチェーン上でこれらのいずれかを2回呼び出すと `InvalidOperationException` を投げます。
 - **`GroupDefault()` の解決**: `Configure()` 実行時ではなく評価時に `AddressableAssetSettings.DefaultGroup` から解決されるため、DefaultGroup のリネームに自動的に追従します。
 - **フォルダ**: ルールが `IncludeFolders()` で明示的に opt-in しない限り、フォルダ資産はそのルールの `Where()` に一切渡りません（Predicate 自体が呼ばれません）。ファイルを前提に書かれた既存ルールが、広めの `Where` 条件で意図せずフォルダにマッチしてしまうことを防ぐためです。
-- **stale エントリ掃除の対象範囲**: `CleanupStaleEntries` が有効な場合、「どのルールにもマッチしなくなったエントリ」だけでなく、管理対象グループ内でアセットパスが構造的に無効なエントリ（拡張子・`Editor` という名前のフォルダ等で判定される、旧バージョンの AddressTeller が作成した残骸等）も掃除対象に含まれます。パスがそもそも解決できない（`AddressableAssetEntry.AssetPath` が空文字になる。LFS 未取得・ブランチ切替中・パッケージ未導入等で一時的に資産へアクセスできないケースを含む）エントリはこの掃除の対象外です。資産が本当に削除された場合の追従は、別経路（`RemoveEntriesForDeletedAssets`、削除通知を起点にするもの）が担当します。この判定は Apply（その dry-run/Preview を含む）に渡されたパスとは独立に、現在 Addressables 上に存在する管理対象エントリ全件に対して毎回行われます。
+- **stale エントリ掃除の対象範囲**: `CleanupStaleEntries` が有効な場合、「どのルールにもマッチしなくなったエントリ」だけでなく、所有グループ（[設計上の決定事項: 削除は資産単位の所有権で判定する](design-decisions.ja.md#削除は資産単位の所有権で判定する)参照）内でアセットパスが構造的に無効なエントリ（拡張子・`Editor` という名前のフォルダ等で判定される、旧バージョンの AddressTeller が作成した残骸等）も掃除対象に含まれます。パスがそもそも解決できない（`AddressableAssetEntry.AssetPath` が空文字になる。LFS 未取得・ブランチ切替中・パッケージ未導入等で一時的に資産へアクセスできないケースを含む）エントリはこの掃除の対象外です。資産が本当に削除された場合の追従は、別経路（`RemoveEntriesForDeletedAssets`、削除通知を起点にするもの）が担当します。この判定は Apply（その dry-run/Preview を含む）に渡されたパスとは独立に、現在 Addressables 上に存在する所有エントリ全件に対して毎回行われます。
 
 評価挙動を変える新規設定を、明示的に有効化した場合にのみ挙動が変わる形（既定OFFのオプトイン）で追加することは非破壊的です。オプトインしないプロジェクトの挙動は変わらないためです。
 
@@ -261,7 +236,7 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 
 **メンバー追加がコンパイルを壊さずに実行時の挙動を壊しうる理由**: `default` アームの無い `switch` 文は、認識していない新しいenum値に対してもコンパイル・実行ができてしまいます。ただ何もしない（あるいは周辺コード次第でフォールスルーする）だけで、これは呼び出し元が見たことのないステータスに対してはたいてい誤った挙動です。追加をパッチではなくマイナーとして扱うのはこのためです。ビルドは失敗しないものの、CHANGELOGで可視化され、これらの型を網羅的に `switch` しているコードの持ち主に検討してもらうことを意図しています。
 
-具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
+具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
 
 これらの enum のいずれにも `[Flags]` は意図的に採用していません。`ValidationStatus` は特に組み合わせ可能に見えるかもしれませんが、`ValidationResult` は1アセットにつきちょうど1つの結果を表します。`[Flags]` にすると組み合わせに意味があるという前提を持ち込んでしまい、JSON・enum名のシリアライズのされ方も変わってしまいます（`[Flags]` の `ToString()` は組み合わせ値に対してカンマ区切りの名前を生成しうる）。これはこのパッケージがコミットしたくない、より大きな互換性の保証範囲です。
 
@@ -274,7 +249,7 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 
 ## 保証対象外のもの
 
-- `internal` な型・メンバー（`InternalsVisibleTo` 経由でテスト・サンプルアセンブリから見えるものを含む）。ただし上記で明示的に列挙したもの（例: [Settings Asset](#7-settings-asset) の設定アセットのシリアライズフィールド名）を除く
+- `internal` な型・メンバー（`InternalsVisibleTo` 経由でテスト・サンプルアセンブリから見えるものを含む）。ただし上記で明示的に列挙したもの（例: [Settings Asset](#7-settings-asset) の設定ファイルの JSON キー）を除く
 - ログメッセージの文言、ダイアログの文言、ウィンドウのタイトル・レイアウト、USS/UIスタイル
 - この文書が明示的に「順序が決まっている」と述べていないコレクションの順序（順序が決まっている公開APIの多くはXMLドキュメントで明記しています。明記が無ければ順序は保証されません）
 - `Samples~/` 配下のサンプルパッケージのソースの正確な内容（わかりやすさのために編集されることがあります。サンプルが示すAPI自体は保証対象です）

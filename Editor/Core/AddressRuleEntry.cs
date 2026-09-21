@@ -30,6 +30,13 @@ namespace AddressTeller
         public int RuleIndex { get; }
 
         /// <summary>
+        /// このエントリを生成したルールクラスの <see cref="AddressRuleBase.Order"/>。ライブラリ内部の評価
+        /// パイプライン（<see cref="AddressRuleBuilderImpl"/> 経由）でのみ設定される。公開コンストラクタからは
+        /// 設定できない（既定値 0）ため、利用者が独自に構築したエントリでは常に 0 になる。
+        /// </summary>
+        internal int Order { get; }
+
+        /// <summary>
         /// True when this rule opted in to seeing folder assets (via IncludeFolders() on the builder).
         /// Not part of the public constructor: it is only ever set by AddressRuleBuilderImpl, which is
         /// the sole producer of entries that rule evaluation consumes. Consumers that build their own
@@ -48,7 +55,7 @@ namespace AddressTeller
             string sourceClass = null,
             string description = null,
             int ruleIndex = 0)
-            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false)
+            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false, order: 0)
         {
         }
 
@@ -64,7 +71,8 @@ namespace AddressTeller
             string sourceClass,
             string description,
             int ruleIndex,
-            bool includesFolders)
+            bool includesFolders,
+            int order)
         {
             // groupName は AnyGroup() 由来のラベル専用エントリでは null を許容する。
             GroupName = groupName;
@@ -75,6 +83,7 @@ namespace AddressTeller
             Description = description;
             RuleIndex = ruleIndex;
             IncludesFolders = includesFolders;
+            Order = order;
         }
 
         /// <summary>

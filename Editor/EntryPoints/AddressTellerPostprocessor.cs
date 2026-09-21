@@ -20,14 +20,13 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// テストアセンブリの実行中だけ本体の発火を止めるための抑止スイッチ。
-        /// <see cref="AddressTellerSettings.PostprocessEnabled"/>（ProjectSettings/AddressTellerSettings.asset
+        /// <see cref="AddressTellerSettings.PostprocessEnabled"/>（ProjectSettings/AddressTellerSettings.json
         /// に永続化される設定）とは意図的に無関係にしている。テスト側がこのスイッチを立てる目的で
         /// PostprocessEnabled を操作すると、他のテストが CleanupStaleEntries 等の別プロパティを変更した際の
-        /// AddressTellerSettings.* セッターの SaveChanges() が ScriptableSingleton.Save()
-        /// （変更したプロパティだけでなくオブジェクト全体を書き出す）を呼ぶため、一時的に無効化した
-        /// PostprocessEnabled の値までディスクへ巻き添えで永続化されてしまう（実際に発生した事象）。
-        /// このフィールドはプロセスメモリ上だけで完結する static bool であり、いかなる .asset ファイルとも
-        /// 一切接続していないため、この巻き添え永続化の経路が構造的に存在しない。
+        /// AddressTellerSettings.* セッターの SaveChanges() がファイル全体を書き出すため、一時的に
+        /// 無効化した PostprocessEnabled の値までディスクへ巻き添えで永続化されてしまう
+        /// （実際に発生した事象）。このフィールドはプロセスメモリ上だけで完結する static bool であり、
+        /// いかなる設定ファイルとも一切接続していないため、この巻き添え永続化の経路が構造的に存在しない。
         /// s_isApplying・Service.s_isApplying とは役割が異なる別ガードである
         /// （それらは「自分自身が書き込んだ変更で再トリガーされる」のを防ぐ再入防止、
         /// こちらは「テストアセンブリの実行中は本体を一切発火させない」というテスト専用の外部抑止）。
@@ -46,6 +45,7 @@ namespace AddressTeller.Editor
         {
             if (s_isApplying) return;
             if (SuppressForTests) return;
+            if (!AddressTellerSettings.EnsureLoaded()) return;
             if (!AddressTellerSettings.PostprocessEnabled) return;
 
             var settings = AddressableAssetSettingsDefaultObject.Settings;
@@ -66,6 +66,11 @@ namespace AddressTeller.Editor
                 // エントリは GUID ベースで管理されているため、movedAssets 側（新パス）を
                 // Apply するだけで CreateOrMoveEntry によりエントリが更新され、
                 // 新パスがどのルールにもマッチしなければ Skipped としてクリーンアップ対象になる。
+                // targetPaths（今回変更された資産のみ）に対する ApplyAll は、別アセット間のアドレス重複
+                // （ValidationStatus.DuplicateAddress）を検出しない。重複判定にはプロジェクト全体のアドレス
+                // 集合が必要だが、毎 import でプロジェクト全体を走査するのはコストが見合わない。
+                // フルスキャンする ValidateAll / BuildPredictedSnapshot（Apply All・Apply with Validate・
+                // 各 CLI が経由する dry-run）側でのみ検出する。
                 var targetPaths = importedAssets.Concat(movedAssets);
                 var issues = AddressTellerService.ApplyAll(targetPaths, settings);
                 AddressTellerIssueLogger.LogAll(issues);

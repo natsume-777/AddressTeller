@@ -1,6 +1,8 @@
 using NUnit.Framework;
 using System;
 using System.Linq;
+using UnityEditor.AddressableAssets.Settings;
+using UnityEngine;
 
 namespace AddressTeller.Editor.Tests
 {
@@ -188,7 +190,7 @@ namespace AddressTeller.Editor.Tests
         }
 
         // --- CollectManagedGroups ---
-        // AddressTellerSettings.DisabledRuleClassNames は ProjectSettings/AddressTellerSettings.asset に
+        // AddressTellerSettings.DisabledRuleClassNames は ProjectSettings/AddressTellerSettings.json に
         // 永続化されるため、テスト前後で状態を復元する。
 
         private System.Collections.Generic.List<string> _originalDisabled;
@@ -214,12 +216,14 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void CollectManagedGroups_CollectsGroupNamesFromEnabledRules()
         {
+            // TwoGroupRule の "Atlas" は Address() を呼んでいない（Label() のみ）ため、
+            // Address() を宣言している "Textures" だけが対象になる。
             var rules = new AddressRuleBase[] { new TwoGroupRule() };
             var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
 
-            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache, null);
 
-            CollectionAssert.AreEqual(new[] { "Atlas", "Textures" }, managedGroups);
+            CollectionAssert.AreEqual(new[] { "Textures" }, managedGroups);
         }
 
         [Test]
@@ -229,7 +233,7 @@ namespace AddressTeller.Editor.Tests
             var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
             AddressTellerSettings.SetRuleEnabled(typeof(TwoGroupRule).FullName, false);
 
-            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache, null);
 
             Assert.IsEmpty(managedGroups);
         }
@@ -240,7 +244,7 @@ namespace AddressTeller.Editor.Tests
             var rules = new AddressRuleBase[] { new ThrowingRule() };
             var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
 
-            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache, null);
 
             Assert.IsEmpty(managedGroups);
         }
@@ -248,41 +252,84 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void CollectManagedGroups_DuplicateGroupNamesAcrossRules_Deduplicated()
         {
+            // TwoGroupRule の "Atlas" は Address() を呼んでいないため対象外（"Textures" のみが対象）。
             var rules = new AddressRuleBase[] { new TwoGroupRule(), new TwoGroupRule() };
             var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
 
-            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache, null);
 
-            CollectionAssert.AreEqual(new[] { "Atlas", "Textures" }, managedGroups);
+            CollectionAssert.AreEqual(new[] { "Textures" }, managedGroups);
         }
 
         [Test]
         public void CollectManagedGroups_AnyGroupRule_DoesNotInsertNull()
         {
             // AnyGroup() のエントリは GroupName が null になる。RuleEvaluationPipeline.BuildSetup の
-            // managedGroups がこれを除外するのと同じく、CollectManagedGroups の結果にも
+            // OwnedGroups がこれを除外するのと同じく、CollectManagedGroups の結果にも
             // null が含まれてはならない（"Managed Groups (N)" の水増し・空行表示を防ぐ）。
+            // TwoGroupRule の "Atlas" は Address() を呼んでいないため対象外（"Textures" のみが対象）。
             var rules = new AddressRuleBase[] { new AnyGroupOnlyRule(), new TwoGroupRule() };
             var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
 
-            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache, null);
 
             Assert.IsFalse(managedGroups.Any(g => g == null));
-            CollectionAssert.AreEqual(new[] { "Atlas", "Textures" }, managedGroups);
+            CollectionAssert.AreEqual(new[] { "Textures" }, managedGroups);
         }
 
         [Test]
-        public void CollectManagedGroups_GroupDefaultSentinel_ExcludedLikeBuildSetup()
+        public void CollectManagedGroups_GroupWithoutAddress_IsExcluded()
         {
-            // GroupDefault() は Configure() の生出力ではセンチネル文字列のままであり、
-            // 概要キャッシュの構築過程では実際の DefaultGroup 名へ解決されない
-            // （解決は RuleEvaluationPipeline.BuildSetup がループ実行時に1回だけ行う）。
-            // BuildSetup の managedGroups が未解決センチネルを除外するのと同じ条件で、
-            // CollectManagedGroups も "(Default Group)" のような表示名を含めてはならない。
+            // Group() だけ宣言して Address() を呼んでいないエントリは、削除の所有権判定
+            // （RuleEvaluationPipeline.BuildSetup の OwnedGroups）と同じ条件で除外される。
+            var rules = new AddressRuleBase[] { new TwoGroupRule() };
+            var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
+
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache, null);
+
+            CollectionAssert.DoesNotContain(managedGroups, "Atlas");
+        }
+
+        [Test]
+        public void CollectManagedGroups_GroupDefaultSentinel_ResolvedToActualDefaultGroupName()
+        {
+            // GroupDefault() は Configure() の生出力ではセンチネル文字列のままだが、
+            // RuleEvaluationPipeline.BuildSetup は settings.DefaultGroup が解決できる限りこれを実グループ名に
+            // 正規化し、そのグループを OwnedGroups（削除・自動作成の対象）に含める。CollectManagedGroups は
+            // 「何が削除されうるか」を利用者に示す唯一の画面であるため、この解決を BuildSetup と同じ条件で
+            // 再現し、"(Default Group)" のような未解決の表示名ではなく実名を一覧に含めなければならない。
+            var settings = AddressTellerTestSettingsFactory.CreateInMemory(
+                "Assets/AddressableAssetsData", nameof(CollectManagedGroups_GroupDefaultSentinel_ResolvedToActualDefaultGroupName));
+            try
+            {
+                var defaultGroupName = settings.DefaultGroup.Name;
+                var rules = new AddressRuleBase[] { new DefaultGroupAndNamedGroupRule() };
+                var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
+
+                var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache, settings);
+
+                CollectionAssert.AreEquivalent(new[] { "Named", defaultGroupName }, managedGroups);
+            }
+            finally
+            {
+                // settings.DefaultGroup へのアクセスで自動作成された既定グループも合わせて破棄する。
+                // System と UnityEngine を両方 using しているため Object は裸で書かず明示的に修飾する。
+                foreach (var group in settings.groups.Where(g => g != null).ToList())
+                    UnityEngine.Object.DestroyImmediate(group, true);
+                UnityEngine.Object.DestroyImmediate(settings, true);
+            }
+        }
+
+        [Test]
+        public void CollectManagedGroups_GroupDefaultSentinel_SettingsNull_ExcludedAsUnresolved()
+        {
+            // settings が渡されない（Addressables 未初期化等で解決不能な）場合は、BuildSetup の
+            // DefaultGroupUnavailable 相当としてセンチネル由来のエントリを除外する。誤って
+            // "(Default Group)" のような未解決の表示名を一覧に含めてはならない。
             var rules = new AddressRuleBase[] { new DefaultGroupAndNamedGroupRule() };
             var cache = AddressTellerProjectSettings.BuildRuleOverviewCache(rules);
 
-            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache, null);
 
             CollectionAssert.AreEqual(new[] { "Named" }, managedGroups);
         }

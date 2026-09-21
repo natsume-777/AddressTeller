@@ -8,7 +8,14 @@ namespace AddressTeller
     /// </summary>
     public abstract class AddressRuleBase
     {
-        /// <summary>Evaluation order. Lower values are evaluated first.</summary>
+        /// <summary>
+        /// Priority for this rule class. Rules are evaluated in ascending <see cref="Order"/>, and it also
+        /// doubles as the priority used to resolve address conflicts: when two or more matching rules
+        /// produce an address for the same asset, the one with the lowest <see cref="Order"/> wins and its
+        /// address is written — this is how a broad, low-priority rule can be overridden by a narrower,
+        /// high-priority one for special cases. It is a conflict only when two or more of the
+        /// lowest-value matches tie.
+        /// </summary>
         public virtual int Order => 0;
 
         /// <summary>Builds the rules for this class.</summary>
@@ -35,9 +42,9 @@ namespace AddressTeller
         /// <summary>
         /// Adds a label-only rule that is not scoped to any group.
         /// Use this to attach labels (by path or other conditions) to assets that already have an
-        /// address assigned elsewhere. Labels are only actually written when the asset's existing entry
-        /// belongs to a group managed by AddressTeller (a group referenced by at least one rule); entries
-        /// in unmanaged groups are left untouched.
+        /// address assigned elsewhere. If the asset has an existing entry, labels are added to it
+        /// regardless of which group that entry belongs to. If the asset has no entry yet, nothing
+        /// happens — this never creates a new entry.
         /// </summary>
         ILabelRuleBuilder AnyGroup();
     }

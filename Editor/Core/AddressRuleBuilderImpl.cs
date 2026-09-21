@@ -21,11 +21,19 @@ namespace AddressTeller
             => groupName == DefaultGroupSentinel ? "(Default Group)" : groupName;
 
         private readonly string _sourceClass;
+
+        /// <summary>
+        /// このビルダーが属するルールクラスの AddressRuleBase.Order。生成する全エントリに刻印し、
+        /// AddressCandidate まで運んで AddressTellerApplier の優先順位判定に使う。
+        /// </summary>
+        private readonly int _order;
+
         private readonly List<IEntryBuilder> _builders = new List<IEntryBuilder>();
 
-        public AddressRuleBuilderImpl(string sourceClass = null)
+        public AddressRuleBuilderImpl(string sourceClass = null, int order = 0)
         {
             _sourceClass = sourceClass;
+            _order = order;
         }
 
         public IReadOnlyList<AddressRuleEntry> Entries
@@ -52,14 +60,14 @@ namespace AddressTeller
 
         private IAddressRuleGroupBuilder AddGroupBuilder(string groupName)
         {
-            var builder = new AddressRuleGroupBuilder(groupName, _sourceClass);
+            var builder = new AddressRuleGroupBuilder(groupName, _sourceClass, _order);
             _builders.Add(builder);
             return builder;
         }
 
         public ILabelRuleBuilder AnyGroup()
         {
-            var builder = new LabelRuleGroupBuilder(_sourceClass);
+            var builder = new LabelRuleGroupBuilder(_sourceClass, _order);
             _builders.Add(builder);
             return builder;
         }
@@ -73,6 +81,7 @@ namespace AddressTeller
         {
             private readonly string _groupName;
             private readonly string _sourceClass;
+            private readonly int _order;
             private string _description;
             private Func<AssetContext, bool> _predicate = _ => true;
             private bool _whereSet;
@@ -82,10 +91,11 @@ namespace AddressTeller
             private bool _includeFolders;
             private bool _includeFoldersSet;
 
-            internal AddressRuleGroupBuilder(string groupName, string sourceClass)
+            internal AddressRuleGroupBuilder(string groupName, string sourceClass, int order)
             {
                 _groupName = groupName;
                 _sourceClass = sourceClass;
+                _order = order;
             }
 
             public IAddressRuleGroupBuilder Where(Func<AssetContext, bool> predicate)
@@ -174,13 +184,14 @@ namespace AddressTeller
 
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders);
+                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order);
             }
         }
 
         private sealed class LabelRuleGroupBuilder : IEntryBuilder, ILabelRuleBuilder
         {
             private readonly string _sourceClass;
+            private readonly int _order;
             private string _description;
             private Func<AssetContext, bool> _predicate = _ => true;
             private bool _whereSet;
@@ -188,9 +199,10 @@ namespace AddressTeller
             private bool _includeFolders;
             private bool _includeFoldersSet;
 
-            internal LabelRuleGroupBuilder(string sourceClass)
+            internal LabelRuleGroupBuilder(string sourceClass, int order)
             {
                 _sourceClass = sourceClass;
+                _order = order;
             }
 
             public ILabelRuleBuilder Where(Func<AssetContext, bool> predicate)
@@ -250,7 +262,7 @@ namespace AddressTeller
 
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders);
+                return new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order);
             }
         }
     }

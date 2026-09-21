@@ -10,112 +10,66 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ### Added
 
-- `AddressTellerSettings.SaveToDisk()`: writes the current in-memory settings to
-  `ProjectSettings/AddressTellerSettings.asset` unconditionally, even when nothing has changed. Property
-  setters already persist on change, but skip the write when the assigned value equals the current one —
-  which made it impossible to recover using the public API alone once the file and the in-memory settings
-  had drifted apart (for example, the file failed to load, or was edited outside the Editor while it was
-  already running). Verifies the write by comparing the file's contents against a fresh re-serialization
-  of the same in-memory settings. Returns `false`, and logs an error, if writing the file, re-serializing
-  the settings for the comparison, or reading either file fails (e.g. no read/write permission), or if
-  that comparison does not match.
-- `AddressTellerSettings.ReloadFromDisk()`: reloads `ProjectSettings/AddressTellerSettings.asset` into
-  memory by discarding the current in-memory settings object and letting Unity recreate it from disk; does
-  not write to disk. This changes the identity of the internal settings object, and any unsaved in-memory
-  changes are lost. Returns `false` without changing memory when the file does not exist or is not
-  accessible (e.g. first run in a project that has never saved this asset), or, with a logged error, if
-  discarding and recreating the internal settings object itself fails unexpectedly. If the file exists but is
-  corrupted or otherwise unreadable, the result is the same as what happens when the Editor itself starts
-  up and reads that file — Unity's own deserializer may log a parse error to the Console while doing so
-  (this is a log from Unity, not from AddressTeller), and the settings may reset to their defaults. This
-  method cannot distinguish that outcome from a normal reload, so it still returns `true` in that case.
-- Settings load diagnostic: once per Editor session — not repeated on every domain reload within that
-  session (tracked via `SessionState`, which persists across domain reloads) — AddressTeller compares
-  `ProjectSettings/AddressTellerSettings.asset` on disk against a fresh re-serialization of the settings
-  currently loaded in memory. This is the only signal this package emits for the BREAKING silent reset
-  described below — previously nothing was logged at all. This never throws — an unexpected failure at any
-  stage is treated the same as AddressTeller being unable to complete the check on its own side (see below).
-  The check logs nothing only when the file does not exist yet (a normal first run) or when the comparison
-  finds no difference; every other outcome logs a `Debug.LogWarning`. AddressTeller works through this in a
-  fixed sequence: it first determines the absolute path to the settings file, then reads the file at that
-  path — a "file does not exist" exception here is the normal first-run case (nothing is logged); any other
-  exception here is reported as reading the file having raised an exception other than the "file does not
-  exist" kind (e.g. no read permission; this does not by itself confirm the file exists) — previously this
-  case logged nothing at all, the same as a normal first run, which made a genuinely broken file
-  indistinguishable from one that simply did not exist yet — and only once the file has been read does
-  AddressTeller re-serialize the settings currently in memory for comparison, going on to compare field
-  values only once that re-serialization produces something it recognizes: reporting either that none of the
-  settings fields this version writes were found in a position AddressTeller's extraction rule recognizes
-  (e.g. truncated or otherwise unparsable) — previously this case was also silent, for the same reason as
-  above — or, if the file could be opened and meaningfully compared, the differing fields (by their
-  serialized field name, e.g. `_postprocessOrder`). Both of the previously-silent cases above also note that,
-  if the file failed to load the same way when Unity itself read it at startup, the settings currently in use
-  are likely already at their defaults, so overwriting the file with `SaveToDisk()` — or, in fact, any
-  settings change at all, since every property setter also persists on change — would discard whatever the
-  file currently holds. "AddressTeller being unable to complete the comparison on its own side" is not a
-  single fallback checked only once every other outcome has been ruled out — it can occur at several
-  different points along the sequence above instead: if it cannot determine the file's location at all, if
-  reading the file raises certain path-related exceptions that are AddressTeller's own doing rather than the
-  file's (e.g. an excessively long or otherwise invalid path resulting from how AddressTeller resolved the
-  location, as opposed to a problem with the file), if it cannot re-serialize the settings currently in
-  memory, or if that re-serialization does not produce anything it recognizes. Only the last of these has a
-  settled priority against a specific alternative: when an unrecognized re-serialization result coincides
-  with the file itself containing no recognized settings fields, this is reported instead of the file being
-  unparsable. It can still, rarely, emit the same one-off temp-file-cleanup `Debug.LogWarning` described for
-  `SaveToDisk()` above, since it reuses the same re-serialization helper; it never runs during asset import
-  (`AssetPostprocessor`), so it adds no per-import cost. This startup check runs unconditionally — including
-  under `-batchmode` CI runs — regardless of the new `-addressTellerFailOnSettingsMismatch` CLI flag: that
-  flag does not gate whether the check runs, only whether a settings-file problem also fails the run. When
-  specified, `ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` / `ClearCLI` check the same result before
-  doing anything else and, if the file does not match, could not be read, or could not be meaningfully
-  compared, additionally log an error and exit with code 3 (existing exit code, no new one introduced) — on a
-  run that already has one of these problems, this means the same details are logged twice (the startup
-  warning, then the CLI error), but the comparison itself (including the temp file it writes and reads for
-  that comparison) runs only once per Editor domain — this flag's check reuses the startup diagnostic's
-  result instead of re-running the comparison. This flag never fails the run when AddressTeller could not
-  complete the comparison on its own side, since that case is not a confirmed problem with the file — it only
-  ever logs a `Debug.LogWarning`, the same severity as when the flag is omitted. Because that check also
-  reuses the startup diagnostic's already-computed result, on a run that hits this case the exact same
-  warning text is logged twice (once from the startup diagnostic, once from this flag's own check), unlike a
-  genuine settings-file problem, which is logged once as a Warning and once as an Error. Omitting the flag
-  leaves all four CLI entry points' exit-code behavior unchanged; the startup warning still runs either way. `AddressTellerSettings.SaveToDisk()` and `ReloadFromDisk()` (see
-  above) each discard this cached result on every call, regardless of outcome, so a subsequent check reflects
-  that call rather than a stale conclusion from before it.
+- Broad-rule-overridden-by-specific-rule address authoring: `AddressRuleBase.Order` now also acts as a
+  priority when two or more matching rules produce an address for the same asset. See
+  [Writing Rules: Address priority and conflicts](Documentation~/writing-rules.md#evaluation-rules-and-behavior)
+  for an example.
+- Cross-asset duplicate address detection: `Validate` / `Apply All` (and `CheckCLI` / `ApplyAllCLI` /
+  `ApplyWithValidateCLI`) now report when two different assets resolve to the same address
+  (`ValidationStatus.DuplicateAddress`), as an error or a non-blocking notice depending on whether
+  AddressTeller itself would write one of the colliding addresses. See
+  [Design Decisions: Address Priority and Conflicts](Documentation~/design-decisions.md#address-priority-and-conflicts).
 
 ### Changed
 
-- **BREAKING**: Settings saved by any version of AddressTeller before this one are silently reset to
-  their default values — the load itself is not accompanied by any warning or error, neither from
-  AddressTeller nor from Unity's own deserializer — the first time
-  `ProjectSettings/AddressTellerSettings.asset` is loaded by this version (or later). This was confirmed
-  by testing: a settings file with non-default values, saved in the form written by every version before
-  this one, has every field come back as its default after being loaded by this version.
-  This is a side effect of moving the internal settings storage type (`AddressTellerSettingsAsset`) from
-  `AddressTellerSettings.cs` into its own file, `Editor/Application/AddressTellerSettingsAsset.cs`.
-  This version's own settings load diagnostic (see Added above) closes part of that gap after the fact: once
-  per Editor session it compares the file against what actually loaded into memory and logs a warning
-  listing the fields that differ, so the reset no longer goes completely unnoticed on an Editor upgraded to
-  this version or later — it just does not happen at the exact moment the reset itself occurs.
-  **Before upgrading**, note down your current values from `Project Settings > AddressTeller` — Auto-apply
-  on import, Postprocessor order, Remove unmatched entries, Auto-create missing groups, Snapshot folder,
-  Auto-snapshot before Apply, Auto-snapshot retention count, and the enable/disable state of any rule
-  classes — and re-apply them after upgrading.
-  Once loaded by this version, the file's serialized representation of *how the type is identified* is
-  rewritten: `m_Script` changes from `{fileID: 0}` to a real `MonoScript` reference (the `.meta` GUID of
-  `Editor/Application/AddressTellerSettingsAsset.cs`), and `m_EditorClassIdentifier` changes from
-  `AddressTeller.Editor:AddressTeller.Editor:AddressTellerSettingsAsset` to
-  `AddressTeller.Editor::AddressTeller.Editor.AddressTellerSettingsAsset`. Since this file is expected to
-  be checked into version control (see
-  [Settings Asset](Documentation~/compatibility.md#7-settings-asset)), expect this as a diff (and a
-  possible merge conflict) the first time it is saved after upgrading.
-  **Downgrade note:** This silent reset runs in both directions. Downgrading has the same effect for the same underlying
-  reason — the file's representation of the type does not match what the code on the other side of this
-  split recognizes: a settings file saved by this version (or later) and then opened with a version of
-  AddressTeller from before this file split cannot be resolved by that older version, and is likewise
-  reset to default values with no warning or error (also confirmed by testing). If you need to move
-  between versions on either side of this split, restore `ProjectSettings/AddressTellerSettings.asset`
-  from version control history for the target version rather than trusting Unity to read it correctly
-  across the boundary.
+- **BREAKING**: `AddressRuleBase.Order` now doubles as an address priority, not just an evaluation order.
+  When two or more matching rules produce an address for the same asset, the one with the lowest `Order`
+  wins instead of it always being a conflict; it is only a conflict when the lowest-`Order` matches tie.
+  If your project has assets that were previously reported as `ConflictingAddress` (and therefore never
+  written), run Preview (dry-run) before the first `Apply All` after upgrading — those assets will now be
+  written using whichever matching rule has the lowest `Order`, including via auto-apply on import if that
+  setting is enabled. See
+  [Design Decisions: Address Priority and Conflicts](Documentation~/design-decisions.md#address-priority-and-conflicts)
+  and [Compatibility: Rule Authoring Behavior](Documentation~/compatibility.md#9-rule-authoring-behavior).
+- **BREAKING**: Settings now persist to `ProjectSettings/AddressTellerSettings.json` instead of
+  `ProjectSettings/AddressTellerSettings.asset`. The old `.asset` file is no longer read. Settings reset
+  to their defaults once, the first time this version runs — notably, this turns **Auto-apply on import**
+  and **Remove unmatched entries** back ON if you had turned either off, since that's their default. Check
+  `Project Settings > AddressTeller` and re-apply your values (including these two) after upgrading.
+  Delete the old `.asset` file — it is no longer used. See
+  [Settings Asset](Documentation~/compatibility.md#7-settings-asset).
+- **BREAKING**: Ownership for every deletion-related operation — `CleanupStaleEntries`, the invalid-path
+  entry sweep, deletion follow-up for deleted assets, `ClearScope.Managed` (including CLI
+  `-addressTellerClearScope managed`), and the removable-entry filter in `Undo Last Apply` — is now
+  determined by which groups a rule declares `Address()` for, not by every group referenced via
+  `Group()`. Each of these now considers a narrower set of groups "managed": a `Group("X")` rule that
+  hasn't called `Address()` yet no longer makes group `X` eligible. See
+  [Design Decisions: Deletions Are Determined by Per-Asset Ownership](Documentation~/design-decisions.md#deletions-are-determined-by-per-asset-ownership).
+- **BREAKING**: Label-only rules (`AnyGroup()`, or a `Group()` rule with no `Address()`) now add labels
+  to an asset's existing entry regardless of which group it belongs to — previously, labels were only
+  added when that group was referenced by another rule's `Group()`. If your project has such a rule, run
+  Preview (dry-run) before the first `Apply All` after upgrading: entries in groups the rule previously
+  couldn't reach will gain labels, including via auto-apply on import if that setting is enabled. See
+  [Writing Rules: AnyGroup](Documentation~/writing-rules.md#anygroup).
+- **BREAKING**: `ApplyAllCLI` / `ApplyWithValidateCLI` no longer exit with code 1 for a completed apply
+  that had drift; a successful apply now always exits 0. See
+  [Compatibility: Exit Codes](Documentation~/compatibility.md#4-exit-codes).
+- **BREAKING**: `ApplyAllCLI` / `ApplyWithValidateCLI`'s JUnit report no longer reports drift as a
+  `<failure>` on the `drift` testcase, matching the exit code change above (a completed apply's own
+  report should not fail a CI job that ingests it). `AddressTellerReportWriter.ToJUnitXml` /
+  `WriteToFile` gained an optional `treatDriftAsFailure` parameter for this (default `true`, matching
+  `CheckCLI`'s existing behavior). See
+  [Compatibility: Report Output](Documentation~/compatibility.md#5-report-output-json--junit-xml).
+- **BREAKING**: `AddressTellerCliArgs.TryParse` now rejects an unrecognized `-addressTeller`-prefixed
+  argument as a parse error instead of silently ignoring it. See
+  [Compatibility: Command-Line Arguments](Documentation~/compatibility.md#3-command-line-arguments).
+- `ApplyAllCLI` / `ApplyWithValidateCLI` / `ClearCLI` now call `AssetDatabase.SaveAssets()` right before
+  exiting. See [Apply & Operations: CI Integration](Documentation~/operations.md#ci-integration).
+- Projects with a pre-existing duplicate address may now see `CheckCLI` exit 2 where it previously
+  exited 0 or 1. `ApplyAllCLI` / `ApplyWithValidateCLI` / `Apply with Validate` are unaffected by a
+  duplicate either way — it is only ever logged and reported, never a reason to abort or to change
+  their exit code. See
+  [Design Decisions: Address Priority and Conflicts](Documentation~/design-decisions.md#address-priority-and-conflicts).
 
 ## [0.5.0] - 2026-09-17
 

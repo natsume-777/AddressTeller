@@ -63,7 +63,25 @@ namespace AddressTeller.Editor
             AddressResolution resolution,
             IEnumerable<string> existingGroupNames,
             bool autoCreateMissingGroups = false)
+            => Validate(context, resolution, existingGroupNames, autoCreateMissingGroups, out _);
+
+        /// <summary>
+        /// <see cref="Validate"/> の内部オーバーロード。Status が Ok/GroupWillBeCreated のとき、
+        /// 判定に使った勝者候補（Order 最小・単独）を <paramref name="winner"/> に返す。
+        /// Apply/Predict はこれを使うことで、Validate 内で一度確定させた勝者を自分で選び直さずに済む
+        /// （勝者選定ロジックの重複と、選び直しに伴う無駄な走査を避けるため）。
+        /// それ以外の Status（Skipped/LabelsOnly/ConflictingAddress/InvalidAddress/DefaultGroupUnavailable/
+        /// GroupNotFound）では <paramref name="winner"/> は既定値（<c>default(AddressCandidate)</c>）のまま。
+        /// </summary>
+        internal static ValidationResult Validate(
+            AssetContext context,
+            AddressResolution resolution,
+            IEnumerable<string> existingGroupNames,
+            bool autoCreateMissingGroups,
+            out AddressCandidate winner)
         {
+            winner = default;
+
             if (resolution.AddressCandidates.Count == 0)
             {
                 // アドレス候補は無いが、ラベルが1件以上あればラベルのみルール（AnyGroup() 等）がマッチしている。
@@ -74,21 +92,84 @@ namespace AddressTeller.Editor
                 return new ValidationResult(context, ValidationStatus.Skipped, "No matching rule.");
             }
 
-            if (resolution.AddressCandidates.Count > 1)
-            {
-                var sb = new StringBuilder();
-                sb.Append($"Address conflict for '{context.Path}':");
-                foreach (var c in resolution.AddressCandidates)
-                    sb.Append($"\n  {c.DescribeSource()} [{AddressRuleBuilderImpl.DisplayGroupName(c.GroupName)}] → \"{c.Address}\"");
+            // Order が最小の候補が単独なら、それが優先度で他を上書きした勝者。最小値が2件以上あるときだけ、
+            // どちらを採るべきか決める根拠が無いため競合になる（design-decisions.md 参照）。
+            if (!TrySelectWinningCandidate(resolution.AddressCandidates, out winner, out var tiedCandidates))
+                return BuildConflictResult(context, tiedCandidates);
 
-                return new ValidationResult(
-                    context,
-                    ValidationStatus.ConflictingAddress,
-                    sb.ToString(),
-                    resolution.AddressCandidates);
+            return ValidateWinningCandidate(context, winner, existingGroupNames, autoCreateMissingGroups);
+        }
+
+        /// <summary>
+        /// 候補群のうち Order が最小のものを勝者として選ぶ。最小値の候補が単独なら true を返し winner にセットする。
+        /// 最小値の候補が2件以上（同点）ある場合は false を返し、その同点候補のみを tiedCandidates にセットする
+        /// （同点でない他の候補は含めない。衝突メッセージに無関係な敗者を出さないため）。
+        /// <paramref name="candidates"/> は1件以上であること（呼び出し側で Count==0 を別途処理済みの前提）。
+        /// 単独勝者の通常ケース（同点なし）では LINQ を一切使わず配列走査のみで確定させ、同点時のみ
+        /// <c>Where().ToList()</c> で実体化する（常設指示9: 毎アセット呼ばれるためアロケーションを避ける）。
+        /// </summary>
+        private static bool TrySelectWinningCandidate(
+            IReadOnlyList<AddressCandidate> candidates,
+            out AddressCandidate winner,
+            out IReadOnlyList<AddressCandidate> tiedCandidates)
+        {
+            var minOrder = candidates[0].Order;
+            var minIndex = 0;
+            var minCount = 1;
+
+            for (var i = 1; i < candidates.Count; i++)
+            {
+                if (candidates[i].Order < minOrder)
+                {
+                    minOrder = candidates[i].Order;
+                    minIndex = i;
+                    minCount = 1;
+                }
+                else if (candidates[i].Order == minOrder)
+                {
+                    minCount++;
+                }
             }
 
-            var candidate = resolution.AddressCandidates[0];
+            if (minCount == 1)
+            {
+                winner = candidates[minIndex];
+                tiedCandidates = null;
+                return true;
+            }
+
+            // 同点時のみ、衝突メッセージ用に該当候補を実体化する
+            // (resolution.AddressCandidates はルール評価順を保つため、この絞り込みも同じ相対順序を保つ)。
+            winner = default;
+            tiedCandidates = candidates.Where(c => c.Order == minOrder).ToList();
+            return false;
+        }
+
+        /// <summary>同点だった候補（Order が最小の候補のみ）だけを列挙した衝突結果を組み立てる。</summary>
+        private static ValidationResult BuildConflictResult(AssetContext context, IReadOnlyList<AddressCandidate> tiedCandidates)
+        {
+            var sb = new StringBuilder();
+            sb.Append($"Address conflict for '{context.Path}' (rules tied at Order={tiedCandidates[0].Order}):");
+            foreach (var c in tiedCandidates)
+                sb.Append($"\n  {c.DescribeSource()} [{AddressRuleBuilderImpl.DisplayGroupName(c.GroupName)}] → \"{c.Address}\"");
+
+            return new ValidationResult(
+                context,
+                ValidationStatus.ConflictingAddress,
+                sb.ToString(),
+                tiedCandidates);
+        }
+
+        /// <summary>
+        /// 単独勝者に確定した候補1件について、アドレス・グループの妥当性を検証する
+        /// （Order による優先順位判定より後段の、Validate の従来ロジックそのもの）。
+        /// </summary>
+        private static ValidationResult ValidateWinningCandidate(
+            AssetContext context,
+            AddressCandidate candidate,
+            IEnumerable<string> existingGroupNames,
+            bool autoCreateMissingGroups)
+        {
             if (string.IsNullOrEmpty(candidate.Address))
             {
                 return new ValidationResult(
@@ -136,10 +217,10 @@ namespace AddressTeller.Editor
         /// 作成したグループ名を追加する（同じインスタンスをループの全アセットで使い回すことで、
         /// 2件目以降の同名グループ対象アセットで重複した GroupWillBeCreated 警告・重複 EnsureGroup 呼び出しを防ぐ）。
         /// </param>
-        /// <param name="managedGroups">
-        /// AddressTeller のいずれかのルールが GroupName として参照しているグループ名の集合。
-        /// 指定された場合、どのルールにもマッチしなくなった（Skipped な）アセットが
-        /// この中のグループに属していれば、<see cref="AddressTellerSettings.CleanupStaleEntries"/>
+        /// <param name="ownedGroups">
+        /// AddressTeller のいずれかのルールが Address() を宣言しているグループ名の集合（AddressTeller が
+        /// 削除の権限を持つグループ）。指定された場合、どのルールにもマッチしなくなった（Skipped な）
+        /// アセットがこの中のグループに属していれば、<see cref="AddressTellerSettings.CleanupStaleEntries"/>
         /// が true のときエントリを削除する。
         /// </param>
         /// <param name="autoCreateMissingGroups">
@@ -150,7 +231,7 @@ namespace AddressTeller.Editor
         /// </param>
         /// <param name="hasConfigureFailures">
         /// この実行で1件以上のルールの Configure() が例外を送出した（<see cref="EvaluationSetup.ConfigureFailures"/>
-        /// が空でない）場合に true。true の場合、managedGroups は「本来担当するはずだったルールの Configure()
+        /// が空でない）場合に true。true の場合、ownedGroups は「本来担当するはずだったルールの Configure()
         /// が失敗した結果、たまたま他のルールが同じグループを宣言していたため残っただけ」の可能性があり信頼できない。
         /// そのためこのアセットが Skipped でも stale クリーンアップは行わない
         /// （失敗したルールが担当していたエントリを誤って削除してしまうことを防ぐ）。
@@ -160,11 +241,11 @@ namespace AddressTeller.Editor
             AddressResolution resolution,
             AddressableAssetSettings settings,
             ICollection<string> existingGroupNames,
-            IReadOnlyCollection<string> managedGroups = null,
+            IReadOnlyCollection<string> ownedGroups = null,
             bool autoCreateMissingGroups = false,
             bool hasConfigureFailures = false)
         {
-            var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups);
+            var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups, out var winner);
 
             if (result.Status == ValidationStatus.Skipped)
             {
@@ -172,11 +253,11 @@ namespace AddressTeller.Editor
                 // 「全ルールが正常評価された上でマッチ0件」とは言えないため、クリーンアップは行わない
                 // (ルールのバグで誤ってエントリを削除しないようにする)。
                 if (resolution.Errors.Count == 0 && !hasConfigureFailures
-                    && managedGroups != null && AddressTellerSettings.CleanupStaleEntries)
+                    && ownedGroups != null && AddressTellerSettings.CleanupStaleEntries)
                 {
                     // 削除されたエントリは RemoveStaleEntryIfManaged 側で個別に Warning ログ済みのため、
                     // ここでは戻り値（削除内容）を意図的に破棄する。
-                    _ = RemoveStaleEntryIfManaged(context.Guid, settings, managedGroups);
+                    _ = RemoveStaleEntryIfManaged(context.Guid, settings, ownedGroups);
                 }
                 return result;
             }
@@ -186,12 +267,12 @@ namespace AddressTeller.Editor
                 // ラベルのみルールは新規エントリを作らない（アドレス/グループを持たないため）。
                 // 既存エントリがある場合のみ、そのエントリにラベルを加算適用する。cleanup は呼ばない
                 // (このアセットは現在マッチするルールが存在するため stale ではない)。
-                // ただし、削除と同様にラベル加算も「管理対象グループに属するエントリのみ」に限定する。
-                // 管理外グループ(ユーザーが手動登録したエントリ等)には触れない所有権原則を、
-                // 書き込み側であるラベル加算にも適用する。
+                // ラベル加算は削除と異なり非破壊（加算のみで既存の状態を壊さない）ため所有権では門番しない。
+                // 既存エントリがどのグループに属していても（AddressTeller が Address() を宣言していない
+                // グループ、ユーザーが手動登録したグループも含め）ラベルを加える。これは Addressables 標準
+                // UI がどのグループのエントリにもラベルを付けられることと揃えるための挙動。
                 var existingEntry = settings.FindAssetEntry(context.Guid);
-                if (existingEntry?.parentGroup != null
-                    && managedGroups != null && managedGroups.Contains(existingEntry.parentGroup.Name))
+                if (existingEntry?.parentGroup != null)
                 {
                     foreach (var label in resolution.Labels)
                     {
@@ -202,23 +283,26 @@ namespace AddressTeller.Editor
                 return result;
             }
 
+            // winner は Validate(..., out winner) が Ok/GroupWillBeCreated の場合にセット済み（同点なしの
+            // 単独勝者）。それ以外の Status では下の分岐に入らず return 済みなので、winner の既定値
+            // （default(AddressCandidate)）が使われることはない。
+
             AddressableAssetGroup group;
             if (result.Status == ValidationStatus.GroupWillBeCreated)
             {
                 // Validate では作成しないが、Apply ではここで実際に DefaultGroup を複製して作成する。
-                var candidateForCreate = resolution.AddressCandidates[0];
-                if (!AddressTellerGroupFactory.EnsureGroup(settings, candidateForCreate.GroupName, out group, out var failureReason))
+                if (!AddressTellerGroupFactory.EnsureGroup(settings, winner.GroupName, out group, out var failureReason))
                 {
                     return new ValidationResult(
                         context,
                         ValidationStatus.GroupCreationFailed,
-                        $"Failed to auto-create group '{candidateForCreate.GroupName}' for '{context.Path}': {failureReason}");
+                        $"Failed to auto-create group '{winner.GroupName}' for '{context.Path}': {failureReason}");
                 }
 
                 // 作成したグループ名を existingGroupNames にも反映する。反映しないと、同じグループを
                 // 対象とする次のアセットでも「存在しない」と誤判定され、GroupWillBeCreated 警告と
                 // EnsureGroup 呼び出しが重複してしまう。
-                existingGroupNames.Add(candidateForCreate.GroupName);
+                existingGroupNames.Add(winner.GroupName);
             }
             else if (!result.IsOk)
             {
@@ -226,8 +310,7 @@ namespace AddressTeller.Editor
             }
             else
             {
-                var candidate = resolution.AddressCandidates[0];
-                group = settings.FindGroup(candidate.GroupName);
+                group = settings.FindGroup(winner.GroupName);
                 if (group == null)
                 {
                     // Validate は existingGroupNames（呼び出し側がループ外で1回だけ構築する、テスト可能な
@@ -239,7 +322,7 @@ namespace AddressTeller.Editor
                     return new ValidationResult(
                         context,
                         ValidationStatus.GroupNotFound,
-                        $"Group '{candidate.GroupName}' not found in AddressableAssetSettings.");
+                        $"Group '{winner.GroupName}' not found in AddressableAssetSettings.");
                 }
             }
 
@@ -269,7 +352,7 @@ namespace AddressTeller.Editor
                     ValidationStatus.EntryRejectedByAddressables,
                     $"Addressables refused to create/move a usable entry for '{context.Path}' into group '{group.Name}'.");
             }
-            entry.SetAddress(resolution.AddressCandidates[0].Address);
+            entry.SetAddress(winner.Address);
 
             foreach (var label in resolution.Labels)
             {
@@ -285,14 +368,14 @@ namespace AddressTeller.Editor
         /// 判定分岐は Apply / Validate と1対1で対応させている。
         /// </summary>
         /// <param name="existingGroupNames">settings.groups から事前に構築したグループ名の集合。</param>
-        /// <param name="managedGroups">AddressTeller のいずれかのルールが GroupName として参照しているグループ名の集合。</param>
+        /// <param name="ownedGroups">AddressTeller のいずれかのルールが Address() を宣言しているグループ名の集合。</param>
         /// <param name="autoCreateMissingGroups">
         /// <see cref="AddressTellerSettings.AutoCreateMissingGroups"/> の値。true の場合、未存在グループは
         /// <see cref="ValidationStatus.GroupNotFound"/> ではなく <see cref="ValidationStatus.GroupWillBeCreated"/>
         /// となり（IsOk=true）、AddOrUpdate として予測される（実際の作成は行わない）。
         /// </param>
         /// <param name="hasConfigureFailures">
-        /// <see cref="Apply"/> の同名パラメータと同じ意図。true の場合、managedGroups が信頼できないため
+        /// <see cref="Apply"/> の同名パラメータと同じ意図。true の場合、ownedGroups が信頼できないため
         /// stale クリーンアップ（Remove の予測）を行わない。
         /// </param>
         public static ApplyPrediction Predict(
@@ -300,17 +383,17 @@ namespace AddressTeller.Editor
             AddressResolution resolution,
             AddressableAssetSettings settings,
             HashSet<string> existingGroupNames,
-            HashSet<string> managedGroups,
+            HashSet<string> ownedGroups,
             bool autoCreateMissingGroups = false,
             bool hasConfigureFailures = false)
         {
-            var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups);
+            var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups, out var candidate);
 
             if (result.Status == ValidationStatus.Skipped)
             {
                 var entry = settings.FindAssetEntry(context.Guid);
                 if (entry?.parentGroup != null
-                    && managedGroups.Contains(entry.parentGroup.Name)
+                    && ownedGroups.Contains(entry.parentGroup.Name)
                     && AddressTellerSettings.CleanupStaleEntries
                     && resolution.Errors.Count == 0
                     && !hasConfigureFailures)
@@ -328,10 +411,8 @@ namespace AddressTeller.Editor
                 if (existingEntryForLabels == null)
                     return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
 
-                // Apply 側と対称に、管理外グループ(ユーザーが手動登録したエントリ等)に属する場合は
-                // ラベル加算そのものを行わないため、予測も NoOp とする。
-                if (existingEntryForLabels.parentGroup == null
-                    || !managedGroups.Contains(existingEntryForLabels.parentGroup.Name))
+                // Apply 側と対称に、ラベル加算は所有権を問わない（既存エントリがあれば加算する）。
+                if (existingEntryForLabels.parentGroup == null)
                     return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
 
                 // 既存エントリの address/group は維持しつつ、ラベルのみ既存分と resolution.Labels の和集合にする。
@@ -353,7 +434,8 @@ namespace AddressTeller.Editor
             if (!result.IsOk)
                 return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
 
-            var candidate = resolution.AddressCandidates[0];
+            // candidate は Validate(..., out candidate) が Ok/GroupWillBeCreated の場合にセット済み
+            // （同点なしの単独勝者）。
             var existingEntry = settings.FindAssetEntry(context.Guid);
 
             // 実際の Apply は SetLabel(label, true) で加算するのみで既存ラベルを剥がさないため、
@@ -375,31 +457,31 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 削除されたアセットの GUID に対応するエントリが AddressTeller 管理下のグループに
-        /// 属している場合のみ削除する。管理外グループ（ユーザーが手動で登録したエントリ等）には触れない。
+        /// 削除されたアセットの GUID に対応するエントリが AddressTeller の所有するグループに
+        /// 属している場合のみ削除する。所有していないグループ（ユーザーが手動で登録したエントリ等）には触れない。
         /// <see cref="AddressTellerSettings.CleanupStaleEntries"/> が true のときのみ削除する。
         /// ルール評価を伴わない（資産が既に存在しない）削除専用のエントリポイント。
         /// </summary>
         /// <param name="hasConfigureFailures">
-        /// <see cref="Apply"/> の同名パラメータと同じ意図。true の場合、managedGroups が信頼できないため
+        /// <see cref="Apply"/> の同名パラメータと同じ意図。true の場合、ownedGroups が信頼できないため
         /// 削除を行わない。
         /// </param>
         /// <returns>削除を実行した場合はその内容。削除しなかった場合は null。</returns>
         public static ClearedEntry? RemoveEntryForDeletedAsset(
             string guid,
             AddressableAssetSettings settings,
-            IReadOnlyCollection<string> managedGroups,
+            IReadOnlyCollection<string> ownedGroups,
             bool hasConfigureFailures = false)
         {
-            if (managedGroups == null) return null;
+            if (ownedGroups == null) return null;
             if (!AddressTellerSettings.CleanupStaleEntries) return null;
             if (hasConfigureFailures) return null;
 
-            return RemoveStaleEntryIfManaged(guid, settings, managedGroups);
+            return RemoveStaleEntryIfManaged(guid, settings, ownedGroups);
         }
 
         /// <summary>
-        /// 管理対象グループに属するエントリのうち、パスが Addressables のエントリとして構造的に無効になっている
+        /// 所有するグループに属するエントリのうち、パスが Addressables のエントリとして構造的に無効になっている
         /// ものを列挙する（書き込みは行わない）。旧バージョンの AddressTeller が誤って作成したエントリ
         /// （ProjectSettings/*.asset 等プロジェクト外パスの readOnly エントリ、.preset/.asmdef、
         /// Editor フォルダ自体等）や、除外条件が後から拡張された場合の残骸を検出するためのもの。
@@ -418,15 +500,15 @@ namespace AddressTeller.Editor
         /// </summary>
         internal static List<AddressableAssetEntry> FindInvalidPathManagedEntries(
             AddressableAssetSettings settings,
-            IReadOnlyCollection<string> managedGroups,
+            IReadOnlyCollection<string> ownedGroups,
             string configFolder)
         {
             var result = new List<AddressableAssetEntry>();
-            if (settings == null || managedGroups == null || managedGroups.Count == 0) return result;
+            if (settings == null || ownedGroups == null || ownedGroups.Count == 0) return result;
 
             foreach (var group in settings.groups)
             {
-                if (group == null || !managedGroups.Contains(group.Name)) continue;
+                if (group == null || !ownedGroups.Contains(group.Name)) continue;
 
                 foreach (var entry in group.entries)
                 {
@@ -450,10 +532,10 @@ namespace AddressTeller.Editor
         /// <returns>削除したエントリの一覧（削除が無ければ空リスト）。</returns>
         internal static List<ClearedEntry> RemoveInvalidPathEntries(
             AddressableAssetSettings settings,
-            IReadOnlyCollection<string> managedGroups,
+            IReadOnlyCollection<string> ownedGroups,
             string configFolder)
         {
-            var targets = FindInvalidPathManagedEntries(settings, managedGroups, configFolder);
+            var targets = FindInvalidPathManagedEntries(settings, ownedGroups, configFolder);
             var cleared = new List<ClearedEntry>(targets.Count);
 
             foreach (var entry in targets)
@@ -470,18 +552,18 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 既存のエントリが AddressTeller 管理下のグループに属している場合のみ削除する。
-        /// 管理外グループ（ユーザーが手動で登録したエントリ等）には触れない。
+        /// 既存のエントリが AddressTeller の所有するグループに属している場合のみ削除する。
+        /// 所有していないグループ（ユーザーが手動で登録したエントリ等）には触れない。
         /// </summary>
         /// <returns>削除を実行した場合はその内容。削除しなかった場合は null。</returns>
         private static ClearedEntry? RemoveStaleEntryIfManaged(
             string guid,
             AddressableAssetSettings settings,
-            IReadOnlyCollection<string> managedGroups)
+            IReadOnlyCollection<string> ownedGroups)
         {
             var entry = settings.FindAssetEntry(guid);
             if (entry?.parentGroup == null) return null;
-            if (!managedGroups.Contains(entry.parentGroup.Name)) return null;
+            if (!ownedGroups.Contains(entry.parentGroup.Name)) return null;
 
             var cleared = new ClearedEntry(
                 guid,

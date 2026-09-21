@@ -76,20 +76,22 @@ namespace AddressTeller.Editor
             EditorUtility.DisplayDialog("AddressTeller - Clear All Addresses & Labels", message, "OK");
 
         /// <summary>
-        /// Removes entries (address, group assignment, and labels) from groups managed by AddressTeller
-        /// (any group referenced as a rule's GroupName).
+        /// Removes entries (address, group assignment, and labels) from groups AddressTeller owns
+        /// (see design-decisions.md for the ownership definition).
         /// This is an intentional exception to the default safe-by-default policy (asset-level ownership
         /// checks, off by default), aimed at pre-release package initial setup scenarios. After the
         /// confirmation dialog is accepted, a dedicated snapshot (under SnapshotFolder/Clear, excluded
         /// from rotation) is saved immediately before the removal; if saving fails, the clear is aborted.
         /// To target every entry, use -addressTellerClearScope all with <see cref="ClearCLI"/>.
-        /// If even one rule's Configure() has failed, managedGroups (the ownership check) cannot be
+        /// If even one rule's Configure() has failed, ownedGroups (the ownership check) cannot be
         /// trusted, so this aborts before showing the confirmation dialog (mirroring how
         /// <see cref="ClearCLI"/> aborts with exit code 3).
         /// </summary>
         [MenuItem("Tools/AddressTeller/Clear All Addresses & Labels...")]
         public static void ClearAll()
         {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
@@ -111,9 +113,9 @@ namespace AddressTeller.Editor
         {
             if (settings == null) throw new ArgumentNullException(nameof(settings));
 
-            if (!TryResolveManagedGroups(settings, rules, out var managedGroups, out var abortDetail))
+            if (!TryResolveOwnedGroups(settings, rules, out var ownedGroups, out var abortDetail))
             {
-                // ルールの Configure() が1件でも失敗していると managedGroups（所有権判定）が信頼できない。
+                // ルールの Configure() が1件でも失敗していると ownedGroups（所有権判定）が信頼できない。
                 // 破壊的操作である Clear はこの状態のまま実行してはいけないため、確認ダイアログを出す前に中止する
                 // （ClearCLI が exit code 3 で中止するのと対称の安全対策）。
                 s_notifyClearAborted($"Aborted: {abortDetail}");
@@ -122,7 +124,7 @@ namespace AddressTeller.Editor
             }
 
             var entryCount = settings.groups
-                .Where(g => g != null && managedGroups.Contains(g.Name))
+                .Where(g => g != null && ownedGroups.Contains(g.Name))
                 .Sum(g => g.entries.Count);
 
             var message = $"This will remove {entryCount} Addressable entry/entries (address, group assignment, and labels) from managed groups.\n"
@@ -144,7 +146,7 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            var cleared = AddressTellerClearService.Clear(settings, ClearScope.Managed, managedGroups);
+            var cleared = AddressTellerClearService.Clear(settings, ClearScope.Managed, ownedGroups);
             foreach (var entry in cleared)
                 Debug.LogWarning($"[AddressTeller] Cleared entry: guid={entry.Guid}, group='{entry.GroupName}', address='{entry.Address}', labels=[{string.Join(", ", entry.Labels)}]");
 
@@ -153,25 +155,25 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// scope=Managed でのクリア系操作（<see cref="ClearAll(AddressableAssetSettings, IReadOnlyList{AddressRuleBase})"/> /
-        /// <see cref="ClearCLI"/>）が共有する、managedGroups（所有権判定）の解決処理。
-        /// ルールの Configure() が1件でも失敗している場合、managedGroups は信頼できないため false を返し、
+        /// <see cref="ClearCLI"/>）が共有する、ownedGroups（所有権判定）の解決処理。
+        /// ルールの Configure() が1件でも失敗している場合、ownedGroups は信頼できないため false を返し、
         /// <paramref name="abortDetail"/> に失敗したルールごとの詳細メッセージを返す
         /// （RuleCollector.CollectRules() は無効化中のルールも含むため、Project Settings でルールを無効化しても
         /// この中止は解除されない旨も含める）。
         /// </summary>
-        private static bool TryResolveManagedGroups(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules, out HashSet<string> managedGroups, out string abortDetail)
+        private static bool TryResolveOwnedGroups(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules, out HashSet<string> ownedGroups, out string abortDetail)
         {
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
             if (setup.ConfigureFailures.Count > 0)
             {
                 var detail = string.Join("; ", setup.ConfigureFailures.Select(f => f.Message));
-                abortDetail = $"{setup.ConfigureFailures.Count} rule(s) failed to configure; managed-group ownership cannot be trusted for scope=Managed. {detail} "
-                    + "Disabling the rule in Project Settings will not resolve this (RuleCollector still collects disabled rules for managed-group tracking); fix the rule's Configure() instead.";
-                managedGroups = null;
+                abortDetail = $"{setup.ConfigureFailures.Count} rule(s) failed to configure; group ownership cannot be trusted for scope=Managed. {detail} "
+                    + "Disabling the rule in Project Settings will not resolve this (RuleCollector still collects disabled rules for ownership tracking); fix the rule's Configure() instead.";
+                ownedGroups = null;
                 return false;
             }
 
-            managedGroups = setup.ManagedGroups;
+            ownedGroups = setup.OwnedGroups;
             abortDetail = null;
             return true;
         }
@@ -182,18 +184,16 @@ namespace AddressTeller.Editor
         /// intentional refusal and exits with code 4 (to prevent accidental execution in a CLI
         /// environment where no dialog can be shown).
         /// <c>-addressTellerClearScope all|managed</c> switches the clear target (default managed).
-        /// For scope=managed, if even one rule's Configure() has failed, managedGroups (the ownership
+        /// For scope=managed, if even one rule's Configure() has failed, ownedGroups (the ownership
         /// check) cannot be trusted, so this aborts with exit code 3 before saving the snapshot (to avoid
         /// a snapshot being left behind with nothing actually removed). Saving a dedicated snapshot
         /// (under SnapshotFolder/Clear) before running is required, and a failure to save also aborts
         /// with exit code 3.
-        /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
-        /// ProjectSettings/AddressTellerSettings.asset on disk cannot be confirmed to match the settings
-        /// currently loaded in memory (it does not match, could not be read, or could not be checked at
-        /// all), this also aborts with exit code 3, before doing anything else.
+        /// If AddressTeller's settings file cannot be loaded (it exists but cannot be read, or is not
+        /// recognized as an AddressTeller settings file), this also aborts with exit code 3, before doing
+        /// anything else.
         /// Exit codes: 0 = completed, 3 = environment error (including rule configuration errors, snapshot
-        /// save failures, and settings check failures when -addressTellerFailOnSettingsMismatch is specified),
-        /// 4 = confirmation flag not specified.
+        /// save failures, and a settings load failure), 4 = confirmation flag not specified.
         /// </summary>
         public static void ClearCLI()
         {
@@ -204,7 +204,7 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            if (SettingsDiagnosticShouldAbortCli(cliArgs))
+            if (!AddressTellerSettings.EnsureLoaded())
             {
                 EditorApplication.Exit(3);
                 return;
@@ -225,19 +225,19 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            // managedGroups の解決（所有権判定が信頼できるかの確認）は、スナップショット保存より先に行う。
+            // ownedGroups の解決（所有権判定が信頼できるかの確認）は、スナップショット保存より先に行う。
             // 逆順だと、ルール構成エラーで中止した際に「何も削除していないのにスナップショットだけが残る」
             // 孤児ファイルを作ってしまう。
-            IReadOnlyCollection<string> managedGroups = null;
+            IReadOnlyCollection<string> ownedGroups = null;
             if (cliArgs.ClearScope == ClearScope.Managed)
             {
-                if (!TryResolveManagedGroups(settings, RuleCollector.CollectRules(), out var resolvedManagedGroups, out var abortDetail))
+                if (!TryResolveOwnedGroups(settings, RuleCollector.CollectRules(), out var resolvedOwnedGroups, out var abortDetail))
                 {
                     Debug.LogError($"[AddressTeller] Clear All aborted: {abortDetail}");
                     EditorApplication.Exit(3);
                     return;
                 }
-                managedGroups = resolvedManagedGroups;
+                ownedGroups = resolvedOwnedGroups;
             }
 
             var snapshotPath = AddressTellerClearSnapshotService.CaptureAndSave(settings, out var snapshotError);
@@ -248,12 +248,16 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            var cleared = AddressTellerClearService.Clear(settings, cliArgs.ClearScope, managedGroups);
+            var cleared = AddressTellerClearService.Clear(settings, cliArgs.ClearScope, ownedGroups);
             foreach (var entry in cleared)
                 Debug.LogWarning($"[AddressTeller] Cleared entry: guid={entry.Guid}, group='{entry.GroupName}', address='{entry.Address}', labels=[{string.Join(", ", entry.Labels)}]");
 
             Debug.Log($"[AddressTeller] Clear All completed: {cleared.Count} entry/entries removed (scope={cliArgs.ClearScope}). Snapshot: {snapshotPath}");
 
+            // Clear() が書き換えたダーティなアセットを、EditorApplication.Exit に頼らず明示的に保存する
+            // （EditorApplication.Exit がダーティアセットをフラッシュする挙動は実測で確認済みだが、
+            // Unity が文書化した契約ではなく観測された挙動にすぎないため）。
+            AssetDatabase.SaveAssets();
             EditorApplication.Exit(0);
         }
 
@@ -264,6 +268,8 @@ namespace AddressTeller.Editor
         [MenuItem("Tools/AddressTeller/Validate")]
         public static void Validate()
         {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
@@ -330,12 +336,17 @@ namespace AddressTeller.Editor
         /// the CLI/CI, to avoid extra build time and disk I/O.
         /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
         /// -addressTellerReportFormat json|junit (built from the dry-run result computed before Apply runs).
-        /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
-        /// ProjectSettings/AddressTellerSettings.asset on disk cannot be confirmed to match the settings
-        /// currently loaded in memory (it does not match, could not be read, or could not be checked at
-        /// all), this aborts with exit code 3, before doing anything else.
-        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
-        /// error (including a settings check failure when -addressTellerFailOnSettingsMismatch is specified).
+        /// If AddressTeller's settings file cannot be loaded (it exists but cannot be read, or is not
+        /// recognized as an AddressTeller settings file), this aborts with exit code 3, before doing
+        /// anything else.
+        /// Exit codes: 0 = applied successfully (regardless of whether there was drift), 2 = validation
+        /// errors found, 3 = environment error (including a settings load failure). This method never
+        /// returns 1 — drift is not treated as a failure for an apply entry point, since the apply already
+        /// completed successfully; use <see cref="CheckCLI"/> to detect drift without applying.
+        /// A duplicate address across two different assets (<see cref="ValidationStatus.DuplicateAddress"/>)
+        /// never affects this exit code either way, since it is a report-only status computed from the
+        /// dry-run, not from the Apply results this exit code is based on — it is still logged to the
+        /// console and included in the report file, but only <see cref="CheckCLI"/>'s exit code reacts to it.
         /// </summary>
         public static void ApplyAllCLI()
         {
@@ -346,7 +357,7 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            if (SettingsDiagnosticShouldAbortCli(cliArgs))
+            if (!AddressTellerSettings.EnsureLoaded())
             {
                 EditorApplication.Exit(3);
                 return;
@@ -370,6 +381,13 @@ namespace AddressTeller.Editor
             // 母集合を1回確定し、dry-run（レポート化）と実 Apply で同じ対象パスを使う。
             var paths = AssetDatabase.GetAllAssetPaths();
             var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
+
+            // DuplicateAddress は ApplyAll（実際の書き込み）では検出されず dry-run 側にしか現れないため、
+            // ここでログしておかないとコンソールには一切出ないままレポートファイルにだけ残ることになる
+            // （「報告のみ」を確実にするため。ExitWithReport の exit code 判定には影響しない）。
+            var duplicateNotices = dryRun.Issues.Where(i => i.Status == ValidationStatus.DuplicateAddress).ToList();
+            if (duplicateNotices.Count > 0)
+                AddressTellerIssueLogger.LogAll(duplicateNotices);
 
             var applyIssues = AddressTellerService.ApplyAll(paths, settings, NullProgressReporter.Instance, rules);
             AddressTellerIssueLogger.LogAll(applyIssues);
@@ -399,12 +417,20 @@ namespace AddressTeller.Editor
         /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
         /// -addressTellerReportFormat json|junit (built from the pre-Apply dry-run result if Validate
         /// found a problem, or from the dry-run result computed before Apply runs otherwise).
-        /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
-        /// ProjectSettings/AddressTellerSettings.asset on disk cannot be confirmed to match the settings
-        /// currently loaded in memory (it does not match, could not be read, or could not be checked at
-        /// all), this aborts with exit code 3, before doing anything else.
-        /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
-        /// error (including a settings check failure when -addressTellerFailOnSettingsMismatch is specified).
+        /// If AddressTeller's settings file cannot be loaded (it exists but cannot be read, or is not
+        /// recognized as an AddressTeller settings file), this aborts with exit code 3, before doing
+        /// anything else.
+        /// Exit codes: 0 = applied successfully (regardless of whether there was drift), 2 = validation
+        /// errors found (whether from the initial Validate pass, which aborts before Apply runs, or from
+        /// the Apply pass itself), 3 = environment error (including a settings load failure). This method
+        /// never returns 1 — drift is not treated as a failure for an apply entry point; use
+        /// <see cref="CheckCLI"/> to detect drift without applying.
+        /// A duplicate address across two different assets (<see cref="ValidationStatus.DuplicateAddress"/>)
+        /// never aborts the initial Validate pass and never affects this exit code, even when it is reported
+        /// as an error (<see cref="ValidationResult.HasWritableDuplicate"/>) — it is a report-only status, so
+        /// Apply proceeds and this method exits 0 as long as nothing else is wrong. It is still logged to
+        /// the console and included in the report file either way; use <see cref="CheckCLI"/> if you need
+        /// its exit code to react to a duplicate.
         /// </summary>
         public static void ApplyWithValidateCLI()
         {
@@ -415,7 +441,7 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            if (SettingsDiagnosticShouldAbortCli(cliArgs))
+            if (!AddressTellerSettings.EnsureLoaded())
             {
                 EditorApplication.Exit(3);
                 return;
@@ -438,13 +464,14 @@ namespace AddressTeller.Editor
 
             var validateIssues = AddressTellerService.ValidateAll(settings, NullProgressReporter.Instance, rules);
 
-            // validateIssues には GroupWillBeCreated（IsOk=true、AutoCreateMissingGroups による作成予定の提示）が
-            // 含まれる場合がある。中止が必要なのは IsOk=false の要素のみ。
-            if (validateIssues.Any(i => !i.IsOk))
+            // validateIssues には GroupWillBeCreated（IsOk=true、AutoCreateMissingGroups による作成予定の提示）や
+            // DuplicateAddress（報告専用。書き込みを止めないため、HasBlockingIssue の対象外。
+            // AddressTellerApplyFlow.HasBlockingIssue 参照）が含まれる場合がある。
+            if (AddressTellerApplyFlow.HasBlockingIssue(validateIssues))
             {
                 AddressTellerIssueLogger.LogAll(validateIssues);
 
-                Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => !i.IsOk)} issue(s).");
+                Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => !i.IsOk && i.Status != ValidationStatus.DuplicateAddress)} issue(s).");
 
                 // Apply を行わないため、現在の状態のままの dry-run をレポート化する。
                 var paths = AssetDatabase.GetAllAssetPaths();
@@ -452,6 +479,13 @@ namespace AddressTeller.Editor
                 ExitWithReport(dryRun, validateIssues, cliArgs, settings);
                 return;
             }
+
+            // 中止しない場合でも、DuplicateAddress は ExitWithReport の exit code 判定（Apply 実行結果のみを見る
+            // AddressTellerReportBuilder.DetermineApplyExitCode）には反映されない。「報告のみ」を確実にするため、
+            // コンソールにはここで一度ログしておく（レポートファイルには dry-run の Issues として別途含まれる）。
+            var duplicateNotices = validateIssues.Where(i => i.Status == ValidationStatus.DuplicateAddress).ToList();
+            if (duplicateNotices.Count > 0)
+                AddressTellerIssueLogger.LogAll(duplicateNotices);
 
             // 母集合を1回確定し、dry-run（レポート化）と実 Apply で同じ対象パスを使う。
             var applyPaths = AssetDatabase.GetAllAssetPaths();
@@ -461,60 +495,6 @@ namespace AddressTeller.Editor
             AddressTellerIssueLogger.LogAll(applyIssues);
 
             ExitWithReport(applyDryRun, applyIssues, cliArgs, settings);
-        }
-
-        /// <summary>
-        /// <c>-addressTellerFailOnSettingsMismatch</c> が指定されている場合のみ、設定ロード診断
-        /// （<see cref="AddressTellerSettingsLoadDiagnostics.GetOrDiagnoseForThisDomain"/>）を実行する。
-        /// 診断結果が「設定ファイル自体の問題」（<see cref="SettingsLoadDiagnosis.IsSettingsFileProblem"/> が
-        /// true — ファイルとメモリの不一致・読み取り不能・解釈不能のいずれか）であれば Error ログを出して
-        /// true（呼び出し元は Exit(3) して中断すべき）を返す。診断が AddressTeller 側の都合で成立しなかった
-        /// （<see cref="SettingsLoadDiagnosisKind.DiagnosticUnavailable"/>）場合は Warning ログのみで false
-        /// を返す——これは利用者のファイルの問題ではないため、オプトインしたフラグであっても CI を
-        /// 失敗させるべきではない。フラグ未指定時は診断自体を呼ばない（挙動を一切変えない契約。File I/O・
-        /// 一時ファイル書き出しも発生しない）。
-        /// 診断結果は起動時診断（<see cref="AddressTellerSettingsLoadDiagnostics"/> の
-        /// <c>[InitializeOnLoadMethod]</c>）とこのドメイン内で共有される（
-        /// <see cref="AddressTellerSettingsLoadDiagnostics.GetOrDiagnoseForThisDomain"/> のキャッシュ）ため、
-        /// 起動時診断が既に一時ファイルの書き出し・比較を終えている場合、このメソッドはそれを再実行しない。
-        /// </summary>
-        /// <remarks>
-        /// この診断は Postprocessor/Menu には波及しない CLI 限定のオプトイン機能である
-        /// （<see cref="TryBuildCliRules"/> の -addressTellerDisableRules と同じ、意図的な逸脱）。
-        /// 設定ファイルが読めない状況そのものを検出する診断のため、既存の永続設定フラグとして
-        /// AddressTellerSettings 側に持たせることはできない
-        /// （<see cref="AddressTellerSettingsLoadDiagnostics"/> のクラス remarks を参照）。
-        /// </remarks>
-        private static bool SettingsDiagnosticShouldAbortCli(AddressTellerCliArgs cliArgs)
-        {
-            if (!cliArgs.FailOnSettingsMismatch) return false;
-
-            try
-            {
-                var diagnosis = AddressTellerSettingsLoadDiagnostics.GetOrDiagnoseForThisDomain();
-                if (diagnosis.Message == null) return false;
-
-                if (diagnosis.IsSettingsFileProblem)
-                {
-                    Debug.LogError($"[AddressTeller] {diagnosis.Message}");
-                    return true;
-                }
-
-                // DiagnosticUnavailable: AddressTeller 側の都合で診断が成立しなかっただけで、ファイル自体が
-                // 問題だと確認できたわけではない。CI を失敗させず、警告のみで続行する。
-                Debug.LogWarning($"[AddressTeller] {diagnosis.Message}");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                // Diagnose() は例外を投げない契約だが（AddressTellerSettingsLoadDiagnostics.Diagnose の
-                // XML doc 参照）、その契約を過信せずここでも保護する。診断自体が想定外の理由で失敗しても、
-                // AddressTeller 側の都合で利用者の CI を落とすべきではない——中断せず続行する。
-                Debug.LogWarning("[AddressTeller] SettingsDiagnosticShouldAbortCli: unexpected error while " +
-                    $"running the settings load diagnostic ({ex.GetType().Name}: {ex.Message}). This says " +
-                    "nothing about the settings file itself; continuing without aborting.");
-                return false;
-            }
         }
 
         /// <summary>
@@ -539,14 +519,23 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// dry-run 結果からレポート DTO を生成し、要求されていればファイル出力する。
-        /// exit code は dry-run の判定（<see cref="AddressTellerReportBuilder.DetermineExitCode"/>）を基本としつつ、
-        /// Apply/Validate 実行後に得られた issues（<paramref name="executionIssues"/>）に
-        /// エラー（IsOk=false）が含まれる場合は 2 に昇格させる。
+        /// exit code は「実行後 issues（<paramref name="executionIssues"/>）に書き込みを見送るべき問題が
+        /// 含まれるか」のみで決まる（<see cref="AddressTellerReportBuilder.DetermineApplyExitCode"/>。
+        /// <see cref="ValidationStatus.DuplicateAddress"/> は IsOk=false であっても対象外——同メソッドの
+        /// XML doc 参照）。dry-run の差分の有無は適用系の exit code には反映しない——Apply は実際に
+        /// 書き込みを完了しているため、差分があったことを理由に失敗扱い（exit 1）にすると、`set -e` の下で
+        /// 正常な適用が毎回失敗になってしまう。差分検出は <see cref="CheckCLI"/> の役割。
+        /// 同じ理由で、JUnit 出力の drift testcase も failure なしで出す
+        /// （<see cref="AddressTellerReportWriter.WriteToFile"/> に treatDriftAsFailure: false を渡す）——
+        /// そうしないと exit code は 0 でも、この report を取り込む CI ジョブは drift のたびに赤くなる。
         /// レポートの書き込みに失敗した場合は exit 3。
+        /// このメソッドは ApplyAllCLI / ApplyWithValidateCLI からのみ呼ばれる（CheckCLI は独自に
+        /// <see cref="AddressTellerReportBuilder.DetermineExitCode(DryRunResult)"/> を使う）ため、
+        /// ここで <see cref="AssetDatabase.SaveAssets"/> を呼んでダーティなアセットを明示的に保存する。
         /// </summary>
         private static void ExitWithReport(DryRunResult dryRun, IReadOnlyList<ValidationResult> executionIssues, AddressTellerCliArgs cliArgs, AddressableAssetSettings settings)
         {
-            var exitCode = AddressTellerReportBuilder.DetermineExitCode(dryRun, executionIssues);
+            var exitCode = AddressTellerReportBuilder.DetermineApplyExitCode(executionIssues);
 
             if (!string.IsNullOrEmpty(cliArgs.ReportPath))
             {
@@ -554,13 +543,17 @@ namespace AddressTeller.Editor
                 report.Summary.ExitCode = exitCode;
 
                 // ReportPath が指定されている場合、TryParse で ReportFormat は必ず（明示または拡張子推定で）設定済み。
-                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value))
+                // treatDriftAsFailure: false — Apply は既に成功しているため、drift の存在を JUnit の
+                // <failure> として報告しない（CheckCLI と異なり、drift は失敗ではなく成功した変更の記録）。
+                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value, treatDriftAsFailure: false))
                 {
+                    AssetDatabase.SaveAssets();
                     EditorApplication.Exit(3);
                     return;
                 }
             }
 
+            AssetDatabase.SaveAssets();
             EditorApplication.Exit(exitCode);
         }
 
@@ -570,12 +563,11 @@ namespace AddressTeller.Editor
         /// state and the state after rules would be applied.
         /// A report can be written to a file with -addressTellerReport &lt;path&gt; /
         /// -addressTellerReportFormat json|junit.
-        /// If <c>-addressTellerFailOnSettingsMismatch</c> is specified and
-        /// ProjectSettings/AddressTellerSettings.asset on disk cannot be confirmed to match the settings
-        /// currently loaded in memory (it does not match, could not be read, or could not be checked at
-        /// all), this aborts with exit code 3, before doing anything else.
+        /// If AddressTeller's settings file cannot be loaded (it exists but cannot be read, or is not
+        /// recognized as an AddressTeller settings file), this aborts with exit code 3, before doing
+        /// anything else.
         /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
-        /// error (including a settings check failure when -addressTellerFailOnSettingsMismatch is specified).
+        /// error (including a settings load failure).
         /// </summary>
         public static void CheckCLI()
         {
@@ -586,7 +578,7 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            if (SettingsDiagnosticShouldAbortCli(cliArgs))
+            if (!AddressTellerSettings.EnsureLoaded())
             {
                 EditorApplication.Exit(3);
                 return;
@@ -607,6 +599,9 @@ namespace AddressTeller.Editor
                 return;
             }
 
+            // CheckCLI は読み取り専用の dry-run であり、Addressables の状態を一切書き換えない
+            // （BuildPredictedSnapshot は予測計算のみで、実際の CreateOrMoveEntry 等を呼ばない）。
+            // そのため ApplyAllCLI / ApplyWithValidateCLI / ClearCLI と異なり AssetDatabase.SaveAssets() は不要。
             var paths = AssetDatabase.GetAllAssetPaths();
             var result = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
 
@@ -617,7 +612,10 @@ namespace AddressTeller.Editor
             {
                 var report = AddressTellerReportBuilder.Build(result, settings);
                 // ReportPath が指定されている場合、TryParse で ReportFormat は必ず（明示または拡張子推定で）設定済み。
-                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value))
+                // treatDriftAsFailure: true（既定値と同じだが明示） — CheckCLI は drift の検出そのものが
+                // 目的の読み取り専用 dry-run であるため、ExitWithReport（適用系）とは対称に drift を
+                // JUnit の <failure> として報告する。
+                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value, treatDriftAsFailure: true))
                 {
                     EditorApplication.Exit(3);
                     return;

@@ -5,7 +5,7 @@ namespace AddressTeller.Editor.Tests
     /// <summary>
     /// AddressTellerSettings.PostprocessOrder の既定値フォールバックとカスタム値の読み書き、
     /// AddressTellerPostprocessor.GetPostprocessOrder() への反映を検証する。
-    /// ProjectSettings/AddressTellerSettings.asset への永続化は行われるため、テスト前後で状態を復元する。
+    /// ProjectSettings/AddressTellerSettings.json への永続化は行われるため、テスト前後で状態を復元する。
     /// </summary>
     public class AddressTellerSettingsPostprocessOrderTests
     {
@@ -24,12 +24,13 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void PostprocessOrder_Default_IsOneThousand()
+        public void PostprocessOrder_ExplicitZero_IsReadBackAsZero()
         {
-            // 0（未設定）を明示的に書き込み、既定値へフォールバックすることを確認する。
+            // センチネル(0=未設定)は廃止されているため、明示的に0を設定した場合はそのまま0が返る
+            // （キー不在時に既定値1000へフォールバックするケースは AddressTellerSettingsPersistenceTests 側で検証）。
             AddressTellerSettings.PostprocessOrder = 0;
 
-            Assert.AreEqual(1000, AddressTellerSettings.PostprocessOrder);
+            Assert.AreEqual(0, AddressTellerSettings.PostprocessOrder);
             Assert.AreEqual(1000, AddressTellerSettings.DefaultPostprocessOrder);
         }
 

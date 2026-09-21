@@ -21,7 +21,12 @@ namespace AddressTeller.Editor
         /// matched and produced a label. The entry is not stale, so it is excluded from cleanup.
         /// </summary>
         LabelsOnly = 2,
-        /// <summary>Two or more rules produced an address (conflict).</summary>
+        /// <summary>
+        /// Two or more matching rules produced an address for the same asset, and the two or more with
+        /// the lowest <c>AddressRuleBase.Order</c> tied. Producing multiple address candidates is not
+        /// itself a conflict — when they differ in <c>Order</c>, the lowest-<c>Order</c> one wins and is
+        /// written without error. This status is reported only for the unresolvable tie case.
+        /// </summary>
         ConflictingAddress = 3,
         /// <summary>The specified group does not exist in Addressables.</summary>
         GroupNotFound = 4,
@@ -66,12 +71,35 @@ namespace AddressTeller.Editor
         /// create is removed again).
         /// </summary>
         EntryRejectedByAddressables = 11,
+        /// <summary>
+        /// Two or more different assets ended up with the same address string. Unlike
+        /// <see cref="ConflictingAddress"/> (two or more rules disagreeing about one asset), this is about
+        /// two or more separate assets landing on the same address — something the per-asset conflict check
+        /// above cannot see. This is a report-only status: it never blocks a write, since Addressables'
+        /// own Groups window accepts duplicate addresses too (AddressTeller only refuses what Addressables
+        /// itself would refuse). <see cref="ValidationResult.IsOk"/> for this status depends on
+        /// <see cref="ValidationResult.HasWritableDuplicate"/> — see that property for the exact rule.
+        /// Reported by <c>ValidateAll</c> and by every caller of
+        /// <c>AddressTellerSnapshotService.BuildPredictedSnapshot</c> — that includes not just
+        /// <c>CheckCLI</c>/<c>ApplyAllCLI</c>/<c>ApplyWithValidateCLI</c> and the Apply All / Apply with
+        /// Validate menu items, but also the scoped dry-run previews (rule/asset/group right-click preview,
+        /// <see cref="AddressTellerScopedPreview"/>): since the existing-address side of the comparison
+        /// always comes from every entry already in Addressables regardless of the scope requested, a
+        /// scoped preview can surface a pre-existing duplicate that has nothing to do with the scope you
+        /// asked to preview. The incremental apply AddressTeller performs from
+        /// <see cref="AddressTellerPostprocessor"/> on every asset import only evaluates the changed paths,
+        /// not the whole project, so it cannot detect a duplicate against an asset outside that set without
+        /// re-scanning everything on every import — that path alone does not report this status.
+        /// <see cref="Context"/> is null for this status, the same as <see cref="RuleConfigureFailed"/>,
+        /// since it is not about one specific asset.
+        /// </summary>
+        DuplicateAddress = 12,
     }
 
     /// <summary>
     /// Result of evaluating rules against a single asset, as returned by ApplyAll/Validate/Predict/Explain.
-    /// <see cref="Context"/> is null when <see cref="Status"/> is <see cref="ValidationStatus.RuleConfigureFailed"/>,
-    /// since that status is not tied to a specific asset.
+    /// <see cref="Context"/> is null when <see cref="Status"/> is <see cref="ValidationStatus.RuleConfigureFailed"/>
+    /// or <see cref="ValidationStatus.DuplicateAddress"/>, since neither status is tied to a single asset.
     /// </summary>
     public sealed class ValidationResult
     {
@@ -84,31 +112,56 @@ namespace AddressTeller.Editor
         /// <summary>Human-readable message describing the result. Null when <see cref="Status"/> is <see cref="ValidationStatus.Ok"/>.</summary>
         public string Message { get; }
 
-        /// <summary>Set only when Status is ConflictingAddress: the competing address candidates.</summary>
+        /// <summary>
+        /// Set only when Status is ConflictingAddress. Contains only the candidates tied at the lowest
+        /// <c>Order</c> — the ones an unambiguous winner could not be chosen between. Higher-<c>Order</c>
+        /// candidates that also matched but lost to a lower-<c>Order</c> one are not included here, since
+        /// they were not part of the conflict.
+        /// </summary>
         public IReadOnlyList<AddressCandidate> ConflictingCandidates { get; }
+
+        /// <summary>
+        /// Set only when Status is <see cref="ValidationStatus.DuplicateAddress"/>. True when at least one
+        /// of the assets sharing the duplicated address is one AddressTeller would itself write an address
+        /// for during this run — i.e. the duplicate falls within a rule the caller controls and can fix.
+        /// False when every asset sharing the address falls outside this run's address-writing scope (for
+        /// example, two pre-existing entries neither rule touches this run) — AddressTeller has no rule to
+        /// change to resolve it, so it is surfaced as a non-blocking notice instead. Drives the
+        /// <see cref="IsOk"/> split for this status: see there for how it is used.
+        /// </summary>
+        public bool HasWritableDuplicate { get; }
 
         // Skipped はルール対象外という正常系であり、ApplyAll/ValidateAll の issues には積まれない（IsOk = true）。
         // LabelsOnly はラベルのみルールがマッチした正常系であり、同様に issues には積まれない（IsOk = true）。
         // GroupWillBeCreated は AutoCreateMissingGroups ON 時の作成予定通知であり、Apply をブロックしない（IsOk = true）。
+        // DuplicateAddress は書き込みを止めない報告専用ステータスだが、重複の当事者に「このランで
+        // AddressTeller 自身が書くアドレス」が含まれるかどうかで重大度を分ける。含まれれば利用者のルールで
+        // 直せる問題なので Error（IsOk = false）、含まれなければ AddressTeller に直す手立てが無い既存の状態
+        // なので Warning（IsOk = true）として扱う。
         /// <summary>
         /// True when <see cref="Status"/> is <see cref="ValidationStatus.Ok"/>,
         /// <see cref="ValidationStatus.Skipped"/>, <see cref="ValidationStatus.LabelsOnly"/>, or
-        /// <see cref="ValidationStatus.GroupWillBeCreated"/> — i.e. this result does not represent a problem.
+        /// <see cref="ValidationStatus.GroupWillBeCreated"/> — i.e. this result does not represent a
+        /// problem. Also true for <see cref="ValidationStatus.DuplicateAddress"/> when
+        /// <see cref="HasWritableDuplicate"/> is false (AddressTeller cannot resolve it itself, so it is
+        /// reported as a notice rather than a blocking problem).
         /// </summary>
         public bool IsOk => Status == ValidationStatus.Ok || Status == ValidationStatus.Skipped
-            || Status == ValidationStatus.LabelsOnly || Status == ValidationStatus.GroupWillBeCreated;
+            || Status == ValidationStatus.LabelsOnly || Status == ValidationStatus.GroupWillBeCreated
+            || (Status == ValidationStatus.DuplicateAddress && !HasWritableDuplicate);
 
         /// <summary>
         /// 公開コンストラクタではなく internal（ライブラリ内部の評価パイプラインからのみ構築される想定）。
         /// テストからは <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute"/> 経由で参照する。
         /// </summary>
         internal ValidationResult(AssetContext context, ValidationStatus status, string message,
-            IReadOnlyList<AddressCandidate> conflictingCandidates = null)
+            IReadOnlyList<AddressCandidate> conflictingCandidates = null, bool hasWritableDuplicate = false)
         {
             Context = context;
             Status = status;
             Message = message;
             ConflictingCandidates = conflictingCandidates;
+            HasWritableDuplicate = hasWritableDuplicate;
         }
     }
 }

@@ -19,22 +19,27 @@ namespace AddressTellerSamples
 
         public override void Configure(IAddressRuleBuilder rules)
         {
+            // Addresses are prefixed by type (e.g. "prefab/Player") rather than using
+            // FileNameWithoutExtension alone. Without the prefix, a prefab and a texture that happen to
+            // share a base file name in the same folder (e.g. "Player.prefab" and "Player.png") would both
+            // resolve to address "Player" -- Validate / Apply All would report that as a duplicate address.
+
             // Prefab (GameObject) -> Prefabs group, label "prefab"
             rules.Group("Prefabs")
                 .Where(ctx => ctx.Path.StartsWith(RootPath) && ctx.Type == typeof(GameObject))
-                .Address(ctx => ctx.FileNameWithoutExtension)
+                .Address(ctx => $"prefab/{ctx.FileNameWithoutExtension}")
                 .Label("prefab");
 
             // Texture -> Textures group, label "texture"
             rules.Group("Textures")
                 .Where(ctx => ctx.Path.StartsWith(RootPath) && ctx.Type == typeof(Texture2D))
-                .Address(ctx => ctx.FileNameWithoutExtension)
+                .Address(ctx => $"texture/{ctx.FileNameWithoutExtension}")
                 .Label("texture");
 
             // AudioClip -> Audio group, label "audio"
             rules.Group("Audio")
                 .Where(ctx => ctx.Path.StartsWith(RootPath) && ctx.Type == typeof(AudioClip))
-                .Address(ctx => ctx.FileNameWithoutExtension)
+                .Address(ctx => $"audio/{ctx.FileNameWithoutExtension}")
                 .Label("audio");
 
             // Any ScriptableObject subclass -> Configs group, label "config"
@@ -42,7 +47,7 @@ namespace AddressTellerSamples
             rules.Group("Configs")
                 .Where(ctx => ctx.Path.StartsWith(RootPath)
                            && typeof(ScriptableObject).IsAssignableFrom(ctx.Type))
-                .Address(ctx => ctx.FileNameWithoutExtension)
+                .Address(ctx => $"config/{ctx.FileNameWithoutExtension}")
                 .Label("config");
         }
     }

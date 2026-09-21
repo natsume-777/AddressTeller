@@ -25,8 +25,8 @@ namespace AddressTeller.Editor.Tests
         private const string FakeConfigFolder = "Assets/_AddressTellerTestTempInvalidPathConfig";
 
         // StubFolder 配下には基本的に実アセットを置かないが、rule が実際にマッチするかどうかは
-        // この掃除自体の対象判定には関係ない。ルールが Group(...) を宣言していること自体で
-        // managedGroups に含まれることだけが重要。
+        // この掃除自体の対象判定には関係ない。ルールが Group(...).Address(...) を宣言していること自体で
+        // ownedGroups に含まれることだけが重要。
         private sealed class ManagedGroupRule : AddressRuleBase
         {
             public override void Configure(IAddressRuleBuilder rules)

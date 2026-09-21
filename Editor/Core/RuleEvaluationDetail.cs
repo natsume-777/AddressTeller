@@ -27,6 +27,13 @@ namespace AddressTeller
         /// <summary>Errored の場合の例外メッセージ、Skipped の場合のスキップ理由。それ以外は null。</summary>
         public string ErrorMessage { get; }
 
+        /// <summary>
+        /// このルールを定義したクラスの <see cref="AddressRuleBase.Order"/>。Explain 表示で、Matched かつ
+        /// アドレスを発行したルールのうち、どれが採用され（最小値）どれが優先順位で負けたか（最小値より大きい）を
+        /// 判定するために使う。Outcome に関わらず常にセットされる。
+        /// </summary>
+        public int Order { get; }
+
         public RuleEvaluationDetail(
             string ruleSource,
             string groupName,
@@ -34,7 +41,8 @@ namespace AddressTeller
             RuleMatchOutcome outcome,
             string producedAddress,
             IReadOnlyList<string> producedLabels,
-            string errorMessage)
+            string errorMessage,
+            int order = 0)
         {
             RuleSource = ruleSource;
             GroupName = groupName;
@@ -43,6 +51,7 @@ namespace AddressTeller
             ProducedAddress = producedAddress;
             ProducedLabels = producedLabels ?? Array.Empty<string>();
             ErrorMessage = errorMessage;
+            Order = order;
         }
     }
 }

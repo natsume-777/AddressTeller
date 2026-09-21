@@ -109,19 +109,33 @@ namespace AddressTeller.Editor
             conclusionLabel.AddToClassList(cssClass);
             foldout.Add(conclusionLabel);
 
-            // 詳細行
+            // 詳細行。Order による優先順位判定（採用/敗北）はアドレス候補群にしか意味を持たないため、
+            // 候補が1件も無い（AddressSelector を持つルールがそもそも無い/どれもマッチしなかった）場合は
+            // null のままにし、Matched の行に注記を付けない。
+            var minOrder = MinOrderOrNull(explanation.Explanation.Resolution.AddressCandidates);
+            var isConflict = explanation.Validation.Status == ValidationStatus.ConflictingAddress;
             foreach (var detail in explanation.Explanation.Details)
-                foldout.Add(BuildDetailElement(detail));
+                foldout.Add(BuildDetailElement(detail, minOrder, isConflict));
 
             return container;
         }
 
-        private static VisualElement BuildDetailElement(RuleEvaluationDetail detail)
+        /// <summary>候補群のうち最小の Order を返す。候補が無ければ null。</summary>
+        private static int? MinOrderOrNull(IReadOnlyList<AddressCandidate> candidates)
+        {
+            if (candidates.Count == 0) return null;
+            var min = candidates[0].Order;
+            for (var i = 1; i < candidates.Count; i++)
+                if (candidates[i].Order < min) min = candidates[i].Order;
+            return min;
+        }
+
+        private static VisualElement BuildDetailElement(RuleEvaluationDetail detail, int? minOrder, bool isConflict)
         {
             switch (detail.Outcome)
             {
                 case RuleMatchOutcome.Matched:
-                    return BuildMatchedElement(detail);
+                    return BuildMatchedElement(detail, minOrder, isConflict);
                 case RuleMatchOutcome.NotMatched:
                     return BuildNotMatchedElement(detail);
                 case RuleMatchOutcome.Errored:
@@ -133,7 +147,7 @@ namespace AddressTeller.Editor
             }
         }
 
-        private static VisualElement BuildMatchedElement(RuleEvaluationDetail detail)
+        private static VisualElement BuildMatchedElement(RuleEvaluationDetail detail, int? minOrder, bool isConflict)
         {
             var container = new VisualElement();
             container.AddToClassList("at-detail-indent");
@@ -141,6 +155,15 @@ namespace AddressTeller.Editor
             var title = string.IsNullOrEmpty(detail.Description)
                 ? $"[Match] {detail.RuleSource}"
                 : $"[Match] {detail.Description}";
+
+            // このルールがアドレス候補を発行した場合のみ、Order による優先順位の結果を注記する。
+            // 採用（最小 Order を単独で持つ）／同点で衝突中／他ルールに優先度で敗北、の3パターン。
+            if (!string.IsNullOrEmpty(detail.ProducedAddress) && minOrder.HasValue)
+            {
+                title += detail.Order == minOrder.Value
+                    ? (isConflict ? " (tied for priority)" : " (adopted)")
+                    : " (superseded by a higher-priority rule)";
+            }
 
             var titleLabel = new Label(title);
             titleLabel.AddToClassList("at-match-label");
@@ -225,7 +248,7 @@ namespace AddressTeller.Editor
             switch (validation.Status)
             {
                 case ValidationStatus.Ok:
-                    var address = resolution.AddressCandidates.Count > 0 ? resolution.AddressCandidates[0].Address : "(unknown)";
+                    var address = DescribeWinningAddress(resolution);
                     return ($"Address \"{address}\" assigned", "at-conclusion--ok");
                 case ValidationStatus.Skipped:
                     return ("No matching rule (excluded)", "at-conclusion--muted");
@@ -240,7 +263,7 @@ namespace AddressTeller.Editor
                 case ValidationStatus.RuleError:
                     return ($"Rule error: {validation.Message}", "at-conclusion--error");
                 case ValidationStatus.GroupWillBeCreated:
-                    var createdAddress = resolution.AddressCandidates.Count > 0 ? resolution.AddressCandidates[0].Address : "(unknown)";
+                    var createdAddress = DescribeWinningAddress(resolution);
                     return ($"Address \"{createdAddress}\" assigned (group will be created: {validation.Message})", "at-conclusion--warning");
                 case ValidationStatus.GroupCreationFailed:
                     return ($"Group creation failed: {validation.Message}", "at-conclusion--error");
@@ -249,6 +272,22 @@ namespace AddressTeller.Editor
                 default:
                     return (validation.Message ?? string.Empty, "at-conclusion--muted");
             }
+        }
+
+        /// <summary>
+        /// Ok/GroupWillBeCreated（=単独勝者が確定済み）のときに採用されたアドレスを返す。
+        /// index 0 が常に最小 Order とは限らないため、明示的に最小値を探す
+        /// （AddressTellerApplier.TrySelectWinningCandidate と同じ判定をここでも独立に行う）。
+        /// </summary>
+        private static string DescribeWinningAddress(AddressResolution resolution)
+        {
+            if (resolution.AddressCandidates.Count == 0) return "(unknown)";
+
+            var winner = resolution.AddressCandidates[0];
+            for (var i = 1; i < resolution.AddressCandidates.Count; i++)
+                if (resolution.AddressCandidates[i].Order < winner.Order) winner = resolution.AddressCandidates[i];
+
+            return winner.Address;
         }
     }
 }

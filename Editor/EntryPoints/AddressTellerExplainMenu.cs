@@ -11,6 +11,8 @@ namespace AddressTeller.Editor
         [MenuItem("Assets/AddressTeller/Explain")]
         public static void Explain()
         {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
             var paths = GetSelectedAssetPaths();
             var explanations = RuleExplainService.Explain(paths, null, RuleCollector.CollectEnabledRules(), out var configureFailures);
             AddressTellerExplainWindow.ShowWindow(explanations, configureFailures);

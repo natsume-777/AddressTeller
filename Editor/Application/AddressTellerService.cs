@@ -119,12 +119,13 @@ namespace AddressTeller.Editor
                 paths ??= Array.Empty<string>();
 
                 var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
-                // ManagedGroups（CleanupStaleEntriesの対象判定）は有効化されているルールのグループのみが対象。
-                // 無効化中のルールが管理するグループのエントリはApplyAllでは掃除対象外（managed外扱い）になるが、
-                // 資産削除時のRemoveEntriesForDeletedAssetsは全ルール対象で掃除するため、両者の間に非対称が存在する。
+                // OwnedGroups（CleanupStaleEntriesの対象判定）は有効化されているルールが Address() を
+                // 宣言しているグループのみが対象。無効化中のルールが所有するグループのエントリは
+                // ApplyAllでは掃除対象外（所有外扱い）になるが、資産削除時のRemoveEntriesForDeletedAssetsは
+                // 全ルール対象で掃除するため、両者の間に非対称が存在する。
 
                 var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
-                // Configure() に失敗したルールがある場合、managedGroups は「失敗したルールが本来担当していた
+                // Configure() に失敗したルールがある場合、ownedGroups は「失敗したルールが本来担当していた
                 // グループを、別の正常なルールがたまたま宣言していたため残っただけ」の可能性があり信頼できない。
                 // そのためこの実行全体で stale クリーンアップ（Apply の Skipped 分岐での削除）を停止する。
                 if (hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
@@ -134,10 +135,10 @@ namespace AddressTeller.Editor
                 // readOnly エントリ等）を掃除する。paths（このメソッドに渡された対象アセット）には依存させない
                 // — Postprocessor 経由の差分適用では、旧エントリのパス自体は変更イベントに含まれないため、
                 // 対象を絞ると永遠に掃除されなくなってしまう。既存の stale クリーンアップと同じ所有権判定
-                // （管理対象グループ限定）・同じ条件（CleanupStaleEntries、Configure() 失敗時は停止）を使う。
+                // （所有グループ限定）・同じ条件（CleanupStaleEntries、Configure() 失敗時は停止）を使う。
                 // 削除は RemoveInvalidPathEntries 側で個別に Warning ログ済みのため、戻り値は破棄する。
                 if (!hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
-                    _ = AddressTellerApplier.RemoveInvalidPathEntries(settings, setup.ManagedGroups, setup.ConfigFolder);
+                    _ = AddressTellerApplier.RemoveInvalidPathEntries(settings, setup.OwnedGroups, setup.ConfigFolder);
 
                 var issues = new List<ValidationResult>(setup.ConfigureFailures);
 
@@ -164,7 +165,7 @@ namespace AddressTeller.Editor
                     var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
                     RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups, setup.AutoCreateMissingGroups, hasConfigureFailures);
+                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.OwnedGroups, setup.AutoCreateMissingGroups, hasConfigureFailures);
                     // GroupWillBeCreated は IsOk=true（グループ自動作成が成功した）だが、
                     // 「作成された」ことを提示するため issues に情報として積む。
                     if (!result.IsOk || result.Status == ValidationStatus.GroupWillBeCreated)
@@ -193,13 +194,13 @@ namespace AddressTeller.Editor
         /// <remarks>
         /// Paths under ConfigFolder are not excluded here (since the asset is already deleted, the only
         /// thing available to judge by is the GUID, not the path). However, removal is limited to entries
-        /// whose group is in managedGroups (asset-level ownership check), so there is no practical risk of
+        /// in groups AddressTeller owns (asset-level ownership check), so there is no practical risk of
         /// an asset inside ConfigFolder being removed by mistake.
         /// </remarks>
         /// <returns>The entries that were actually removed (empty list if none were removed).</returns>
         public static IReadOnlyList<ClearedEntry> RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings = null)
         {
-            // ルールの On/Off 設定に関わらず、削除追従の所有権判定（managedGroups）は全ルールを対象にする。
+            // ルールの On/Off 設定に関わらず、削除追従の所有権判定（ownedGroups）は全ルールを対象にする。
             // 無効化されたルールが過去に作ったエントリも、設定の有無に関係なく一貫して掃除対象として認識する必要があるため。
             return RemoveEntriesForDeletedAssets(deletedGuids, settings, RuleCollector.CollectRules());
         }
@@ -207,7 +208,7 @@ namespace AddressTeller.Editor
         /// <summary>
         /// Overload of <see cref="RemoveEntriesForDeletedAssets(IEnumerable{string}, AddressableAssetSettings)"/>
         /// that adds injection of the rules to evaluate. The caller supplies the exact rule list used for
-        /// ownership determination (managedGroups) as-is (intended for use in tests, etc.). No decision
+        /// ownership determination (ownedGroups) as-is (intended for use in tests, etc.). No decision
         /// about how rules were collected (e.g. enabled/disabled filtering) is made here.
         /// </summary>
         /// <returns>The entries that were actually removed (empty list if none were removed).</returns>
@@ -220,7 +221,7 @@ namespace AddressTeller.Editor
 
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
-            // ApplyAll と同じ理由（managedGroups が信頼できなくなる）で、Configure() に失敗したルールが
+            // ApplyAll と同じ理由（ownedGroups が信頼できなくなる）で、Configure() に失敗したルールが
             // ある場合はこの実行全体で削除追従（stale クリーンアップ）を停止する。
             var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
             if (hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
@@ -230,7 +231,7 @@ namespace AddressTeller.Editor
             foreach (var guid in deletedGuids)
             {
                 if (string.IsNullOrEmpty(guid)) continue;
-                var removed = AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, setup.ManagedGroups, hasConfigureFailures);
+                var removed = AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, setup.OwnedGroups, hasConfigureFailures);
                 if (removed.HasValue) cleared.Add(removed.Value);
             }
 
@@ -277,45 +278,26 @@ namespace AddressTeller.Editor
             progress ??= NullProgressReporter.Instance;
             rules ??= Array.Empty<AddressRuleBase>();
 
-            var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
-
-            var issues = new List<ValidationResult>(setup.ConfigureFailures);
-
             var pathList = AssetDatabase.GetAllAssetPaths();
-            var total = pathList.Length;
 
-            var cancelled = false;
-            for (var i = 0; i < total; i++)
-            {
-                var path = pathList[i];
+            // BuildPredictedRunState は BuildPredictedSnapshot と共有の計算（Capture 起点の afterMap 構築、
+            // 無効パス掃除、Predict による AddOrUpdate/Remove の反映）を行う。ValidateAll 独自に
+            // 「予測される最終状態」を再実装すると、stale クリーンアップの反映漏れなどで
+            // BuildPredictedSnapshot と食い違いうるため、ここに集約している
+            // （PredictedRunState の XML doc 参照）。各アセットの個別 issue（GroupNotFound 等）は
+            // 従来通り AddressTellerApplier.Validate の結果そのもの（Predict は内部でこれをラップするだけ）。
+            // state.Issues には GroupWillBeCreated（IsOk=true の作成予定通知）もアセットごとに含まれる
+            // ——ValidateAll の従来契約どおり、フィルタせずそのまま返す（BuildPredictedSnapshot は逆に
+            // GroupsToCreate で提示するため自分の側で除外している。AddressTellerSnapshotService 参照）。
+            var state = RuleEvaluationPipeline.BuildPredictedRunState(settings, pathList, rules, progress);
 
-                if (!progress.Report(i, total, path))
-                {
-                    cancelled = true;
-                    break;
-                }
+            // 別アセット間のアドレス重複を検出する（同一アセットへの複数ルールの衝突とは別軸。
+            // ValidationStatus.DuplicateAddress の XML doc 参照）。
+            state.Issues.AddRange(DuplicateAddressDetector.Detect(
+                state.AfterMap.Select(kvp => new KeyValuePair<string, string>(kvp.Key, kvp.Value.Address)),
+                state.WrittenGuids));
 
-                if (AssetFilter.ShouldExcludeByPath(path, setup.ConfigFolder)) continue;
-
-                var ctx = RuleEvaluationPipeline.BuildContext(path);
-                if (ctx == null) continue;
-                if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;
-
-                var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
-                RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
-
-                var result = AddressTellerApplier.Validate(ctx, resolution, setup.ExistingGroupNames, setup.AutoCreateMissingGroups);
-                // GroupWillBeCreated は IsOk=true（Apply をブロックしない）だが、
-                // 「作成予定N件」を提示するため issues に情報として積む。
-                if (!result.IsOk || result.Status == ValidationStatus.GroupWillBeCreated)
-                    issues.Add(result);
-            }
-
-            // キャンセル時は完了通知を呼ばない（中断したのに「完了」を通知すると意味的に矛盾するため）。
-            if (!cancelled)
-                progress.Report(total, total, string.Empty);
-
-            return issues;
+            return state.Issues;
         }
     }
 }

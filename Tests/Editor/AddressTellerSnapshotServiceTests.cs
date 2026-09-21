@@ -624,8 +624,8 @@ namespace AddressTeller.Editor.Tests
             var diff = AddressTellerSnapshotService.Diff(current, snapshot);
             Assert.AreEqual(2, diff.Removed.Count);
 
-            var managedGroups = RuleEvaluationPipeline.BuildSetup(_settings, new AddressRuleBase[] { new ManagedGroupAOnlyRule() }).ManagedGroups;
-            var removable = diff.Removed.Where(e => managedGroups.Contains(e.GroupName)).ToList();
+            var ownedGroups = RuleEvaluationPipeline.BuildSetup(_settings, new AddressRuleBase[] { new ManagedGroupAOnlyRule() }).OwnedGroups;
+            var removable = diff.Removed.Where(e => ownedGroups.Contains(e.GroupName)).ToList();
             var keptCount = diff.Removed.Count - removable.Count;
 
             Assert.AreEqual(1, removable.Count, "確認ダイアログに渡す削除件数は managedGroups でフィルタされた件数と一致するべき。");

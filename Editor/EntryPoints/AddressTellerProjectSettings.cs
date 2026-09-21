@@ -141,6 +141,17 @@ namespace AddressTeller.Editor
             if (commonSS != null) root.styleSheets.Add(commonSS);
             if (psSS != null) root.styleSheets.Add(psSS);
 
+            // 設定ファイルの読み込みに失敗していても、画面自体は開ける（直せるように）。失敗した場合は
+            // 警告を表示するのみで、以降の描画は既定値（またはメモリ上に残っている前回の値）で続行する。
+            if (!AddressTellerSettings.EnsureLoaded())
+            {
+                root.Add(new HelpBox(
+                    "AddressTeller's settings file could not be loaded (see the Console for details). " +
+                    "The values below may not reflect what is currently saved. Changing any value here " +
+                    "will save a fresh, valid settings file.",
+                    HelpBoxMessageType.Error));
+            }
+
             var overviewCache = GetRuleOverviewCache();
 
             var scroll = new ScrollView();
@@ -159,15 +170,9 @@ namespace AddressTeller.Editor
             container.Add(MakeDescription("Runs ApplyAll whenever assets are imported, moved, or deleted."));
 
             // isDelayed: フォーカスが外れる/Enter が押されるまで値の変更を通知しない。
-            // キーストロークごとに ProjectSettings/*.asset へ書き出すことを防ぐ。
+            // キーストロークごとに ProjectSettings/*.json へ書き出すことを防ぐ。
             var orderField = new IntegerField("Postprocessor order") { value = AddressTellerSettings.PostprocessOrder, isDelayed = true };
-            orderField.RegisterValueChangedCallback(e =>
-            {
-                AddressTellerSettings.PostprocessOrder = e.newValue;
-                // PostprocessOrder のゲッターは 0 を DefaultPostprocessOrder(1000) に読み替える。UI 表示にも
-                // その読み替え後の値を反映し、入力欄に 0 が表示され続けたまま実効値が 1000 という不整合を防ぐ。
-                orderField.SetValueWithoutNotify(AddressTellerSettings.PostprocessOrder);
-            });
+            orderField.RegisterValueChangedCallback(e => AddressTellerSettings.PostprocessOrder = e.newValue);
             container.Add(orderField);
             container.Add(MakeDescription("Value passed to AssetPostprocessor.GetPostprocessOrder(). Lower values run before other postprocessors. Default is 1000 (runs later)."));
 
@@ -182,7 +187,9 @@ namespace AddressTeller.Editor
             container.Add(MakeDescription("When a group referenced by a rule does not exist, Apply will create it by duplicating the DefaultGroup schema. Validate/Predict only displays it as a pending creation and does not actually create the group."));
 
             // ---- Managed Groups Foldout ----
-            var managedGroups = CollectManagedGroups(overviewCache);
+            // Registered Rules / Operations セクションでも使うため、ここで一度だけ取得する。
+            var addressablesSettings = AddressableAssetSettingsDefaultObject.Settings;
+            var managedGroups = CollectManagedGroups(overviewCache, addressablesSettings);
             var managedFoldout = new Foldout { text = $"Managed Groups ({managedGroups.Count})", value = false };
             if (managedGroups.Count == 0)
             {
@@ -200,7 +207,7 @@ namespace AddressTeller.Editor
                 }
             }
             container.Add(managedFoldout);
-            container.Add(MakeDescription("Groups referenced by at least one enabled rule via Group(). These are the targets of \"Remove unmatched entries\" and \"Auto-create missing groups\". Entries manually registered in these groups will be removed if no rule matches them."));
+            container.Add(MakeDescription("Groups where at least one enabled rule declares Address(). These are the groups AddressTeller owns, and the targets of \"Remove unmatched entries\" and \"Auto-create missing groups\". Entries manually registered in these groups will be removed if no rule matches them."));
 
             // ---- Registered Rules ----
             container.Add(MakeSpacer());
@@ -210,14 +217,13 @@ namespace AddressTeller.Editor
             {
                 var ruleNames = string.Join(", ", duplicate.RuleClassNames);
                 container.Add(new HelpBox(
-                    $"Order={duplicate.Order} is duplicated: {ruleNames}. Verify the evaluation order.",
+                    $"Order={duplicate.Order} is duplicated: {ruleNames}. If two of these match the same asset and both produce an address, it will be reported as a conflict.",
                     HelpBoxMessageType.Warning));
             }
 
             // ルール一覧の「このルールだけ Validate/Apply」ボタン用に、型からインスタンスを引けるようにしておく。
             // RuleCollector.CollectRules() 自体はキャッシュ済みのため、Dictionary 化のみ。
             var ruleInstancesByType = RuleCollector.CollectRules().ToDictionary(r => r.GetType());
-            var addressablesSettings = AddressableAssetSettingsDefaultObject.Settings;
 
             var overviewRules = overviewCache.Rules;
             if (overviewRules.Count == 0)
@@ -261,7 +267,7 @@ namespace AddressTeller.Editor
             container.Add(MakeSectionLabel("Snapshot"));
 
             // isDelayed: フォーカスが外れる/Enter が押されるまで値の変更を通知しない。
-            // キーストロークごとに ProjectSettings/*.asset へ書き出すことを防ぐ。
+            // キーストロークごとに ProjectSettings/*.json へ書き出すことを防ぐ。
             var snapshotField = new TextField("Snapshot folder") { value = AddressTellerSettings.SnapshotFolder, isDelayed = true };
             snapshotField.RegisterValueChangedCallback(e => AddressTellerSettings.SnapshotFolder = e.newValue);
             container.Add(snapshotField);
@@ -284,7 +290,7 @@ namespace AddressTeller.Editor
             container.Add(MakeDescription("Applies only to the Apply All / Apply with Validate menu actions. Auto-apply on import and CLI execution are not covered. If saving the snapshot fails, Apply itself is aborted (see the Console for details)."));
 
             // isDelayed: フォーカスが外れる/Enter が押されるまで値の変更を通知しない。
-            // キーストロークごとに ProjectSettings/*.asset へ書き出すことを防ぐ。
+            // キーストロークごとに ProjectSettings/*.json へ書き出すことを防ぐ。
             var retentionField = new IntegerField("Auto-snapshot retention count") { value = AddressTellerSettings.AutoSnapshotRetention, isDelayed = true };
             retentionField.RegisterValueChangedCallback(e =>
             {
@@ -411,26 +417,54 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// 有効なルールクラスが Configure() で参照しているグループ名を、<see cref="RuleEvaluationPipeline.BuildSetup"/>
-        /// の managedGroups（<see cref="AddressTellerSettings.CleanupStaleEntries"/> /
+        /// 有効なルールクラスが Address() を宣言しているグループ名を、<see cref="RuleEvaluationPipeline.BuildSetup"/>
+        /// の OwnedGroups（<see cref="AddressTellerSettings.CleanupStaleEntries"/> /
         /// <see cref="AddressTellerSettings.AutoCreateMissingGroups"/> の対象）と同じ条件で集約する。
-        /// AnyGroup() 由来の GroupName（null）と未解決の GroupDefault() センチネルは
-        /// BuildSetup の managedGroups 計算（<see cref="RuleEvaluationPipeline.BuildSetup"/> 内の
-        /// null / DefaultGroupSentinel 除外）と同じく除外する（この概要キャッシュは Configure() の
-        /// 生出力からのみ構築され、実際の DefaultGroup 解決は行わないため、センチネルは常に未解決扱いとなる）。
-        /// 表示順序は決定的にするため Ordinal でソートする。
+        /// AnyGroup() 由来の GroupName（null）、Group() だけ宣言して Address() を呼んでいないエントリは、
+        /// BuildSetup の OwnedGroups 計算と同じく除外する。GroupDefault() のセンチネルは、
+        /// <paramref name="settings"/> から実際の DefaultGroup 名へ解決した上で（BuildSetup と同じロジック）
+        /// 所有グループに含める——DefaultGroup が解決できる限り GroupDefault() は実グループを所有・削除可能に
+        /// するため、この一覧がそれを反映しないと利用者に誤った「削除されうる範囲」を伝えてしまう。
+        /// settings が null、または DefaultGroup の取得に失敗した場合のみ、BuildSetup の
+        /// DefaultGroupUnavailable 相当としてセンチネル由来のエントリを除外する。表示順序は決定的にするため
+        /// Ordinal でソートする。
         /// </summary>
-        internal static IReadOnlyList<string> CollectManagedGroups(in RuleOverviewCache overviewCache)
+        internal static IReadOnlyList<string> CollectManagedGroups(in RuleOverviewCache overviewCache, AddressableAssetSettings settings)
         {
+            // GroupDefault() のセンチネルを使う有効エントリが1件も無ければ DefaultGroup を取得しない
+            // （BuildSetup と同じく、不要な Addressables アクセスを避ける）。
+            var usesDefaultGroupSentinel = overviewCache.Rules.Any(rule =>
+                AddressTellerSettings.IsRuleEnabled(rule.RuleType.FullName)
+                && rule.Entries.Any(e => e.HasAddress && e.GroupName == AddressRuleBuilderImpl.DefaultGroupSentinel));
+
+            string resolvedDefaultGroupName = null;
+            if (usesDefaultGroupSentinel && settings != null)
+            {
+                // settings.DefaultGroup は通常 null を返さず未設定時は自動作成するが、その自動作成自体が
+                // 失敗する異常系に備えて BuildSetup と同様に try/catch する。
+                try
+                {
+                    resolvedDefaultGroupName = settings.DefaultGroup?.Name;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[AddressTeller] Failed to retrieve AddressableAssetSettings.DefaultGroup: {ex.Message}.");
+                }
+            }
+
             var groups = new HashSet<string>();
             foreach (var rule in overviewCache.Rules)
             {
                 if (!AddressTellerSettings.IsRuleEnabled(rule.RuleType.FullName)) continue;
                 foreach (var entry in rule.Entries)
                 {
-                    if (entry.GroupName == null || entry.GroupName == AddressRuleBuilderImpl.DefaultGroupSentinel)
-                        continue;
-                    groups.Add(entry.GroupName);
+                    if (entry.GroupName == null || !entry.HasAddress) continue;
+
+                    var groupName = entry.GroupName == AddressRuleBuilderImpl.DefaultGroupSentinel
+                        ? resolvedDefaultGroupName
+                        : entry.GroupName;
+                    if (groupName == null) continue; // センチネルが未解決（DefaultGroup 取得不可）
+                    groups.Add(groupName);
                 }
             }
             return groups.OrderBy(g => g, StringComparer.Ordinal).ToList();

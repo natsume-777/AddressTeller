@@ -213,46 +213,63 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual("z-message", report.Issues[1].Message);
         }
 
-        [Test]
-        public void DetermineExitCode_WithExecutionIssues_NoDiffNoIssues_ExecutionErrorEscalatesToTwo()
-        {
-            // dry-run 時点では差分・問題なし（0判定）でも、Apply 実行後の issues にエラーがあれば 2 に昇格する。
-            var diff = new SnapshotDiff();
-            var dryRun = new DryRunResult(diff, new List<ValidationResult>());
+        // DetermineApplyExitCode は ApplyAllCLI / ApplyWithValidateCLI 専用の exit code 判定。
+        // CheckCLI 用の DetermineExitCode(DryRunResult) と異なり、diff の有無を一切見ない
+        // （Apply は既に書き込みを完了しているため、差分があったことを理由に exit 1 を返さない）。
 
+        [Test]
+        public void DetermineApplyExitCode_NoIssues_ReturnsZero()
+        {
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineApplyExitCode(new List<ValidationResult>()));
+        }
+
+        [Test]
+        public void DetermineApplyExitCode_WithErrorIssue_ReturnsTwo()
+        {
             var executionIssues = new List<ValidationResult>
             {
                 new(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.ConflictingAddress, "conflict"),
             };
 
-            Assert.AreEqual(2, AddressTellerReportBuilder.DetermineExitCode(dryRun, executionIssues));
+            Assert.AreEqual(2, AddressTellerReportBuilder.DetermineApplyExitCode(executionIssues));
         }
 
         [Test]
-        public void DetermineExitCode_WithExecutionIssues_AllOk_DoesNotEscalate()
+        public void DetermineApplyExitCode_AllOk_ReturnsZero()
         {
-            var diff = new SnapshotDiff();
-            var dryRun = new DryRunResult(diff, new List<ValidationResult>());
-
             var executionIssues = new List<ValidationResult>
             {
                 new(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.Ok, "ok"),
             };
 
-            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineExitCode(dryRun, executionIssues));
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineApplyExitCode(executionIssues));
         }
 
         [Test]
-        public void DetermineExitCode_WithExecutionIssues_DryRunAlreadyTwo_StaysTwo()
+        public void DetermineApplyExitCode_DuplicateAddressWarning_DoesNotEscalateToTwo()
         {
-            var diff = new SnapshotDiff();
-            var dryRunIssues = new List<ValidationResult>
+            // DuplicateAddress かつ HasWritableDuplicate=false は IsOk=true（Warning 扱い）。
+            // 適用系の exit code を 2 に昇格させてはならない。
+            var executionIssues = new List<ValidationResult>
             {
-                new(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.ConflictingAddress, "conflict"),
+                new(null, ValidationStatus.DuplicateAddress, "duplicate", hasWritableDuplicate: false),
             };
-            var dryRun = new DryRunResult(diff, dryRunIssues);
 
-            Assert.AreEqual(2, AddressTellerReportBuilder.DetermineExitCode(dryRun, new List<ValidationResult>()));
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineApplyExitCode(executionIssues));
+        }
+
+        [Test]
+        public void DetermineApplyExitCode_DuplicateAddressWritable_StillDoesNotEscalateToTwo()
+        {
+            // HasWritableDuplicate=true は IsOk=false（Error 扱い）だが、DuplicateAddress は
+            // AddressTellerApplyFlow.HasBlockingIssue が明示的に除外する「書き込みを止めない報告専用」
+            // ステータスであるため、IsOk=false であっても適用系の exit code は 2 に昇格しない。
+            var executionIssues = new List<ValidationResult>
+            {
+                new(null, ValidationStatus.DuplicateAddress, "duplicate", hasWritableDuplicate: true),
+            };
+
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineApplyExitCode(executionIssues));
         }
 
         [Test]

@@ -370,6 +370,67 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void ToJUnitXml_TreatDriftAsFailureFalse_DriftTestCaseHasNoFailure()
+        {
+            // ApplyAllCLI / ApplyWithValidateCLI 向け: Apply は既に成功しているため、drift 自体を
+            // JUnit の <failure> として報告してはならない（同じランで exit code は 0 なのに、
+            // この report を取り込む CI ジョブだけが赤くなるのを防ぐ）。
+            var report = ReportWithDriftAndIssues();
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: false);
+            var doc = XDocument.Parse(xml);
+
+            var testsuite = doc.Root;
+            // testcase 数（drift + ConflictingAddress + GroupNotFound = 3）は変わらないが、
+            // drift 分の failure が無くなるため failures は 2 になる。
+            Assert.AreEqual("3", testsuite.Attribute("tests").Value);
+            Assert.AreEqual("2", testsuite.Attribute("failures").Value);
+
+            var testcases = testsuite.Elements("testcase").ToList();
+            var driftCase = testcases.First(tc => tc.Attribute("name").Value == "drift");
+            Assert.IsNull(driftCase.Element("failure"), "drift は failure なしで testcase のみ出力されるべき。");
+
+            // Issues 側（Apply 実行結果ではなく dry-run の issues）は従来どおり failure を維持する。
+            var conflictCase = testcases.First(tc => tc.Attribute("name").Value == "ConflictingAddress");
+            Assert.IsNotNull(conflictCase.Element("failure"));
+        }
+
+        [Test]
+        public void ToJUnitXml_TreatDriftAsFailureDefault_MatchesTrue()
+        {
+            // 既定値（省略時）は true（CheckCLI 相当の挙動）であることを固定する。
+            var report = ReportWithDriftAndIssues();
+
+            var explicitTrue = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true);
+            var omitted = AddressTellerReportWriter.ToJUnitXml(report);
+
+            Assert.AreEqual(explicitTrue, omitted);
+        }
+
+        [Test]
+        public void WriteToFile_Junit_TreatDriftAsFailureFalse_WritesWithoutDriftFailure()
+        {
+            var report = ReportWithDriftAndIssues();
+            var tempDir = Path.Combine(Path.GetTempPath(), "AddressTellerReportWriterTests_" + Guid.NewGuid());
+            var path = Path.Combine(tempDir, "report.xml");
+
+            try
+            {
+                var ok = AddressTellerReportWriter.WriteToFile(path, report, ReportFormat.Junit, treatDriftAsFailure: false);
+
+                Assert.IsTrue(ok);
+                var doc = XDocument.Parse(File.ReadAllText(path));
+                var driftCase = doc.Root.Elements("testcase").First(tc => tc.Attribute("name").Value == "drift");
+                Assert.IsNull(driftCase.Element("failure"));
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir))
+                    Directory.Delete(tempDir, true);
+            }
+        }
+
+        [Test]
         public void ToJUnitXml_SpecialCharacters_AreEscapedAndRoundTrip()
         {
             var report = new AddressTellerReport();

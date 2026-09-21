@@ -28,25 +28,55 @@ namespace AddressTeller.Editor
             EditorUtility.DisplayDialog(title, message, "OK");
 
         /// <summary>
+        /// Apply 自体を中止すべき「書き込みを見送るべき」問題が <paramref name="issues"/> に1件でもあるかを判定する。
+        /// <see cref="ValidationStatus.DuplicateAddress"/> は書き込みを止めない報告専用ステータス（HasWritableDuplicate=true
+        /// でも実際にはそのアセットへの書き込みは行われる）であり、IsOk=false が従来意味していた
+        /// 「このアセットへの書き込みを見送った」とは異なる。そのため IsOk=false であってもこの判定からは除外し、
+        /// 「重複が1件あるだけでプロジェクト全体の Apply が止まる」ことを防ぐ（design-decisions.md 参照）。
+        /// <see cref="AddressTellerMenu.ApplyWithValidateCLI"/> と共有する。
+        /// </summary>
+        internal static bool HasBlockingIssue(IReadOnlyList<ValidationResult> issues) =>
+            issues.Any(i => !i.IsOk && i.Status != ValidationStatus.DuplicateAddress);
+
+        /// <summary>
+        /// dry-run の結果が「変化なし」（＝ダイアログを出さずに早期リターンしてよい）かどうかを判定する。
+        /// 差分が空で、かつ書き込みを見送るべき問題（IsOk=false）が1件も無ければ true。DuplicateAddress の
+        /// うち管理外同士のもの（HasWritableDuplicate=false、IsOk=true）のような通知専用の issue だけが
+        /// 残っている状態は「変化なし」として扱う——AddressTeller には直しようがない既存の重複だけを理由に、
+        /// 差分ゼロなのに毎回ダイアログを出してユーザーの手を止めるのは重大度分けの意図に反するため。
+        /// </summary>
+        internal static bool HasNoChanges(DryRunResult dryRun) =>
+            dryRun.Diff.IsEmpty && !dryRun.Issues.Any(i => !i.IsOk);
+
+        /// <summary>
         /// dry-run で差分・問題点を計算し、確認ダイアログを経て Apply を実行する。
         /// validateFirst が true の場合は先に ValidateAll を行い、問題があれば中止する。
         /// </summary>
         public static void Run(AddressableAssetSettings settings, bool validateFirst, string title = "AddressTeller - Apply Preview")
         {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
             if (validateFirst)
             {
                 var validateIssues = AddressTellerService.ValidateAll(settings);
 
-                // validateIssues には GroupWillBeCreated（IsOk=true、AutoCreateMissingGroups による作成予定の提示）が
-                // 含まれる場合がある。中止が必要なのは IsOk=false の要素のみ。
-                if (validateIssues.Any(i => !i.IsOk))
+                // validateIssues には GroupWillBeCreated（IsOk=true、AutoCreateMissingGroups による作成予定の提示）や
+                // DuplicateAddress（報告専用、HasBlockingIssue の対象外）が含まれる場合がある。
+                if (HasBlockingIssue(validateIssues))
                 {
                     AddressTellerIssueLogger.LogAll(validateIssues);
 
-                    Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => !i.IsOk)} issue(s).");
+                    Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => !i.IsOk && i.Status != ValidationStatus.DuplicateAddress)} issue(s).");
                     AddressTellerResultWindow.Show(validateIssues, title);
                     return;
                 }
+
+                // 中止しない場合でも、DuplicateAddress は他の issue と一緒でなければここでしかログされない
+                // （この後の dry-run 経由の詳細ウィンドウ・ExecuteApply 完了ログは実際に踏まれるとは限らないため、
+                // 「報告のみ」を確実にするためにここで一度ログしておく）。
+                var duplicateNotices = validateIssues.Where(i => i.Status == ValidationStatus.DuplicateAddress).ToList();
+                if (duplicateNotices.Count > 0)
+                    AddressTellerIssueLogger.LogAll(duplicateNotices);
             }
 
             // 母集合を1回確定し、dry-run と実 Apply で同じ対象パスを使う。
@@ -56,17 +86,25 @@ namespace AddressTeller.Editor
 
             var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths);
 
-            if (dryRun.Diff.IsEmpty && dryRun.Issues.Count == 0)
+            if (HasNoChanges(dryRun))
             {
+                // 差分は無くても通知（Warning 相当）が残っていれば、ここで報告だけはしておく。
+                if (dryRun.Issues.Count > 0)
+                    AddressTellerIssueLogger.LogAll(dryRun.Issues);
                 Debug.Log("[AddressTeller] No changes detected.");
                 return;
             }
 
+            var errorIssueCount = dryRun.Issues.Count(i => !i.IsOk);
+            var noticeIssueCount = dryRun.Issues.Count - errorIssueCount;
+
             var message = $"Added: {dryRun.Diff.Added.Count} / Changed: {dryRun.Diff.Changed.Count}";
             if (dryRun.Diff.Removed.Count > 0)
                 message += $" / ⚠ Removed: {dryRun.Diff.Removed.Count}";
-            if (dryRun.Issues.Count > 0)
-                message += $" / Issues: {dryRun.Issues.Count}";
+            if (errorIssueCount > 0)
+                message += $" / Issues: {errorIssueCount}";
+            if (noticeIssueCount > 0)
+                message += $" / Notices: {noticeIssueCount}";
 
             var result = EditorUtility.DisplayDialogComplex(title, message, "Apply", "Cancel", "Details");
 

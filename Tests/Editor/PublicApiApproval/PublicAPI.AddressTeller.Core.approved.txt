@@ -3,6 +3,7 @@ struct AddressTeller.AddressCandidate
   Property System.String Address { get; }
   Property System.String Description { get; }
   Property System.String GroupName { get; }
+  Property System.Int32 Order { get; }
   Property System.Int32 RuleIndex { get; }
   Property System.String SourceClass { get; }
 

@@ -102,5 +102,126 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(ValidationStatus.InvalidAddress, result.Status);
         }
+
+        // --- Order による優先順位判定 ---
+
+        [Test]
+        public void SpecificOrderWins_BroadRuleOrderIsIgnored()
+        {
+            // 広いルール(Order=100, グループ不在)を先頭(index 0)に、特定ルール(Order=0, グループ実在)を
+            // 2番目に置く。Order 最小の特定ルールが勝つため、広いルールの不在グループは無視され Ok になる。
+            // もし誤って index 0 を採用する実装だった場合は GroupNotFound になり、このテストは失敗する。
+            var resolution = Resolution(
+                new AddressCandidate("BroadGroupMissing", "broadAddr", order: 100),
+                new AddressCandidate("Specific", "specificAddr", order: 0));
+
+            var result = AddressTellerApplier.Validate(Ctx(), resolution, new[] { "Specific" });
+
+            Assert.AreEqual(ValidationStatus.Ok, result.Status);
+        }
+
+        [Test]
+        public void ThreeCandidates_NotAllTied_LowestOrderWins()
+        {
+            // Order = 10, 5, 20 の3候補。最小の 5 が単独のため採用され、そのグループ(G5)だけが
+            // existingGroupNames に含まれていれば Ok になる。
+            var resolution = Resolution(
+                new AddressCandidate("G10", "addr10", order: 10),
+                new AddressCandidate("G5", "addr5", order: 5),
+                new AddressCandidate("G20", "addr20", order: 20));
+
+            var result = AddressTellerApplier.Validate(Ctx(), resolution, new[] { "G5" });
+
+            Assert.AreEqual(ValidationStatus.Ok, result.Status);
+        }
+
+        [Test]
+        public void TwoCandidates_SameNonZeroOrder_ReturnsConflict()
+        {
+            var resolution = Resolution(
+                new AddressCandidate("G1", "addr1", order: 5),
+                new AddressCandidate("G2", "addr2", order: 5));
+
+            var result = AddressTellerApplier.Validate(Ctx(), resolution, new[] { "G1", "G2" });
+
+            Assert.AreEqual(ValidationStatus.ConflictingAddress, result.Status);
+            Assert.AreEqual(2, result.ConflictingCandidates.Count);
+        }
+
+        [Test]
+        public void Conflict_MessageOnlyListsTiedCandidates_NotHigherOrderLosers()
+        {
+            // G1/G2 は Order=0 で同点競合。G3 は Order=10 の同点でない敗者なので、
+            // 衝突メッセージにも ConflictingCandidates にも出てはならない。
+            var resolution = Resolution(
+                new AddressCandidate("G1", "addr1", sourceClass: "RuleA", order: 0),
+                new AddressCandidate("G2", "addr2", sourceClass: "RuleB", order: 0),
+                new AddressCandidate("G3", "addr3", sourceClass: "RuleC", order: 10));
+
+            var result = AddressTellerApplier.Validate(Ctx(), resolution, new[] { "G1", "G2", "G3" });
+
+            Assert.AreEqual(ValidationStatus.ConflictingAddress, result.Status);
+            Assert.AreEqual(2, result.ConflictingCandidates.Count);
+            StringAssert.Contains("RuleA", result.Message);
+            StringAssert.Contains("RuleB", result.Message);
+            StringAssert.DoesNotContain("RuleC", result.Message);
+        }
+
+        // --- Validate(..., out AddressCandidate winner) の内部オーバーロード契約 ---
+        //
+        // Apply/Predict はこのオーバーロードが返す winner をそのまま使い、自分では選び直さない
+        // （AddressTellerApplier.cs 参照）。この契約自体をここで固定する。
+
+        [Test]
+        public void ValidateOutWinner_UniqueWinner_ReturnsWinningCandidate()
+        {
+            var resolution = Resolution(
+                new AddressCandidate("Broad", "broadAddr", order: 100),
+                new AddressCandidate("Specific", "specificAddr", order: 0));
+
+            var result = AddressTellerApplier.Validate(Ctx(), resolution, new[] { "Specific" }, autoCreateMissingGroups: false, out var winner);
+
+            Assert.AreEqual(ValidationStatus.Ok, result.Status);
+            Assert.AreEqual("Specific", winner.GroupName);
+            Assert.AreEqual("specificAddr", winner.Address);
+        }
+
+        [Test]
+        public void ValidateOutWinner_GroupWillBeCreated_ReturnsWinningCandidate()
+        {
+            var resolution = Resolution(new AddressCandidate("Missing", "addr", order: 0));
+
+            var result = AddressTellerApplier.Validate(Ctx(), resolution, new string[0], autoCreateMissingGroups: true, out var winner);
+
+            Assert.AreEqual(ValidationStatus.GroupWillBeCreated, result.Status);
+            Assert.AreEqual("Missing", winner.GroupName);
+            Assert.AreEqual("addr", winner.Address);
+        }
+
+        [Test]
+        public void ValidateOutWinner_Conflict_WinnerIsDefault()
+        {
+            // 同点競合時は勝者を一意に選べないため、winner は default(AddressCandidate) のまま返る
+            // （呼び出し側はこの場合 result.IsOk が false であることを見て winner を読まない前提）。
+            var resolution = Resolution(
+                new AddressCandidate("G1", "addr1", order: 0),
+                new AddressCandidate("G2", "addr2", order: 0));
+
+            var result = AddressTellerApplier.Validate(Ctx(), resolution, new[] { "G1", "G2" }, autoCreateMissingGroups: false, out var winner);
+
+            Assert.AreEqual(ValidationStatus.ConflictingAddress, result.Status);
+            Assert.IsNull(winner.GroupName);
+            Assert.IsNull(winner.Address);
+        }
+
+        [Test]
+        public void ValidateOutWinner_Skipped_WinnerIsDefault()
+        {
+            var result = AddressTellerApplier.Validate(Ctx(), Resolution(), new[] { "G" }, autoCreateMissingGroups: false, out var winner);
+
+            Assert.AreEqual(ValidationStatus.Skipped, result.Status);
+            Assert.IsNull(winner.GroupName);
+            Assert.IsNull(winner.Address);
+        }
     }
 }

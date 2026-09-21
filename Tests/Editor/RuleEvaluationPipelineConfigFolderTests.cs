@@ -90,7 +90,7 @@ namespace AddressTeller.Editor.Tests
                 _settings.CreateOrMoveEntry(guid, group);
 
                 var setup = RuleEvaluationPipeline.BuildSetup(_settings, new AddressRuleBase[] { new DummyManagedGroupRule() });
-                var invalidEntries = AddressTellerApplier.FindInvalidPathManagedEntries(_settings, setup.ManagedGroups, setup.ConfigFolder);
+                var invalidEntries = AddressTellerApplier.FindInvalidPathManagedEntries(_settings, setup.OwnedGroups, setup.ConfigFolder);
 
                 Assert.IsTrue(invalidEntries.Any(e => e.guid == guid),
                     "An entry under the (backslash-declared) ConfigFolder should be detected as invalid once the ConfigFolder is normalized.");

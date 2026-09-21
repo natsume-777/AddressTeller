@@ -274,6 +274,8 @@ namespace AddressTeller.Editor
 
         private void RestoreSelected(SnapshotRestoreMode mode)
         {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
             var item = SelectedItem;
             if (item == null) return;
 

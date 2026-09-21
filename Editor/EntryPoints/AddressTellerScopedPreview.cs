@@ -18,6 +18,8 @@ namespace AddressTeller.Editor
         /// </summary>
         public static void RunRulePreview(AddressableAssetSettings settings, AddressRuleBase rule)
         {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
             var paths = AssetDatabase.GetAllAssetPaths();
             var rules = new[] { rule };
 
@@ -36,6 +38,8 @@ namespace AddressTeller.Editor
         /// </summary>
         public static void RunAssetPreview(AddressableAssetSettings settings, IReadOnlyList<string> selectedPaths)
         {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
             var paths = AddressTellerScopeBuilder.ExpandFolders(
                 selectedPaths,
                 AssetDatabase.IsValidFolder,
@@ -59,6 +63,8 @@ namespace AddressTeller.Editor
         /// </summary>
         public static void RunGroupPreview(AddressableAssetSettings settings, AddressableAssetGroup group)
         {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
             var memberPaths = group.entries
                 .Select(e => AssetDatabase.GUIDToAssetPath(e.guid))
                 .Where(p => !string.IsNullOrEmpty(p))

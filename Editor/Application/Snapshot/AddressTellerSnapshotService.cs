@@ -285,10 +285,10 @@ namespace AddressTeller.Editor
         /// Restore logic dedicated to Undo Last Apply. Removes the entries for the GUIDs in
         /// <paramref name="guidsToRemove"/> first, then runs <see cref="Restore"/> in Exact mode.
         /// The general-purpose <see cref="Restore"/> never removes entries (an intentional design choice
-        /// to avoid accidentally removing entries in unmanaged groups), so entry removal is only
-        /// performed here, in a context like Undo Last Apply where "revert to the state immediately
-        /// before Apply" is unambiguous, and only for GUIDs the caller has already filtered by ownership
-        /// (managedGroups).
+        /// to avoid accidentally removing entries in groups AddressTeller does not own), so entry removal
+        /// is only performed here, in a context like Undo Last Apply where "revert to the state
+        /// immediately before Apply" is unambiguous, and only for GUIDs the caller has already filtered by
+        /// ownership (ownedGroups).
         /// </summary>
         /// <exception cref="ArgumentNullException">
         /// <paramref name="snapshot"/>, <paramref name="settings"/>, or <paramref name="guidsToRemove"/> is null.
@@ -332,67 +332,33 @@ namespace AddressTeller.Editor
             if (settings == null) throw new ArgumentNullException(nameof(settings));
             if (paths == null) throw new ArgumentNullException(nameof(paths));
 
-            var before = Capture(settings);
-            var afterMap = before.Entries.ToDictionary(e => e.Guid);
-
             // 重複 Order の警告は RuleCollector.CollectRules() のキャッシュ構築時（ドメインリロードごとに1回）に
             // 出力済みのため、dry-run では出さない（二重ログ防止）。
-            var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
-            // ApplyAll/RemoveEntriesForDeletedAssets と同じ理由（managedGroups が信頼できなくなる）で、
-            // Configure() に失敗したルールがある場合は Remove の予測（stale クリーンアップ）を行わない。
-            // dry-run のため、スキップ自体のログはここでは出さない（実 Apply 側で1本出れば十分なため）。
-            var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
+            // BuildPredictedRunState は ValidateAll と共有の計算（Capture 起点の afterMap 構築、無効パス掃除、
+            // Predict による AddOrUpdate/Remove の反映）を行う。ValidateAll と別々に実装すると
+            // 「予測される最終状態」の集合が食い違いうるため、ここに集約している
+            // （PredictedRunState の XML doc 参照）。dry-run に progress/cancellation の概念は無いため
+            // NullProgressReporter を渡す（state.Cancelled は常に false になる）。
+            var state = RuleEvaluationPipeline.BuildPredictedRunState(settings, paths, rules, NullProgressReporter.Instance);
 
-            // ApplyAll と同じ理由・同じ条件（CleanupStaleEntries、Configure() 失敗時は停止）で、
-            // 管理対象グループ内の無効パスエントリの予測削除を行う。paths には依存させない
-            // （旧バージョンの残骸は paths に含まれるとは限らないため）。書き込みは行わず、
-            // afterMap から取り除くだけで Diff.Removed に反映される。
-            if (!hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
-            {
-                foreach (var invalidEntry in AddressTellerApplier.FindInvalidPathManagedEntries(settings, setup.ManagedGroups, setup.ConfigFolder))
-                    afterMap.Remove(invalidEntry.guid);
-            }
+            // BuildPredictedSnapshot 独自の契約: GroupWillBeCreated はアセットごとの Issues ではなく
+            // GroupsToCreate（作成予定グループ名の集合）で提示する（ValidateAll は逆にアセットごとの通知として
+            // Issues に含める契約なので、共有元の PredictedRunState.Issues には両方の情報が入っている。
+            // ここでだけ GroupWillBeCreated を取り除く）。
+            var issues = state.Issues.Where(i => i.Status != ValidationStatus.GroupWillBeCreated).ToList();
 
-            var issues = new List<ValidationResult>(setup.ConfigureFailures);
-            var groupsToCreate = new HashSet<string>();
-
-            foreach (var path in paths)
-            {
-                if (AssetFilter.ShouldExcludeByPath(path, setup.ConfigFolder)) continue;
-
-                var ctx = RuleEvaluationPipeline.BuildContext(path);
-                if (ctx == null) continue;
-                if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;
-
-                var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
-                RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
-
-                var prediction = AddressTellerApplier.Predict(ctx, resolution, settings, setup.ExistingGroupNames, setup.ManagedGroups, setup.AutoCreateMissingGroups, hasConfigureFailures);
-
-                switch (prediction.Action)
-                {
-                    case PredictedAction.AddOrUpdate:
-                        afterMap[ctx.Guid] = prediction.PredictedEntry;
-                        break;
-                    case PredictedAction.Remove:
-                        afterMap.Remove(ctx.Guid);
-                        break;
-                    case PredictedAction.NoOp:
-                        break;
-                }
-
-                if (prediction.Validation.Status == ValidationStatus.GroupWillBeCreated)
-                    groupsToCreate.Add(prediction.PredictedEntry.GroupName);
-
-                if (!prediction.Validation.IsOk)
-                    issues.Add(prediction.Validation);
-            }
+            // 別アセット間のアドレス重複を検出する（同一アセットへの複数ルールの衝突とは別軸。
+            // ValidationStatus.DuplicateAddress の XML doc 参照）。AfterMap は Capture(settings) から始まっているため、
+            // このランで AddressTeller が触れなかった既存エントリも含め、予測される最終状態の全件が既に揃っている。
+            issues.AddRange(DuplicateAddressDetector.Detect(
+                state.AfterMap.Select(kvp => new KeyValuePair<string, string>(kvp.Key, kvp.Value.Address)),
+                state.WrittenGuids));
 
             var after = new AddressTellerSnapshot();
-            after.Entries.AddRange(afterMap.Values.OrderBy(e => e.Guid, StringComparer.Ordinal));
+            after.Entries.AddRange(state.AfterMap.Values.OrderBy(e => e.Guid, StringComparer.Ordinal));
 
-            var diff = Diff(before, after);
-            var sortedGroupsToCreate = groupsToCreate.OrderBy(g => g, StringComparer.Ordinal).ToList();
+            var diff = Diff(state.Before, after);
+            var sortedGroupsToCreate = state.GroupsToCreate.OrderBy(g => g, StringComparer.Ordinal).ToList();
             return new DryRunResult(diff, issues, sortedGroupsToCreate, after);
         }
 

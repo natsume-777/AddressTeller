@@ -142,6 +142,34 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(_settings.DefaultGroup.Name, entry.GroupName);
         }
 
+        /// <summary>GroupDefault() かつ Order が既定(0)以外のルール。センチネル再構築後も Order が保持されることの確認用。</summary>
+        private sealed class GroupDefaultWithCustomOrderRule : AddressRuleBase
+        {
+            public override int Order => 7;
+
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.GroupDefault()
+                    .Where(ctx => ctx.Path.StartsWith(StubFolder + "/", System.StringComparison.Ordinal))
+                    .Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
+        [Test]
+        public void GroupDefault_Order_IsPreservedAfterSentinelReconstruction()
+        {
+            // RuleEvaluationPipeline.BuildSetup がセンチネル解決の際に組み直す AddressRuleEntry で、
+            // IncludesFolders と同様に Order も引き継がれていることを確認する
+            // (RuleEvaluationPipeline.cs のセンチネル再構築が Order を運び忘れていないかの回帰テスト)。
+            var rules = new AddressRuleBase[] { new GroupDefaultWithCustomOrderRule() };
+
+            var setup = RuleEvaluationPipeline.BuildSetup(_settings, rules);
+
+            Assert.IsFalse(setup.DefaultGroupUnavailable, "この環境では settings.DefaultGroup が解決できる前提のテスト。");
+            var entry = setup.Entries.Single();
+            Assert.AreEqual(7, entry.Order);
+        }
+
         [Test]
         public void GroupDefault_FollowsDefaultGroupRename()
         {
@@ -184,7 +212,7 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void RuleOverview_GroupDefault_DisplaysAsPlaceholder_ButExcludedFromManagedGroups()
+        public void RuleOverview_GroupDefault_DisplaysAsPlaceholder_ButResolvedInManagedGroups()
         {
             var rules = new AddressRuleBase[] { new GroupDefaultRule() };
 
@@ -196,14 +224,13 @@ namespace AddressTeller.Editor.Tests
                 "builder.Entries 自体はセンチネルを保持する（settings 非依存）。表示変換は DisplayGroupName が担う。");
             Assert.AreEqual("(Default Group)", AddressRuleBuilderImpl.DisplayGroupName(entry.GroupName));
 
-            // BuildRuleOverviewCache は Configure() の生出力のみから構築され、settings に依存しない
-            // （RuleEvaluationPipeline.BuildSetup のような実 DefaultGroup への解決を行わない）。
-            // そのため CollectManagedGroups は BuildSetup の managedGroups 計算（null / 未解決センチネル
-            // を除外）と同じ条件で、GroupDefault() 由来のセンチネルを常に除外する
-            // （実グループ名にもプレースホルダ文字列にも解決されず、Managed Groups には一切現れない）。
-            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache);
-            CollectionAssert.IsEmpty(managedGroups,
-                "GroupDefault() のみを参照するルールは、settings 非依存の概要キャッシュでは解決されないため Managed Groups に現れない。");
+            // BuildRuleOverviewCache 自体は Configure() の生出力のみから構築され settings に依存しないが、
+            // CollectManagedGroups は settings を受け取って RuleEvaluationPipeline.BuildSetup と同じ条件で
+            // センチネルを実 DefaultGroup 名に解決する。GroupDefault() は実際には DefaultGroup を所有・
+            // 削除可能にする（BuildSetup の OwnedGroups 参照）ため、Managed Groups もそれを反映しなければならない。
+            var managedGroups = AddressTellerProjectSettings.CollectManagedGroups(cache, _settings);
+            CollectionAssert.AreEqual(new[] { _settings.DefaultGroup.Name }, managedGroups,
+                "GroupDefault() は settings.DefaultGroup へ解決され、実グループ名で Managed Groups に現れる。");
         }
 
         // --- DefaultGroupUnavailable ---

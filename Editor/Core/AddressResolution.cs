@@ -24,16 +24,25 @@ namespace AddressTeller
         public int RuleIndex { get; }
 
         /// <summary>
+        /// The <see cref="AddressRuleBase.Order"/> of the rule class that produced this candidate. When two
+        /// or more matching rules produce an address for the same asset, the candidate with the lowest
+        /// <see cref="Order"/> wins; it is a conflict only when two or more of the lowest-value candidates
+        /// tie.
+        /// </summary>
+        public int Order { get; }
+
+        /// <summary>
         /// 公開コンストラクタではなく internal（ライブラリ内部のルール評価エンジンからのみ構築される想定）。
         /// テストからは <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute"/> 経由で参照する。
         /// </summary>
-        internal AddressCandidate(string groupName, string address, string sourceClass = null, string description = null, int ruleIndex = 0)
+        internal AddressCandidate(string groupName, string address, string sourceClass = null, string description = null, int ruleIndex = 0, int order = 0)
         {
             GroupName = groupName;
             Address = address;
             SourceClass = sourceClass;
             Description = description;
             RuleIndex = ruleIndex;
+            Order = order;
         }
 
         /// <summary>Identifier string for error messages, e.g. <c>MyRule &gt; "InFolder(Assets/Characters)"</c>.</summary>
@@ -60,10 +69,11 @@ namespace AddressTeller
 
     /// <summary>
     /// 1アセットに対するルール評価結果。
-    /// AddressCandidates が 2 件以上のとき競合。0 件でも Labels が1件以上あればラベルのみルールがマッチしている
-    /// （AddressTellerApplier.Validate の LabelsOnly 判定）。AddressCandidates も Labels も 0 件のときのみ、
-    /// このアセットはどのルールにもマッチしていない（対象外）。
-    /// Labels は全マッチルールから蓄積される。
+    /// AddressCandidates が2件以上のとき、Order が最小の候補が単独ならそれを採用し、最小値の候補が
+    /// 2件以上（同点）のときのみ競合になる（AddressTellerApplier.Validate 参照）。0 件でも Labels が
+    /// 1件以上あればラベルのみルールがマッチしている（AddressTellerApplier.Validate の LabelsOnly 判定）。
+    /// AddressCandidates も Labels も 0 件のときのみ、このアセットはどのルールにもマッチしていない（対象外）。
+    /// Labels は全マッチルールから蓄積される（Order による優先順位の影響を受けない）。
     /// </summary>
     internal sealed class AddressResolution
     {

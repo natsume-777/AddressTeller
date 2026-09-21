@@ -151,11 +151,14 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// exit code を判定する。
+        /// <see cref="AddressTellerMenu.CheckCLI"/> 向けの exit code 判定。
         /// 0 = 差分なし・問題なし、1 = ドリフトあり（Validation エラーなし）、2 = Validation エラーあり。
         /// 実行環境エラー（3）はここでは判定しない（CLI 側で扱う）。
         /// <see cref="DryRunResult.Issues"/> は本来 IsOk=false の結果のみを想定するが、
         /// 任意のリストを受け取れる public 関数であるため <see cref="ValidationResult.IsOk"/> で判定する。
+        /// CheckCLI は読み取り専用（書き込みを行わない）ため、差分の有無自体が意味のある報告内容であり、
+        /// exit code 1（ドリフトあり）を返してよい。書き込みを行う Apply 系の判定は
+        /// <see cref="DetermineApplyExitCode"/> を参照（差分の有無を理由に exit code を変えない）。
         /// </summary>
         public static int DetermineExitCode(DryRunResult result)
         {
@@ -165,18 +168,23 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// Apply/Validate を実際に実行した CLI 向けの exit code 判定。
-        /// <paramref name="dryRun"/> による判定（<see cref="DetermineExitCode(DryRunResult)"/>）を基本としつつ、
-        /// 実行後に得られた issues（<paramref name="executionIssues"/>）にエラー（IsOk=false）が
-        /// 含まれる場合は 2 に昇格させる（dry-run 時点では検出できなかった問題を取り逃さないため）。
+        /// <see cref="AddressTellerMenu.ApplyAllCLI"/> / <see cref="AddressTellerMenu.ApplyWithValidateCLI"/>
+        /// 向けの exit code 判定。実行後に得られた issues（<paramref name="executionIssues"/>）に
+        /// 「書き込みを見送るべき問題」（<see cref="AddressTellerApplyFlow.HasBlockingIssue"/>）が
+        /// 含まれれば 2、なければ 0 を返す。単純に <c>!issue.IsOk</c> では判定しない——
+        /// <see cref="ValidationStatus.DuplicateAddress"/> は <see cref="ValidationResult.HasWritableDuplicate"/>
+        /// が true でも IsOk=false（Error 扱い）になりうるが、書き込みを止めない報告専用ステータスであるため
+        /// exit code には反映しない。この「DuplicateAddress は例外」という判定基準を
+        /// <see cref="AddressTellerApplyFlow.HasBlockingIssue"/> と別々に持つと、どちらか一方だけが
+        /// 将来の変更に追従せず食い違う恐れがあるため、判定そのものをそちらに委譲し1箇所に集約する。
+        /// <see cref="DetermineExitCode(DryRunResult)"/>（CheckCLI 用）と異なり、dry-run の差分の有無は
+        /// 見ない——Apply は実際に変更を書き込んで完了しているため、差分があったこと自体を失敗として
+        /// 扱う（exit code 1 を返す）と、`set -e` の下で正常な適用が毎回失敗になってしまう。
+        /// 差分の検出用途には <see cref="AddressTellerMenu.CheckCLI"/> を使うこと。
         /// </summary>
-        public static int DetermineExitCode(DryRunResult dryRun, IReadOnlyList<ValidationResult> executionIssues)
+        public static int DetermineApplyExitCode(IReadOnlyList<ValidationResult> executionIssues)
         {
-            var exitCode = DetermineExitCode(dryRun);
-            if (exitCode < 2 && executionIssues.Any(issue => !issue.IsOk))
-                exitCode = 2;
-
-            return exitCode;
+            return AddressTellerApplyFlow.HasBlockingIssue(executionIssues) ? 2 : 0;
         }
 
         private static AddressTellerReportEntry ToReportEntry(SnapshotEntry entry) => new()

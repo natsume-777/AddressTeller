@@ -7,7 +7,6 @@ sealed class AddressTeller.Editor.AddressTellerCliArgs
   Property AddressTeller.Editor.ClearScope ClearScope { get; }
   Property System.Boolean ConfirmClear { get; }
   Property System.Collections.Generic.IReadOnlyList<System.String> DisableRuleFullNames { get; }
-  Property System.Boolean FailOnSettingsMismatch { get; }
   Property System.Nullable<AddressTeller.Editor.ReportFormat> ReportFormat { get; }
   Property System.String ReportPath { get; }
 
@@ -72,9 +71,9 @@ sealed class AddressTeller.Editor.AddressTellerReportSummary
   Field System.Int32 Removed
 
 static class AddressTeller.Editor.AddressTellerReportWriter
-  Method static System.String ToJUnitXml(AddressTeller.Editor.AddressTellerReport report)
+  Method static System.String ToJUnitXml(AddressTeller.Editor.AddressTellerReport report, System.Boolean treatDriftAsFailure = true)
   Method static System.String ToJson(AddressTeller.Editor.AddressTellerReport report)
-  Method static System.Boolean WriteToFile(System.String path, AddressTeller.Editor.AddressTellerReport report, AddressTeller.Editor.ReportFormat format)
+  Method static System.Boolean WriteToFile(System.String path, AddressTeller.Editor.AddressTellerReport report, AddressTeller.Editor.ReportFormat format, System.Boolean treatDriftAsFailure = true)
 
 static class AddressTeller.Editor.AddressTellerService
   Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> ApplyAll(System.Collections.Generic.IEnumerable<System.String> paths, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings = null)
@@ -93,8 +92,6 @@ static class AddressTeller.Editor.AddressTellerSettings
   Field static const System.String DefaultSnapshotFolder = "AddressTellerSnapshots"
   Method static System.String GetSnapshotFolderAbsolutePath()
   Method static System.Boolean IsRuleEnabled(System.String ruleClassFullName)
-  Method static System.Boolean ReloadFromDisk()
-  Method static System.Boolean SaveToDisk()
   Method static System.Void SetRuleEnabled(System.String ruleClassFullName, System.Boolean enabled)
   Property static System.Boolean AutoCreateMissingGroups { get; set; }
   Property static System.Boolean AutoSnapshotBeforeApplyAll { get; set; }
@@ -229,6 +226,7 @@ enum AddressTeller.Editor.SnapshotRestoreMode
 sealed class AddressTeller.Editor.ValidationResult
   Property System.Collections.Generic.IReadOnlyList<AddressTeller.AddressCandidate> ConflictingCandidates { get; }
   Property AddressTeller.AssetContext Context { get; }
+  Property System.Boolean HasWritableDuplicate { get; }
   Property System.Boolean IsOk { get; }
   Property System.String Message { get; }
   Property AddressTeller.Editor.ValidationStatus Status { get; }
@@ -236,6 +234,7 @@ sealed class AddressTeller.Editor.ValidationResult
 enum AddressTeller.Editor.ValidationStatus
   EnumMember ConflictingAddress = 3
   EnumMember DefaultGroupUnavailable = 9
+  EnumMember DuplicateAddress = 12
   EnumMember EntryRejectedByAddressables = 11
   EnumMember GroupCreationFailed = 8
   EnumMember GroupNotFound = 4

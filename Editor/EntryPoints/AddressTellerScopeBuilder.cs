@@ -58,7 +58,7 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
-        /// ルールを絞り込んだプレビューの場合のみ、ManagedGroups が縮小される旨の注意文を返す。
+        /// ルールを絞り込んだプレビューの場合のみ、OwnedGroups が縮小される旨の注意文を返す。
         /// ルール絞り込みでない場合は null。
         /// </summary>
         public static string BuildScopeNotice(bool isRuleFiltered)

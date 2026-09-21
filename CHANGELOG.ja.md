@@ -10,106 +10,65 @@
 
 ### Added
 
-- `AddressTellerSettings.SaveToDisk()`: 値が何も変わっていない場合でも、メモリ上の現在の設定値を
-  `ProjectSettings/AddressTellerSettings.asset` へ無条件に書き込む。各プロパティの setter は値変更時に
-  自動で永続化するが、代入値が現在値と同じ場合は書き込みを省略する。このため、ファイルとメモリ上の値が
-  何らかの理由でずれてしまった場合（ファイルの読み込みに失敗した、Editor 起動中にファイルがエディタ外で
-  書き換えられた、等）、公開APIだけでは復旧できなかった。書き込みの検証は、ファイルの内容を、同じ設定を
-  再シリアライズした結果と比較することで行う。この比較が一致しない場合、設定の再シリアライズ自体に
-  失敗した場合、またはファイルの書き込み・読み込みに失敗した場合（書き込み・読み取り権限が無い等）は、
-  エラーログを出したうえで `false` を返す。
-- `AddressTellerSettings.ReloadFromDisk()`: 現在メモリ上にある設定オブジェクトを破棄し、Unity 自身に
-  ディスクから作り直させることで `ProjectSettings/AddressTellerSettings.asset` の内容をメモリへ反映する。
-  ディスクへの書き込みは行わない。この呼び出しにより内部の設定オブジェクトの参照そのものが差し替わり、
-  未保存のメモリ上の変更は失われる。ファイルが存在しない、またはアクセスできない場合（初回起動時の
-  正常なケースを含む）はメモリを変更せず `false` を返す。内部の設定オブジェクトの破棄・再生成そのものが
-  想定外の理由で失敗した場合も、エラーログを出したうえで `false` を返す。ファイルは存在するが壊れている・読み込めない
-  場合の結果は、Editor 起動時にそのファイルを読み込んだ場合と同一である——読み込み中に Unity 自身の
-  デシリアライザがパースエラーを Console へ出すことがある（これは AddressTeller ではなく Unity 側が出す
-  ログ）うえ、設定が既定値へフォールバックしうる。この2つを判別する手段がないため、その場合も `true` を返す。
-- 設定ロード診断: Editor セッションにつき1回——同一セッション内でドメインリロードが何度起きても
-  繰り返されない（ドメインリロードをまたいで保持される `SessionState` で管理）——、AddressTeller が
-  `ProjectSettings/AddressTellerSettings.asset` のディスク上の内容と、現在メモリにロードされている設定を
-  再シリアライズした結果を比較する。下記の BREAKING に記載した無言リセットについて、このパッケージが出す
-  唯一のシグナルである——これまでは一切ログが出なかった。この診断は例外を投げない——どの段階で想定外の
-  失敗が起きても、下記の「AddressTeller 側の都合で比較そのものが完了できなかった場合」と同じ扱いになる。
-  この診断がログを一切出さないのは、ファイルがまだ存在しない場合（正常な初回起動）と、比較の結果ファイルが
-  メモリと一致した場合の2つだけで、それ以外は必ず `Debug.LogWarning` を出す。AddressTeller はこれを
-  固定された手順で進める。まず設定ファイルの絶対パスを確定し、次にそのパスでファイルを読み取る——
-  「ファイルが存在しない」旨の例外はここでの正常な初回起動のケース（この時点では何もログしない）で、
-  それ以外の例外はここで、読み取りが「ファイルが存在しない」以外の例外を出した旨（例: 読み取り権限が
-  無い。これはファイルが実際に存在することまでは確認していない）として報告する——以前はこのケースも
-  一切ログが出ず、正常な初回起動と区別がつかなかった。ファイルを読み終えた後になって初めて、
-  AddressTeller はメモリ上の現在の設定を比較用に再シリアライズし、その再シリアライズ結果を自分自身で
-  認識できた場合に限りフィールド値の比較へ進む——進んだ場合は、AddressTeller の抽出規則が認識できる
-  位置にこのバージョンが書き出す設定フィールドが1つも見つからなかった旨（途中で切り詰められた、または
-  解釈できない形式のファイル等）を出す——以前は同じ理由でこのケースも無言だった——か、または（比較できた
-  場合は）差分フィールド（`_postprocessOrder` のような実際のシリアライズ名）を列挙する。これら2つの
-  以前は無言だったケースには、この時点でメモリ上の設定がおそらく既定値のままである場合（Unity 自身の
-  読み込みも同じ理由で失敗していた場合）、`SaveToDisk()`——実際にはプロパティの setter は値変更時にすべて
-  永続化するため、`SaveToDisk()` に限らずどんな設定変更でも——はファイルが現在保持している値をその
-  既定値で上書きしてしまうという注意も添えている。「AddressTeller 側の都合で比較そのものが完了できな
-  かった」は、他の結論がすべて否定された後に初めて確認される単一のフォールバックではない——上記の手順の
-  いくつもの地点で個別に発生しうる。ファイルの場所を特定できなかった場合、読み取りが（ファイル自体では
-  なく）AddressTeller 側のパス組み立てに起因する特定の例外（例えば長すぎるパスや不正な形式のパス）を
-  出した場合、メモリ上の設定を再シリアライズできなかった場合、あるいは再シリアライズ結果を自分自身で
-  認識できなかった場合、のいずれもがこれに当たる——以前はこれらの一部（パスの形状に起因するもの）が
-  ファイル側の問題として扱われる可能性があった。このうち優劣が決まっているのは最後の1つ（再シリアライズ
-  結果を認識できない場合）だけで、これがファイル側の「認識できる設定フィールドが1つも無い」という状態と
-  同時に成立するときは、「ファイルが解釈できない」ではなくこちらが報告される。（上記
-  `SaveToDisk()` の項で説明した一時ファイル後始末失敗時の `Debug.LogWarning` は、この診断も同じ
-  再シリアライズ処理を再利用しているため、まれに同様に出ることがある。）アセットのインポート中
-  （`AssetPostprocessor`）には一切実行されないため、インポートごとの追加コストは無い。この起動時診断は
-  `-batchmode` の CI 実行を含め無条件に実行される。新しいCLIフラグ `-addressTellerFailOnSettingsMismatch`
-  は診断の実行有無ではなく、ファイル側の問題（不一致・読み取り不能・照合不能）を検出したときに実行その
-  ものを失敗させるかどうかだけを制御する。指定時、`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` /
-  `ClearCLI` は他の処理を行う前に同じ結果を確認し、ファイルが不一致・読み取り不能・照合不能のいずれかで
-  あればさらにエラーログを出したうえで exit code 3（既存のコードであり新設していない）で終了する——既に
-  これらの問題がある実行では、同じ内容が起動時警告とCLIエラーの2回ログされるが、比較そのもの（比較用の
-  一時ファイルの書き出し・読み取りを含む）は同一 Editor ドメイン内では1回しか実行されない——このフラグの
-  検査は、比較をやり直すのではなく起動時診断の結果をそのまま再利用する。AddressTeller 側の都合で比較が
-  完了できなかった場合は、このフラグを指定していても実行を失敗させない——ファイル側の問題だと確認できた
-  わけではないため、常に `Debug.LogError` ではなく `Debug.LogWarning`（フラグを指定しない場合と同じ深刻度）
-  となる。この場合、CLI側の検査も起動時診断が既に計算した結果を再利用するだけなので、この場合に限り
-  まったく同じ文面のWarningが起動時とCLIの2回出る——ファイル側の問題が実際にある場合の「起動時Warning
-  ＋CLI側Error」という組み合わせとは異なる。フラグを指定しなくても起動時警告自体は変わらず出る。フラグが
-  変えるのは4つのCLIエントリポイントの exit code の挙動のみである。上記の `SaveToDisk()` /
-  `ReloadFromDisk()` は、成否にかかわらず呼び出しのたびにこのキャッシュを破棄するため、以降の検査は
-  呼び出し前の古い結論ではなく、その呼び出しを踏まえた結果になる。
+- 広いルールを特定のルールで上書きするアドレス記述: `AddressRuleBase.Order` が、2件以上のマッチしたルールが
+  同一アセットへアドレスを発行したときの優先順位も兼ねるようになった。例は
+  [ルールの書き方: アドレスの優先順位と競合](Documentation~/writing-rules.ja.md#評価ルールと挙動) を参照。
+- アセット間のアドレス重複検出: `Validate` / `Apply All`（および `CheckCLI` / `ApplyAllCLI` /
+  `ApplyWithValidateCLI`）が、別々のアセットが同じアドレスに解決された場合を報告するようになった
+  （`ValidationStatus.DuplicateAddress`）。AddressTeller 自身がその重複アドレスのどちらかを
+  このランで書き込む場合はエラー、そうでなければブロックしない通知として扱う。詳しくは
+  [設計上の決定事項: アドレスの優先順位と競合](Documentation~/design-decisions.ja.md#アドレスの優先順位と競合) を参照。
 
 ### Changed
 
-- **BREAKING**: このバージョンより前のどのバージョンの AddressTeller で保存された設定も、
-  `ProjectSettings/AddressTellerSettings.asset` がこのバージョン（以降）で最初に読み込まれた時点で、
-  既定値へリセットされる——このリセット自体には AddressTeller からも Unity 自身のデシリアライザからも
-  警告・エラーの類は一切伴わない。これは実測で確認済み——非既定値を書き込んだ設定
-  ファイル（このバージョンより前のすべてのバージョンが書き出す形式）をこのバージョンで読み込むと、
-  全フィールドが既定値として返ってきた。
-  これは、内部の設定保存用の型（`AddressTellerSettingsAsset`）を `AddressTellerSettings.cs` から独立した
-  ファイル `Editor/Application/AddressTellerSettingsAsset.cs` へ分離したことの副作用である。
-  このバージョン自身が備える設定ロード診断（上記 Added 参照）が、この空白の一部を事後的に埋める。
-  Editor セッションにつき1回、ファイルの内容と実際にメモリへ読み込まれた内容を比較し、食い違うフィールド
-  を列挙した警告を出すため、このバージョン以降の Editor では、このリセットが完全に気付かれないまま
-  進むことはなくなる——ただし、リセットが起きたまさにその瞬間に警告が出るわけではない点には注意。
-  **アップデート前に**、`Project Settings > AddressTeller` 画面で現在の値——インポート時に自動適用する・
-  Postprocessor の実行順序・マッチしなくなったエントリを削除する・存在しないグループを自動作成する・
-  スナップショット保存先フォルダ・Apply実行前に自動スナップショットを保存する・自動スナップショットの
-  保持件数・各ルールクラスの有効/無効状態——を控えておき、アップデート後に再設定すること。
-  このバージョンで読み込まれた後は、ファイルの「型をどう同定するか」というシリアライズ表現が書き換わる。
-  `m_Script` が `{fileID: 0}` から実際の `MonoScript` 参照（`Editor/Application/AddressTellerSettingsAsset.cs`
-  の `.meta` GUID）へ、`m_EditorClassIdentifier` が
-  `AddressTeller.Editor:AddressTeller.Editor:AddressTellerSettingsAsset` から
-  `AddressTeller.Editor::AddressTeller.Editor.AddressTellerSettingsAsset` へ変わる。このファイルは
-  バージョン管理される前提のため（[Settings Asset](Documentation~/compatibility.ja.md#7-settings-asset)
-  参照）、アップデート後最初に保存されるタイミングでこの書き換えが差分として現れ、マージ衝突が起きる
-  可能性がある点に注意。
-  **ダウングレードに関する注記:** この無言のリセットは双方向で起きる。ダウングレードでも、同じ理由——ファイルが表現する型の同定
-  方法が、分割の反対側にあるコードが認識できる形と一致しない——により同じことが起きる。このバージョン
-  （以降）で保存した設定ファイルを、このファイル分割より前のバージョンの AddressTeller で開くと、その
-  旧バージョンは参照を解決できず、同様に警告もエラーもなく既定値へリセットされる（こちらも実測で確認
-  済み）。この分割の前後どちらの方向であれバージョンを移動する必要がある場合は、Unity がファイルを
-  正しく読めることを当てにせず、移動先のバージョンに対応するバージョン管理の履歴から
-  `ProjectSettings/AddressTellerSettings.asset` を復元すること。
+- **BREAKING**: `AddressRuleBase.Order` が、評価順序だけでなくアドレスの優先順位も兼ねるようになった。
+  2件以上のマッチしたルールが同一アセットへアドレスを発行した場合、これまでは常に競合だったが、
+  `Order` が最小のものが採用されるようになった。競合になるのは最小 `Order` のマッチが同点のときのみ。
+  これまで `ConflictingAddress` として書き込まれずに残っていたアセットがあるプロジェクトでは、
+  アップデート後最初の `Apply All` の前に Preview（dry-run）で確認すること——それらのアセットは
+  マッチしたルールのうち最小 `Order` のものに従って書き込まれるようになる（import 時の自動適用が
+  有効な場合はそちら経由でも同様）。
+  [設計上の決定事項: アドレスの優先順位と競合](Documentation~/design-decisions.ja.md#アドレスの優先順位と競合)
+  と [互換性: ルール記述の挙動](Documentation~/compatibility.ja.md#9-ルール記述の挙動) を参照。
+- **BREAKING**: 設定の保存先が `ProjectSettings/AddressTellerSettings.asset` から
+  `ProjectSettings/AddressTellerSettings.json` に変わった。旧 `.asset` ファイルはもう読み込まれない。
+  このバージョンが最初に起動する際、設定は一度だけ既定値にリセットされる——特に、**Auto-apply on import**
+  と **Remove unmatched entries** をどちらかオフにしていた場合、既定値の ON に戻る。アップデート後は
+  `Project Settings > AddressTeller` を確認し、この2項目を含めて値を再設定すること。旧 `.asset` ファイルは
+  もう使われないため削除してよい。詳細は [Settings Asset](Documentation~/compatibility.ja.md#7-settings-asset) を参照。
+- **BREAKING**: 削除に関わる操作すべて——`CleanupStaleEntries`、無効パスエントリの掃除、資産削除時の削除追従、
+  `ClearScope.Managed`（CLI の `-addressTellerClearScope managed` を含む）、`Undo Last Apply` の削除対象
+  フィルタ——の所有権判定の対象グループが、`Group()` で参照しているだけのグループすべてではなく、ルールが
+  `Address()` を宣言しているグループに変わった。いずれも「管理対象」とみなすグループの範囲が狭くなる
+  ——まだ `Address()` を呼んでいない `Group("X")` ルールは、グループ `X` を対象にしなくなる。詳しくは
+  [設計上の決定事項: 削除は資産単位の所有権で判定する](Documentation~/design-decisions.ja.md#削除は資産単位の所有権で判定する)
+  を参照。
+- **BREAKING**: ラベルのみルール（`AnyGroup()`、または `Address()` を呼ばない `Group()` ルール）が、既存
+  エントリの所属グループを問わずラベルを加えるようになった——以前は、そのグループが別のルールの
+  `Group()` で参照されている場合にのみラベルが加わっていた。該当するルールを持つプロジェクトでは、
+  アップデート後最初の `Apply All` の前に Preview（dry-run）で確認すること——これまでそのルールが
+  届かなかったグループのエントリにもラベルが加わるようになる（import 時の自動適用が有効な場合は
+  そちら経由でも同様）。詳しくは [ルールの書き方: AnyGroup](Documentation~/writing-rules.ja.md#anygroup) を参照。
+- **BREAKING**: `ApplyAllCLI` / `ApplyWithValidateCLI` が、差分のある適用完了時に exit code 1 を返さなく
+  なった——適用に成功すれば常に 0 を返す。詳しくは
+  [互換性: Exit Code](Documentation~/compatibility.ja.md#4-exit-code) を参照。
+- **BREAKING**: `ApplyAllCLI` / `ApplyWithValidateCLI` の JUnit レポートが、`drift` testcase に対して
+  drift を `<failure>` として報告しなくなった（上記 exit code の変更と同じ理由——適用に成功した
+  自分自身のレポートで CI ジョブを失敗させてはならない）。`AddressTellerReportWriter.ToJUnitXml` /
+  `WriteToFile` に任意パラメータ `treatDriftAsFailure` を追加した（既定値 `true`。`CheckCLI` の従来
+  挙動と一致）。詳しくは
+  [互換性: レポート出力](Documentation~/compatibility.ja.md#5-レポート出力json--junit-xml) を参照。
+- **BREAKING**: `AddressTellerCliArgs.TryParse` が、未知の `-addressTeller` プレフィックス引数を黙って
+  無視せず、パースエラーとして拒否するようになった。詳しくは
+  [互換性: コマンドライン引数](Documentation~/compatibility.ja.md#3-コマンドライン引数) を参照。
+- `ApplyAllCLI` / `ApplyWithValidateCLI` / `ClearCLI` が、終了する直前に `AssetDatabase.SaveAssets()` を
+  呼ぶようになった。詳しくは
+  [適用と運用: CI 連携](Documentation~/operations.ja.md#ci-連携) を参照。
+- 既存プロジェクトで重複アドレスが既にある場合、`CheckCLI` がこれまで 0 か 1 だったところを 2 で
+  終了するようになることがある。`ApplyAllCLI` / `ApplyWithValidateCLI` / `Apply with Validate` は
+  重複アドレスの有無に関わらず影響を受けない——ログ・レポートに載るのみで、中止や exit code の変化には
+  つながらない。詳しくは
+  [設計上の決定事項: アドレスの優先順位と競合](Documentation~/design-decisions.ja.md#アドレスの優先順位と競合) を参照。
 
 ## [0.5.0] - 2026-09-17
 

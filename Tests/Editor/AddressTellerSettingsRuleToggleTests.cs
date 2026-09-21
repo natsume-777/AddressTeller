@@ -6,7 +6,7 @@ namespace AddressTeller.Editor.Tests
 {
     /// <summary>
     /// AddressTellerSettings のルールクラス単位 On/Off 切り替え（IsRuleEnabled/SetRuleEnabled）を検証する。
-    /// ProjectSettings/AddressTellerSettings.asset への永続化は行われるため、テスト前後で状態を復元する。
+    /// ProjectSettings/AddressTellerSettings.json への永続化は行われるため、テスト前後で状態を復元する。
     /// </summary>
     public class AddressTellerSettingsRuleToggleTests
     {

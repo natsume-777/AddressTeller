@@ -66,13 +66,17 @@ public sealed class GameAddressRules : AddressRuleBase
 }
 ```
 
+なお `ctx.FileNameWithoutExtension` は、別フォルダに同名ファイルがあると同じアドレスになります。`Validate` / `Apply All` はそれをアドレス重複として報告します（[ルールの書き方](Documentation~/writing-rules.ja.md#評価ルールと挙動) を参照）。
+
 `Tools/AddressTeller/Apply All` を実行すると、対象アセットにアドレスとラベルが設定されます。`Apply All` は Addressable エントリ自体の作成・移動も行うため、あらかじめ各アセットを手動で Addressable 化しておく必要はありません。ただし `Characters` グループは事前に存在している必要があります。`Window > Asset Management > Addressables > Groups` で作成しておいてください（存在しないグループ名はエラーになり、既定では自動作成はされません）。
 
-`Where()` の条件が、任せるつもりのないグループのアセットにマッチしない限り、AddressTeller が**エントリを削除したりラベルを足したりする**のは、いずれかのルールが参照しているグループに属するエントリだけです。そのため既存の Addressables 環境に対して、グループ単位で部分的に導入していくこともできます。ただし、ルールに**マッチしたアセットは**現在どのグループに属していても（手動で管理しているグループであっても）無条件にそのルールのグループへ**移動**されるため、`Where()` の範囲は AddressTeller に任せたいアセットに絞ってください。詳しくは [設計上の決定事項](Documentation~/design-decisions.ja.md#削除は資産単位の所有権で判定する) を参照してください。
+`Where()` の条件が、任せるつもりのないグループのアセットにマッチしない限り、AddressTeller が**エントリを削除する**のは、いずれかのルールが `Address()` を宣言しているグループだけです（そのグループ内では、手動で登録したエントリでもどのルールにもマッチしなくなれば削除されます）。そのため既存の Addressables 環境に対して、グループ単位で部分的に導入していくこともできます。ただし、ルールに**マッチしたアセットは**現在どのグループに属していても（手動で管理しているグループであっても）無条件にそのルールのグループへ**移動**されるため、`Where()` の範囲は AddressTeller に任せたいアセットに絞ってください。詳しくは [設計上の決定事項](Documentation~/design-decisions.ja.md#削除は資産単位の所有権で判定する) を参照してください。
 
 既定では `AssetPostprocessor` により、アセットのインポート・移動・削除のたびにルール評価が自動的に再実行されます（インポート時自動適用、既定 ON）。そのため、ルールを定義した後は日常的なアセットインポートだけで自動適用が走ることがあります。これには、どのルールにもマッチしなくなったエントリの削除（`CleanupStaleEntries`、こちらも既定 ON）も含まれます。詳しくは [設計上の決定事項](Documentation~/design-decisions.ja.md#削除は資産単位の所有権で判定する) を参照してください。いずれの設定も Project Settings でオフにできます。適用方法一覧やこれらの設定については [適用と運用](Documentation~/operations.ja.md) を参照してください。
 
 Addressables の DefaultGroup に付与したい場合は `Group("名前")` の代わりに `GroupDefault()` を使えます（DefaultGroup のリネームに追従します）。詳しくは [ルールの書き方](Documentation~/writing-rules.ja.md#groupdefault) を参照してください。
+
+`Order` は優先順位も兼ねます。広いルールに大きい `Order`、特定のルールに小さい `Order` を与えておけば、両方が同じアセットにマッチしたとき特定側のアドレスが採用されます。例は [ルールの書き方: アドレスの優先順位と競合](Documentation~/writing-rules.ja.md#評価ルールと挙動) を参照してください。
 
 ルールクラスを独自の asmdef 内に定義する場合、その asmdef の `references` に `AddressTeller.Core` を追加してください。ルール記述に使う型（`AddressRuleBase` / `IAddressRuleBuilder` / `Match` / `Naming` / `AssetContext`）はすべてこのアセンブリにあります。同じアセンブリから運用系 API（`AddressTellerService` / `ValidationResult` / スナップショット / レポート）も呼ぶ場合に限り、`AddressTeller.Editor` も追加してください。これらは `AddressTeller.Editor` にありますが、シグネチャに Core の型を露出しているため、`AddressTeller.Editor` を参照する場合は必ず `AddressTeller.Core` の参照も必要になります。
 

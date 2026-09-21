@@ -1,122 +1,226 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using UnityEditor;
-using UnityEditorInternal;
 using UnityEngine;
 
 namespace AddressTeller.Editor
 {
     /// <summary>
-    /// AddressTellerSettings の実体。ProjectSettings/AddressTellerSettings.asset に
+    /// AddressTellerSettings の実体。ProjectSettings/AddressTellerSettings.json に JSON として
     /// シリアライズされ、プロジェクトを共有する開発者間でバージョン管理される。
     /// </summary>
-    /// <remarks>
-    /// 不変条件: <c>instance</c> をフィールドにキャッシュしてはならない。
-    /// <see cref="AddressTellerSettings.ReloadFromDisk"/> は「既存インスタンスを破棄してから
-    /// <c>instance</c> に再アクセスさせ、Unity 自身にディスクから読み直させる」方式（破棄→再取得）で
-    /// 実装されており、この呼び出しのたびに <c>instance</c> が指すオブジェクトの参照そのものが
-    /// 差し替わる。呼び出しのたびに <c>instance</c> を引き直さず、取得した参照をフィールドに
-    /// 保持し続けるコード（例えば将来 <c>SerializedObject</c> ベースの Project Settings UI を
-    /// 実装する場合、その生成元となるオブジェクト参照など）は、破棄済みの参照を握り続けることになり
-    /// 破綻する。<see cref="AddressTellerSettings"/> の各プロパティは現在すべて呼び出しのたびに
-    /// <c>instance</c> を引き直しており、この不変条件を満たしている。
-    /// もう一つの不変条件: このクラスに <c>UnityEngine.Object</c> 参照のフィールドを追加してはならない。
-    /// テストのポリューションガード（<c>AddressTellerAddressablesPollutionGuard</c>）はメモリ上の値を
-    /// <c>EditorJsonUtility</c> の JSON ラウンドトリップで復元しており、この方式はオブジェクト参照を
-    /// 含むフィールドを完全には元の状態へ戻せない。ここに <c>UnityEngine.Object</c> 参照フィールドが
-    /// 増えると、その復元漏れにより開発者の未保存の設定値が気づかないうちに壊れうる。
-    /// </remarks>
-    [FilePath("ProjectSettings/AddressTellerSettings.asset", FilePathAttribute.Location.ProjectFolder)]
-    internal sealed class AddressTellerSettingsAsset : ScriptableSingleton<AddressTellerSettingsAsset>
+    internal static class AddressTellerSettingsAsset
     {
-        // 以下の [SerializeField] は現在8個。増減した場合は、この数を前提にしている以下の箇所も
-        // 同時に更新すること: CHANGELOG.md/.ja.md の `Before upgrading` / `アップデート前に` で始まる
-        // チェックリストの項目数（8個）、Documentation~/operations.md/.ja.md の `## Project Settings`
-        // 節（Project Settings 箇条書き・`Auto Safety Snapshot` 箇条書き・ルール有効/無効の段落の3箇所に
-        // 分散しているが、合計で全8フィールドを説明している）、Tests/Editor/AddressTellerSettingsTextDiffTests.cs
-        // の ComparableFieldCount == 8 ゴールデン。
-        [SerializeField] internal bool _cleanupStaleEntries = true;
-        [SerializeField] internal bool _postprocessEnabled = true;
-        [SerializeField] internal string _snapshotFolder = AddressTellerSettings.DefaultSnapshotFolder;
-        [SerializeField] internal bool _autoSnapshotBeforeApplyAll = true;
-        [SerializeField] internal int _autoSnapshotRetention = 10;
-        [SerializeField] internal bool _autoCreateMissingGroups = false;
-        [SerializeField] internal int _postprocessOrder = AddressTellerSettings.DefaultPostprocessOrder;
-        [SerializeField] internal List<string> _disabledRuleClassNames = new();
-
-        /// <summary>変更内容を ProjectSettings/AddressTellerSettings.asset へ書き出す。</summary>
-        internal void SaveChanges() => Save(true);
+        /// <summary>
+        /// このファイルが AddressTeller の設定ファイルであることを示すマーカー値。書き込み時に必ず
+        /// <see cref="Data._marker"/> へ設定する。<see cref="Data._marker"/> にフィールド初期化子を
+        /// 持たせていないのは意図的——JsonUtility.FromJson は、JSON テキストに存在しないキーに対応する
+        /// フィールドをフィールド初期化子の値のまま残す（実測で確認済み）ため、初期化子を与えてしまうと
+        /// マーカー不在（＝AddressTeller の設定ファイルではない、または壊れている）を検出できなくなる。
+        /// </summary>
+        internal const string MarkerValue = "addressteller-settings-v1";
 
         /// <summary>
-        /// 永続化ファイルの絶対パスを返す。GetFilePath() は <see cref="FilePathAttribute"/> の
-        /// <c>filepath</c> をそのまま返す仕様で、本クラスの属性指定（<see cref="FilePathAttribute.Location.ProjectFolder"/>）
-        /// では相対パスになる。一方 <see cref="FilePathAttribute.Location.PreferencesFolder"/> を
-        /// 指定した場合は絶対パスがそのまま返る仕様のため、<see cref="Path.IsPathRooted"/> で分岐して
-        /// おく（本クラスの属性指定を変えた場合にも壊れないようにするための保険であり、Unity 側の
-        /// 将来の仕様変更を見越したものではない）。
+        /// 保存対象の POCO。現在9個（設定8個 + マーカー1個）。増減した場合は
+        /// Documentation~/operations.md/.ja.md の設定一覧表、Documentation~/compatibility.md/.ja.md の
+        /// JSON キー表、Tests/Editor/AddressTellerSettingsPersistenceTests.cs のフィールド数 assert を
+        /// 同時に更新すること。
         /// </summary>
-        internal static string GetAbsoluteFilePath()
+        [Serializable]
+        internal sealed class Data
         {
-            var filePath = GetFilePath();
-            if (Path.IsPathRooted(filePath)) return filePath;
+            // JsonUtility は Unity のシリアライズシステムを経由するため、internal フィールドであっても
+            // [SerializeField] を明示しないとシリアライズ対象にならない（public にしない理由は、
+            // このクラス自体が internal であり外部公開する必要が無いため）。
+            [SerializeField] internal bool _cleanupStaleEntries = true;
+            [SerializeField] internal bool _postprocessEnabled = true;
+            [SerializeField] internal string _snapshotFolder = AddressTellerSettings.DefaultSnapshotFolder;
+            [SerializeField] internal bool _autoSnapshotBeforeApplyAll = true;
+            [SerializeField] internal int _autoSnapshotRetention = 10;
+            [SerializeField] internal bool _autoCreateMissingGroups = false;
+            [SerializeField] internal int _postprocessOrder = AddressTellerSettings.DefaultPostprocessOrder;
+            [SerializeField] internal List<string> _disabledRuleClassNames = new();
 
-            var projectRoot = Path.GetDirectoryName(Application.dataPath);
-            return Path.GetFullPath(Path.Combine(projectRoot, filePath));
+            // マーカー。初期化子を持たせない（クラス remarks 参照）。
+            [SerializeField] internal string _marker;
+        }
+
+        private static Data s_data = new();
+
+        /// <summary>
+        /// 直近の <see cref="EnsureLoaded"/> 呼び出しでファイルを実際に読み込んだ時点の
+        /// (更新日時, サイズ)。null は「まだ一度もファイルから読み込んでいない」
+        /// （ファイル不在、またはドメインリロード直後で未読込）ことを表す。
+        /// </summary>
+        private static (DateTime lastWriteUtc, long length)? s_loadedStamp;
+
+        /// <summary>
+        /// このドメインで <see cref="Current"/> 経由の遅延ロードを既に試みたかどうか。
+        /// <see cref="EnsureLoaded"/> を明示的に呼ぶバッチ入口を経由しない読み取り（例えば利用者が
+        /// <c>AddressTellerService</c> の公開 API を独自のエディタ拡張から直接呼ぶ経路）でも、
+        /// ドメインリロード直後の初回アクセスでは設定ファイルの内容を反映させるためのフラグ。
+        /// </summary>
+        private static bool s_attemptedInitialLoadThisDomain;
+
+        /// <summary>
+        /// テスト用シーム。設定ファイルの絶対パスを差し替える。null なら既定のプロジェクトパスを使う。
+        /// AddressTellerAddressablesPollutionGuard（Tests/Editor 配下の [SetUpFixture]）がテスト実行中
+        /// だけ一時フォルダへ切り替えることで、テストが本番の ProjectSettings/AddressTellerSettings.json
+        /// に一切触れないようにする（AddressTellerApplyFlow.s_notifyApplyAborted と同じ
+        /// 「テスト用シーム」の考え方）。
+        /// </summary>
+        internal static string FilePathOverride;
+
+        /// <summary>設定ファイルの絶対パス。<see cref="FilePathOverride"/> が優先される。</summary>
+        internal static string AbsoluteFilePath
+        {
+            get
+            {
+                if (FilePathOverride != null) return FilePathOverride;
+
+                var projectRoot = Path.GetDirectoryName(Application.dataPath);
+                return Path.GetFullPath(Path.Combine(projectRoot, "ProjectSettings", "AddressTellerSettings.json"));
+            }
         }
 
         /// <summary>
-        /// 現在メモリ上にある設定（<c>instance</c> が指すオブジェクト）を、プロジェクト内の一意な
-        /// 一時ファイルへそのまま再シリアライズし、書き出されたテキストを返す。既存のオブジェクトを
-        /// <see cref="InternalEditorUtility.SaveToSerializedFileAndForget"/> へ渡すだけであり、
-        /// 逆シリアライズや新規インスタンス生成は一切発生しない（<c>ScriptableSingleton</c> 内部の
-        /// 唯一のインスタンス参照には一切触れない）。
-        /// 一時パスには <see cref="FileUtil.GetUniqueTempPathInProject"/> を使う。
-        /// <see cref="Path.GetTempFileName"/> は呼び出し時点で0バイトの空ファイルを先に作ってしまい、
-        /// <see cref="InternalEditorUtility.SaveToSerializedFileAndForget"/> が（テキストモードでの）
-        /// 既存内容の読み込みに失敗して "File is either empty or corrupted" という Error を出すため
-        /// 使わない（実測確認済み）。
-        /// 読み終えた一時ファイルは必ず削除を試みる。パス取得・書き出し・読み込みのいずれかで例外が
-        /// 発生した場合は自前では例外を投げず null を返す（呼び出し元の
-        /// <see cref="AddressTellerSettings.SaveToDisk"/> は bool を返す契約の公開 API であり、
-        /// 権限不足やディスクフル等の I/O エラーをここから例外として漏らしてはならないため）。
+        /// 現在メモリ上にある設定値。<see cref="EnsureLoaded"/> を経由しないアクセスでも、このドメインで
+        /// 一度も読み込みを試みていなければ、ここで最初の1回だけ遅延ロードを試みる——「バッチ入口で
+        /// 1回」という設計は*再読み込みの契機*の話であり、*最初の1回*まで呼び出し元任せにする必要は
+        /// ない。ドメインリロード直後、まだどのバッチ入口も通っていない状態で
+        /// <c>AddressTellerService</c> の公開 API を直接呼ばれた場合に既定値のまま動いてしまう
+        /// （設定ファイルの内容を無視してしまう）事故を防ぐ。
         /// </summary>
-        internal static string SaveCurrentInstanceToTempFileAndReadText()
+        internal static Data Current
         {
-            string tempPath;
+            get
+            {
+                if (!s_attemptedInitialLoadThisDomain)
+                {
+                    s_attemptedInitialLoadThisDomain = true;
+                    // 失敗時のログはここでは出さない。ここでの責務は「ゲートを経由しない経路でも
+                    // 初回だけは読み込みを試みる」ことに限定し、エラー報告はバッチ入口のゲート
+                    // （AddressTellerSettings.EnsureLoaded()）に一本化する。読み込みに失敗した場合、
+                    // EnsureLoaded(out string) は s_loadedStamp を更新しないため、後で実際にバッチ入口を
+                    // 通った際には同じ失敗が再度検出され、そこで正しく報告される。
+                    EnsureLoaded(out _);
+                }
+                return s_data;
+            }
+        }
+
+        /// <summary>
+        /// メモリ上の値と読み込み状態を初期値へ戻す。<see cref="FilePathOverride"/> の切り替え直後に
+        /// 呼び、次回のアクセス（<see cref="Current"/> 経由の遅延ロード、または明示的な
+        /// <see cref="EnsureLoaded"/> 呼び出し）でファイルを無条件に読み直させる。
+        /// </summary>
+        internal static void ResetInMemoryState()
+        {
+            s_data = new Data();
+            s_loadedStamp = null;
+            s_attemptedInitialLoadThisDomain = false;
+        }
+
+        /// <summary>
+        /// 設定ファイルが前回の読み込みから変化していれば読み直す。判定は (LastWriteTimeUtc, Length) の
+        /// 比較のみで行う（内容のハッシュ等は取らない）。バッチ（Apply/Validate/Preview/Explain/各 CLI
+        /// コマンド/Postprocessor の1回の OnPostprocessAllAssets/Project Settings ページの activate）
+        /// ごとに1回、入口で呼ぶことを想定している。
+        /// ファイルが存在しない場合は初回起動（または読み込み後の削除）として無言で true を返し、
+        /// <see cref="s_data"/> を既定値へ揃える（設計上「ファイル不在＝既定値」で一貫させるため）。
+        /// ファイルは存在するが読めない、またはマーカーが一致しない場合は false を返し、
+        /// <paramref name="error"/> に理由を設定する——この場合 <see cref="s_data"/> は変更しない
+        /// （呼び出し元がこの戻り値を見て処理を中止するため、古い値のまま破壊的操作が進むことはない）。
+        /// </summary>
+        internal static bool EnsureLoaded(out string error)
+        {
+            error = null;
+
+            // AbsoluteFilePath は Application.dataPath から組み立てるライブラリ内部完結の値であり、
+            // FilePathOverride も内部のテスト専用シームで利用者入力ではないため、
+            // ここを利用者向けエラーに変換する防御は設けない（万一の異常はスタックトレースの方が
+            // 情報量が多い）。
+            var info = new FileInfo(AbsoluteFilePath);
+
+            if (!info.Exists)
+            {
+                // ファイルがまだ無い（初回起動、または一度読み込んだ後にファイルが削除された）。
+                // 「ファイル不在＝既定値」で一貫させるため、既存の値を保持せず既定値へ揃える。
+                s_data = new Data();
+                s_loadedStamp = null;
+                return true;
+            }
+
+            var stamp = (info.LastWriteTimeUtc, info.Length);
+            if (s_loadedStamp.HasValue && s_loadedStamp.Value == stamp)
+                return true; // 前回読み込み時から変化なし。再読み込み不要。
+
+            string text;
             try
             {
-                tempPath = FileUtil.GetUniqueTempPathInProject();
+                text = File.ReadAllText(info.FullName);
+            }
+            catch (Exception ex)
+            {
+                error = $"AddressTeller could not read its settings file at '{info.FullName}' " +
+                    $"({ex.GetType().Name}: {ex.Message}).";
+                return false;
+            }
+
+            Data parsed;
+            try
+            {
+                parsed = JsonUtility.FromJson<Data>(text);
             }
             catch (Exception)
             {
-                return null;
+                parsed = null;
             }
+
+            if (parsed == null || parsed._marker != MarkerValue)
+            {
+                error = $"'{info.FullName}' does not look like an AddressTeller settings file, or is " +
+                    "corrupted. Fix or delete it, then reopen Project Settings > AddressTeller to " +
+                    "re-enter your values.";
+                return false;
+            }
+
+            s_data = parsed;
+            s_loadedStamp = stamp;
+            return true;
+        }
+
+        /// <summary>
+        /// 現在メモリにある値を JSON として書き出す。一時ファイル経由の置換（書き込み後のリネーム等）は
+        /// 行わない——設定ファイルは高々1KB程度で、書き込み途中でプロセスが落ちた場合の損失は値を
+        /// 入れ直すだけで済むため、そのための機構は設けない。書き込みで例外が発生した場合はそのまま
+        /// 呼び出し元（各設定プロパティの setter）へ伝播させる。
+        /// </summary>
+        internal static void SaveChanges()
+        {
+            s_data._marker = MarkerValue;
+            var path = AbsoluteFilePath;
 
             try
             {
-                InternalEditorUtility.SaveToSerializedFileAndForget(new UnityEngine.Object[] { instance }, tempPath, true);
-                return File.Exists(tempPath) ? File.ReadAllText(tempPath) : null;
+                File.WriteAllText(path, JsonUtility.ToJson(s_data, true));
             }
-            catch (Exception)
+            catch
             {
-                return null;
+                // 書き込みに失敗した時点で s_data は既に呼び出し元（各設定プロパティの setter）が
+                // 新しい値へ書き換え済みだが、ディスク上のファイルはそれを反映できていない
+                // （書き込み前の内容のまま、または中途半端な内容）。スタンプをここで無効化しないと、
+                // 次回の EnsureLoaded() が「前回読み込み時からファイルは変化していない」と誤判定し、
+                // このセッションが終わるまでメモリとディスクの乖離に気づけなくなる。無効化しておけば、
+                // 次回 EnsureLoaded() が必ずファイルの実際の状態を読み直す。
+                s_loadedStamp = null;
+                throw;
             }
-            finally
-            {
-                try
-                {
-                    if (File.Exists(tempPath)) File.Delete(tempPath);
-                }
-                catch (Exception ex)
-                {
-                    // 一時ファイルの削除失敗は戻り値の成否には影響させない（best-effort）。
-                    // Temp フォルダにファイルが残ること自体は致命的ではないが、原因調査の手がかりとして
-                    // 警告だけ残す。
-                    Debug.LogWarning("[AddressTeller] SaveCurrentInstanceToTempFileAndReadText: failed to " +
-                        $"delete the temporary file '{tempPath}' ({ex.GetType().Name}: {ex.Message}).");
-                }
-            }
+
+            // 自分で書いた変更なので、次回 EnsureLoaded が同じ内容を無駄に読み直さないよう
+            // スタンプを更新しておく。
+            var info = new FileInfo(path);
+            s_loadedStamp = (info.LastWriteTimeUtc, info.Length);
         }
     }
 }

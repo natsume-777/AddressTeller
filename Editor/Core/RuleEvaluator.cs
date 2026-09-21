@@ -31,7 +31,7 @@ namespace AddressTeller
                     if (entry.AddressSelector != null)
                     {
                         var address = entry.AddressSelector(context);
-                        candidates.Add(new AddressCandidate(entry.GroupName, address, entry.SourceClass, entry.Description, entry.RuleIndex));
+                        candidates.Add(new AddressCandidate(entry.GroupName, address, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order));
                     }
 
                     foreach (var labelSelector in entry.LabelSelectors)
@@ -73,7 +73,7 @@ namespace AddressTeller
                 {
                     details.Add(new RuleEvaluationDetail(
                         ruleSource, entry.GroupName, entry.Description,
-                        RuleMatchOutcome.Skipped, null, null, "Folder asset; this rule does not call IncludeFolders()."));
+                        RuleMatchOutcome.Skipped, null, null, "Folder asset; this rule does not call IncludeFolders().", entry.Order));
                     continue;
                 }
 
@@ -84,7 +84,7 @@ namespace AddressTeller
                     {
                         details.Add(new RuleEvaluationDetail(
                             ruleSource, entry.GroupName, entry.Description,
-                            RuleMatchOutcome.NotMatched, null, null, null));
+                            RuleMatchOutcome.NotMatched, null, null, null, entry.Order));
                         continue;
                     }
 
@@ -92,7 +92,7 @@ namespace AddressTeller
                     if (entry.AddressSelector != null)
                     {
                         producedAddress = entry.AddressSelector(context);
-                        candidates.Add(new AddressCandidate(entry.GroupName, producedAddress, entry.SourceClass, entry.Description, entry.RuleIndex));
+                        candidates.Add(new AddressCandidate(entry.GroupName, producedAddress, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order));
                     }
 
                     var producedLabels = new List<string>();
@@ -108,14 +108,14 @@ namespace AddressTeller
 
                     details.Add(new RuleEvaluationDetail(
                         ruleSource, entry.GroupName, entry.Description,
-                        RuleMatchOutcome.Matched, producedAddress, producedLabels, null));
+                        RuleMatchOutcome.Matched, producedAddress, producedLabels, null, entry.Order));
                 }
                 catch (Exception ex)
                 {
                     errors.Add(new RuleEvaluationError(ruleSource, ex.Message));
                     details.Add(new RuleEvaluationDetail(
                         ruleSource, entry.GroupName, entry.Description,
-                        RuleMatchOutcome.Errored, null, null, ex.Message));
+                        RuleMatchOutcome.Errored, null, null, ex.Message, entry.Order));
                 }
             }
 

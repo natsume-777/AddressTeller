@@ -57,33 +57,44 @@ Parsed by `AddressTellerCliArgs.TryParse` (source of truth: `Editor/EntryPoints/
 | `-addressTellerDisableRules <names>` | comma-separated rule class full names | empty (no additional exclusions) |
 | `-addressTellerConfirmClear` | presence-only flag (no value) | absent (treated as intentional refusal by `ClearCLI`) |
 | `-addressTellerClearScope <scope>` | `all`, `managed` | `managed` |
-| `-addressTellerFailOnSettingsMismatch` | presence-only flag (no value) | absent (no exit-code failure; the once-per-session startup diagnostic still runs regardless of this flag and may log a warning on its own — see [Project Settings](operations.md#project-settings) in `operations.md`). When present, only a confirmed problem with the settings file itself (mismatch, unreadable, or unparsable) fails the run; a diagnostic that could not complete on AddressTeller's own side never fails the run, with or without this flag. |
 
-Unrecognized arguments are silently ignored — this is itself part of the contract. A future flag can therefore never break a CI invocation that already happens to pass an argument the package doesn't yet recognize; conversely, this package must not start rejecting unknown arguments as an error in a later release.
+`managed` targets the groups AddressTeller owns; see [Design Decisions: Deletions Are Determined by Per-Asset Ownership](design-decisions.md#deletions-are-determined-by-per-asset-ownership) for the current definition of ownership. This document freezes the flag's name and vocabulary, not that definition — a change to what counts as owned is called out in CHANGELOG.md but does not change this section.
+
+An argument not starting with `-addressTeller` is ignored — Unity itself passes many arguments unrelated to this package. An argument that does start with `-addressTeller` but does not match one of the flags above is a parse error (exit code 3): this catches a typo'd flag name (e.g. `-addressTellerRepot`) that would otherwise silently do nothing while looking like it succeeded.
 
 **Non-breaking**: adding a new flag; adding a new accepted value to an existing flag's vocabulary (e.g. a third `-addressTellerClearScope` value).
 
-**Breaking**: renaming a flag; removing a value from a flag's vocabulary; changing what a flag defaults to when omitted.
+**Breaking**: renaming a flag; removing a value from a flag's vocabulary; changing what a flag defaults to when omitted; changing whether an unrecognized `-addressTeller`-prefixed argument is treated as an error.
 
 ### 4. Exit Codes
 
 From `Documentation~/operations.md`.
 
-`ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI`:
+`CheckCLI` (read-only; never writes):
 
 | Exit code | Meaning |
 |---|---|
 | 0 | No drift, no issues |
 | 1 | Drift detected (changes present, no Validation errors) |
 | 2 | Validation errors present |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — the settings file could not be confirmed to match the settings currently in use: it does not match, could not be read, or could not be checked at all) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, or a settings load failure) |
+
+`ApplyAllCLI` / `ApplyWithValidateCLI` (writes on success; exit code does not depend on whether there was drift):
+
+| Exit code | Meaning |
+|---|---|
+| 0 | Applied successfully, regardless of whether there was drift |
+| 2 | Validation errors present |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, or a settings load failure) |
+
+These two methods never return 1: a completed Apply is not a failure just because it changed something. Use `CheckCLI` to detect drift without applying.
 
 `ClearCLI`:
 
 | Exit code | Meaning |
 |---|---|
 | 0 | Clear completed |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `managedGroups` untrustworthy for `scope=managed`, snapshot save failure, or — only when `-addressTellerFailOnSettingsMismatch` is specified — the settings file could not be confirmed to match the settings currently in use: it does not match, could not be read, or could not be checked at all) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `ownedGroups` untrustworthy for `scope=managed`, snapshot save failure, or a settings load failure) |
 | 4 | Rejected because `-addressTellerConfirmClear` was not specified |
 
 Adding a **new** exit code value (for either CLI family) is treated as a **major** change, not minor, even though CI scripts that only check specific known codes wouldn't necessarily break. This is because CI scripts commonly branch with an equality check per known code and treat "anything else" as an unexpected failure category (e.g. `case 0/1/2/3: ... ; default: fail the build`); introducing a new code changes what "anything else" catches even if no existing branch's meaning changes.
@@ -128,9 +139,10 @@ SchemaVersion                                         (System.Int32)
 **JUnit XML** (`AddressTellerReportWriter.ToJUnitXml`):
 
 - `<testsuite name="AddressTeller" tests="..." failures="...">` — the `name` attribute is frozen at `"AddressTeller"`.
-- One `<testcase>` for drift as a whole: `name="drift"`, `classname="AddressTeller.Drift"`.
-- One `<testcase>` per distinct `ValidationStatus` name present among the report's issues: `name="<StatusName>"` (e.g. `"ConflictingAddress"`), `classname="AddressTeller.Validation"`.
+- One `<testcase>` for drift as a whole: `name="drift"`, `classname="AddressTeller.Drift"`. Whether a non-empty `Drift[]` produces a nested `<failure>` on this testcase depends on the `treatDriftAsFailure` parameter the report was written with (see below) — `CheckCLI` writes with it `true` (drift is the thing being detected), `ApplyAllCLI` / `ApplyWithValidateCLI` write with it `false` (the apply already completed successfully, so its own drift is not a failure).
+- One `<testcase>` per distinct `ValidationStatus` name present among the report's issues: `name="<StatusName>"` (e.g. `"ConflictingAddress"`), `classname="AddressTeller.Validation"`. Not affected by `treatDriftAsFailure`.
 - `tests` / `failures` counts and the presence of a nested `<failure>` element follow standard JUnit consumer expectations (a `<testcase>` without `<failure>` passed; with `<failure>` it failed).
+- `treatDriftAsFailure` (`AddressTellerReportWriter.ToJUnitXml` / `WriteToFile`, default `true`): which of the two behaviors above a given call produces. Which CLI entry point passes which value is covered above, not the parameter's default — a future entry point could reasonably need either.
 
 **Consumer obligations**: ignore unknown JSON fields (do not fail on additions); check `SchemaVersion` against the highest version you were built to understand and treat higher as unsupported rather than guessing at the shape.
 
@@ -160,11 +172,11 @@ Tooling that locates the latest auto-snapshot or clear-snapshot by scanning thes
 
 ### 7. Settings Asset
 
-Persisted at `ProjectSettings/AddressTellerSettings.asset` (a `ScriptableSingleton`, `Editor/Application/AddressTellerSettingsAsset.cs`), intended to be checked into version control and shared across a team.
+Persisted at `ProjectSettings/AddressTellerSettings.json` (`Editor/Application/AddressTellerSettingsAsset.cs`), intended to be checked into version control and shared across a team.
 
-**Serialized field names** (all `[SerializeField] internal`, on `AddressTellerSettingsAsset`):
+**JSON keys** (all top-level):
 
-| Field | Type | Default |
+| Key | Type | Default |
 |---|---|---|
 | `_cleanupStaleEntries` | `bool` | `true` |
 | `_postprocessEnabled` | `bool` | `true` |
@@ -172,55 +184,13 @@ Persisted at `ProjectSettings/AddressTellerSettings.asset` (a `ScriptableSinglet
 | `_autoSnapshotBeforeApplyAll` | `bool` | `true` |
 | `_autoSnapshotRetention` | `int` | `10` |
 | `_autoCreateMissingGroups` | `bool` | `false` |
-| `_postprocessOrder` | `int` | `1000` (see below) |
-| `_disabledRuleClassNames` | `List<string>` | empty |
+| `_postprocessOrder` | `int` | `1000` |
+| `_disabledRuleClassNames` | `string[]` | empty |
+| `_marker` | `string` | internal, not user-configurable (see below) |
 
-Renaming any of these fields without a `[FormerlySerializedAs]` pointing at the old name is prohibited — it would silently reset that setting to its default for every project that already has a committed `AddressTellerSettings.asset`, with no error or warning. Changing a field's default value is a **major** (breaking) change, since it changes behavior for projects that never explicitly set the field.
+Renaming any of these keys is prohibited: `JsonUtility` leaves a field at its C# initializer value when the JSON does not contain a matching key, so a rename silently resets that setting to its default for every project that already has a committed `AddressTellerSettings.json`, with no error or warning. Changing a key's default value is a **major** (breaking) change, since it changes behavior for projects that never explicitly set the key.
 
-`_postprocessOrder`'s `0` is reserved as an "unset" sentinel: both an existing asset with the field left at its zero-value default from before this setting existed, and a project that explicitly sets it to `0`, read back as `AddressTellerSettings.DefaultPostprocessOrder` (`1000`). This is a deliberate consequence of the field-rename rule above — the package cannot distinguish "never set" from "explicitly set to 0" in a Unity-serialized `int`, so both are folded into the same fallback.
-
-The file also embeds how `AddressTellerSettingsAsset` itself is identified as a type: its `m_Script` entry is a `MonoScript` reference keyed by the `.meta` GUID of `Editor/Application/AddressTellerSettingsAsset.cs`, and `m_EditorClassIdentifier` additionally embeds the type's full name and assembly name. This has a confirmed practical consequence for every project upgrading across the file split that introduced this: files saved by any version before this file split have `m_Script: {fileID: 0}` (no GUID reference at all) instead of a `MonoScript` reference, and this version's settings storage cannot resolve that form — loading such a file resets every field to its default value, silently (no error or warning; confirmed by testing). See the "Changed" entry for this version in [CHANGELOG.md](../CHANGELOG.md) for the affected settings and the recommended mitigation.
-
-Starting with the version that introduced this diagnostic, a settings load mismatch like the one above
-(or any other drift between the file and what actually loaded into memory) is surfaced by a
-`Debug.LogWarning` logged once per Editor session (see the "Added" entry for that version in
-[CHANGELOG.md](../CHANGELOG.md), and [Project Settings](operations.md#project-settings) /
-[CI Integration](operations.md#ci-integration) in `operations.md` for the full behavior, including the
-`-addressTellerFailOnSettingsMismatch` CLI flag). If you see that warning: it lists the affected fields by
-their serialized name (the same names in the table above); if it says the file was written in a form this
-version cannot read (the diagnostic keys on `m_Script` alone — see the migration case described above,
-where `m_Script` and `m_EditorClassIdentifier` change together, but only `m_Script` decides the wording),
-copy the values it
-reports out of the warning text — the file's own previous values are still sitting on disk unresolved at
-that point, but the next settings change (from any source, including the Project Settings UI) overwrites
-them — and re-enter them under `Project Settings > AddressTeller`; otherwise (the file and memory disagree
-for some other reason, e.g. an external edit or a VCS checkout while the Editor was running), decide which
-side you want to keep and call `AddressTellerSettings.ReloadFromDisk()` or `SaveToDisk()` accordingly (see
-[Project Settings](operations.md#project-settings) in `operations.md` for the full recovery procedure).
-
-That same diagnostic can also log two other kinds of warning that are not a mismatch: one saying reading the
-file raised an exception other than the "file does not exist" kind (for example, no read permission — this
-does not actually confirm the file exists, only that some other exception occurred; this warning has no field
-list, since the file was never opened), and one saying the file was read but none of the settings fields this
-version writes were found in a position AddressTeller's line-based extraction recognizes (for example a
-truncated or otherwise unparsable file — this warning includes the number of characters read, but likewise no
-field list). Neither of these two implies the other diagnostic outcomes above; see
-[Project Settings](operations.md#project-settings) in `operations.md` for what each one means. Each of these
-two states its own applicable follow-up directly in the warning text itself — they are not identical to each
-other (the "could not be read" one points at both `ReloadFromDisk()` and `SaveToDisk()`; the "unparsable" one
-points at `SaveToDisk()` only) — unlike the mismatch case above, there is no separate step-by-step recovery
-procedure for these two beyond what the warning text itself says. A fourth, unrelated warning — that
-AddressTeller could not complete this check at all, on its own side — can also appear; it says nothing about
-the file itself and is not one of the three settings-file outcomes above. It is not a last-resort fallback
-checked only once the other three have been ruled out, either — reading the file is attempted before
-AddressTeller ever tries to re-serialize the in-memory settings for comparison, so a read problem is decided
-first, not this one; this warning can instead result from several different earlier or later failures on
-AddressTeller's own side (failing to locate the file at all, certain path-shaped read exceptions that are
-AddressTeller's own doing rather than the file's, failing to re-serialize the in-memory settings, or that
-re-serialization not producing anything AddressTeller itself recognizes) — see
-[Project Settings](operations.md#project-settings) in `operations.md` for the exact sequence.
-
-Beyond that one-time transition, what would break the reference going forward is losing the `.meta` GUID itself — for example the `.meta` file being deleted, or the `.cs` file being copied or moved outside Unity's AssetDatabase in a way that does not carry its `.meta` along, which causes Unity to generate a new GUID for it. An ordinary in-Editor move or rename of the file keeps the same `.meta` (and therefore the same GUID) and does not have this effect; renaming the type, its namespace, or its assembly is likewise expected to keep resolving correctly as long as the GUID itself stays unchanged. We treat the `.meta` GUID of `Editor/Application/AddressTellerSettingsAsset.cs` as part of this type's compatibility surface going forward and commit to keeping it stable: if it is ever lost or regenerated, the same silent reset-to-defaults failure occurs (see the "Downgrade note" in [CHANGELOG.md](../CHANGELOG.md) for a concrete case that reproduces this, including confirmation that the same silent reset also occurs in the downgrade direction).
+**`_marker`** identifies the file as one AddressTeller itself wrote. A file missing this key, or whose value AddressTeller does not recognize, is rejected outright: AddressTeller logs an error and refuses to run Apply/Validate/Preview/Explain/CLI commands until the file is fixed or replaced (the Project Settings page itself still opens so the file can be fixed from there). The exact string value is an internal implementation detail, not part of this contract — only the presence of a recognized `_marker` matters.
 
 The Project Settings UI itself (`Project Settings > AddressTeller`, registered at provider path `Project/AddressTeller`) is **not** covered — its layout, field ordering, and descriptive text may change freely.
 
@@ -246,13 +216,13 @@ Renaming or removing any of these paths is breaking (documentation, muscle memor
 The following aspects of how `AddressRuleBase` subclasses are collected and evaluated are part of the contract, since a user's rule classes are written against this behavior:
 
 - **Collection**: rule classes are found via reflection across all loaded assemblies (excluding assemblies that reference `nunit.framework`), requiring a non-abstract type with a public parameterless constructor. Open generic types are not filtered out separately — they pass the constructor check but `Activator.CreateInstance` throws for them at instantiation time, so they end up handled the same as a rule class whose constructor throws: skipped and logged as a warning rather than aborting collection.
-- **Order**: rules are evaluated in ascending `Order`; ties are broken deterministically by the rule class's full type name (Ordinal). Duplicate `Order` values across classes produce a warning but are not an error.
-- **Conflicts**: if two or more matching rules call `Address()` for the same asset, this is a conflict (`ValidationStatus.ConflictingAddress`) and neither the address nor any labels are written for that asset — the whole write for that asset is skipped, not just the address.
-- **Label accumulation**: `Label()` calls from every matching rule accumulate on an asset; labels are never implicitly removed by a rule that stops matching (see `CleanupStaleEntries` for the one path that does remove labels, by deleting the whole entry).
+- **Order**: rules are evaluated in ascending `Order`; ties in evaluation order are broken deterministically by the rule class's full type name (Ordinal). `Order` also doubles as the priority used to resolve address conflicts (see **Conflicts** below) — lower values win. Duplicate `Order` values across classes produce a warning, since two rules sharing an `Order` conflict if they ever both produce an address for the same asset.
+- **Conflicts**: when two or more matching rules call `Address()` for the same asset, the candidate with the lowest `Order` wins and its address is written; the higher-`Order` candidates are simply not used. It is a conflict (`ValidationStatus.ConflictingAddress`) — and neither the address nor any labels are written for that asset (the whole write for that asset is skipped, not just the address) — only when two or more of the *lowest-`Order`* candidates tie.
+- **Label accumulation**: `Label()` calls from every matching rule accumulate on an asset, regardless of which group the asset's existing entry belongs to (label writes are not gated by group ownership); labels are never implicitly removed by a rule that stops matching (see `CleanupStaleEntries` for the one path that does remove labels, by deleting the whole entry).
 - **`Where()` / `Address()` / `IncludeFolders()` single-call constraint**: calling any of these a second time on the same rule chain throws `InvalidOperationException`.
 - **`GroupDefault()` resolution**: resolved from `AddressableAssetSettings.DefaultGroup` at evaluation time (not baked in at `Configure()` time), so it follows DefaultGroup renames automatically.
 - **Folders**: a folder asset never reaches a rule's `Where()` (the predicate is not even invoked) unless that rule opts in with `IncludeFolders()`. This keeps existing rules, written with files in mind, from unintentionally matching a folder through a broad `Where` condition.
-- **Stale entry cleanup scope**: when `CleanupStaleEntries` is enabled, cleanup also removes entries in managed groups whose asset path is structurally invalid for an Addressables entry (not just entries no longer matched by any rule) — for example leftovers created by an older AddressTeller version, identified by extension, an `Editor`-named folder, or similar. Entries whose path cannot currently be resolved at all (`AddressableAssetEntry.AssetPath` is empty — e.g. an asset temporarily unavailable due to an unfetched LFS pointer, an in-progress branch switch, or a missing package) are excluded from this check; a genuinely deleted asset is instead handled by the separate deletion-notification path (`RemoveEntriesForDeletedAssets`). This check runs on every managed entry currently in Addressables, independent of which paths were passed to Apply (and its dry-run/Preview).
+- **Stale entry cleanup scope**: when `CleanupStaleEntries` is enabled, cleanup also removes entries in owned groups (see [Design Decisions: Deletions Are Determined by Per-Asset Ownership](design-decisions.md#deletions-are-determined-by-per-asset-ownership)) whose asset path is structurally invalid for an Addressables entry (not just entries no longer matched by any rule) — for example leftovers created by an older AddressTeller version, identified by extension, an `Editor`-named folder, or similar. Entries whose path cannot currently be resolved at all (`AddressableAssetEntry.AssetPath` is empty — e.g. an asset temporarily unavailable due to an unfetched LFS pointer, an in-progress branch switch, or a missing package) are excluded from this check; a genuinely deleted asset is instead handled by the separate deletion-notification path (`RemoveEntriesForDeletedAssets`). This check runs on every owned entry currently in Addressables, independent of which paths were passed to Apply (and its dry-run/Preview).
 
 Adding a new, off-by-default opt-in setting that changes evaluation behavior only when explicitly enabled is non-breaking, since it does not change behavior for projects that don't opt in.
 
@@ -262,7 +232,7 @@ Adding a new, off-by-default opt-in setting that changes evaluation behavior onl
 
 **Why appending a member doesn't break compilation but can break behavior at runtime**: a `switch` statement without a `default` arm compiles and runs fine against a new enum value it doesn't recognize — it just silently does nothing (or falls through, depending on the surrounding code), which is usually the wrong behavior for a status the caller has never seen. This is why appending is minor rather than patch: it is meant to be visible in a changelog and considered by anyone who switches exhaustively over these types, even though it cannot fail a build.
 
-Concretely, `ValidationStatus` currently has: `Ok`, `Skipped`, `LabelsOnly`, `ConflictingAddress`, `GroupNotFound`, `InvalidAddress`, `RuleError`, `GroupWillBeCreated`, `GroupCreationFailed`, `DefaultGroupUnavailable`, `RuleConfigureFailed`, `EntryRejectedByAddressables`. This is the enum most likely to keep growing (it is the package's general-purpose "what happened for this asset" result type), so a `switch` over it is the most important place to have a `default` arm.
+Concretely, `ValidationStatus` currently has: `Ok`, `Skipped`, `LabelsOnly`, `ConflictingAddress`, `GroupNotFound`, `InvalidAddress`, `RuleError`, `GroupWillBeCreated`, `GroupCreationFailed`, `DefaultGroupUnavailable`, `RuleConfigureFailed`, `EntryRejectedByAddressables`, `DuplicateAddress`. This is the enum most likely to keep growing (it is the package's general-purpose "what happened for this asset" result type), so a `switch` over it is the most important place to have a `default` arm.
 
 `[Flags]` is deliberately not used for any of these enums, even though some (`ValidationStatus` in particular) might look combinable. A `ValidationResult` represents exactly one outcome for one asset; using `[Flags]` would imply combinations are meaningful and would also change the JSON/enum-name serialization story (a `[Flags]` `ToString()` can produce comma-joined names for combined values), which is a larger compatibility surface this package does not want to commit to.
 
@@ -275,7 +245,7 @@ Concretely, `ValidationStatus` currently has: `Ok`, `Skipped`, `LabelsOnly`, `Co
 
 ## What Is Not Covered
 
-- `internal` types and members, including ones made visible to test/sample assemblies via `InternalsVisibleTo` — except where explicitly listed above (e.g. the settings asset's serialized field names in [Settings Asset](#7-settings-asset)).
+- `internal` types and members, including ones made visible to test/sample assemblies via `InternalsVisibleTo` — except where explicitly listed above (e.g. the settings file's JSON keys in [Settings Asset](#7-settings-asset)).
 - Log message text, dialog text, window titles/layout, and USS/UI styling.
 - The order of any collection this document doesn't explicitly say is ordered (most public APIs that return collections do document their ordering in XML docs; where they don't, no order is guaranteed).
 - The exact source contents of the sample packages under `Samples~/` (they may be edited for clarity; the APIs they demonstrate are still covered).

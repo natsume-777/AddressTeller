@@ -8,7 +8,7 @@ namespace AddressTeller.Editor
     /// <summary>Scope of entries targeted by a clear operation.</summary>
     public enum ClearScope
     {
-        /// <summary>Targets only entries in groups managed by AddressTeller (groups referenced as GroupName by any rule).</summary>
+        /// <summary>Targets only entries in groups AddressTeller owns (groups where a rule declares Address()).</summary>
         Managed = 0,
 
         /// <summary>Targets every Addressable entry.</summary>

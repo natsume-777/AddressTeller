@@ -270,13 +270,12 @@ namespace AddressTeller.Editor.Tests
                 group.Schemas.Select(s => s.GetType()));
         }
 
-        // --- ValidateAll issues に対する中止判定（H1）---
+        // --- AutoCreateMissingGroups 関連ステータスの IsOk 値そのものの検証 ---
         //
-        // AddressTellerApplyFlow.Run / AddressTellerMenu.ApplyWithValidateCLI は
-        // ValidateAll() の戻り値を `validateIssues.Any(i => !i.IsOk)` で中止判定する。
-        // ValidateAll() の issues には GroupWillBeCreated（IsOk=true、AutoCreateMissingGroups
-        // による作成予定の提示）が情報提供として混在するため、IsOk=true の要素だけでは
-        // 中止してはならない。ここでは ValidationResult のリストに対する判定そのものを検証する。
+        // GroupWillBeCreated は IsOk=true（情報提供）、GroupNotFound は IsOk=false（実際の問題）であることを
+        // 確認する。実際の中止判定（AddressTellerApplyFlow.Run / AddressTellerMenu.ApplyWithValidateCLI が
+        // 共有する判定）そのものは、DuplicateAddress の除外を含めて下の HasBlockingIssue_* が検証する
+        // （このブロックは中止判定のロジックを再実装しない。実装を変えてもテストが追従しない事態を避けるため）。
 
         [Test]
         public void ValidateIssues_OnlyGroupWillBeCreated_DoesNotTriggerAbort()
@@ -317,6 +316,85 @@ namespace AddressTeller.Editor.Tests
             var issues = new List<ValidationResult> { willBeCreated, notFound };
 
             Assert.IsTrue(issues.Any(i => !i.IsOk), "IsOk=false の要素が1件でも含まれれば中止判定は true になるべき。");
+        }
+
+        // --- AddressTellerApplyFlow.HasBlockingIssue に対する判定（H-1）---
+        //
+        // DuplicateAddress は書き込みを止めない報告専用ステータスであり、IsOk=false（HasWritableDuplicate=true）
+        // であっても Apply/Validate 自体を中止する理由にしてはならない（design-decisions.md 参照）。
+        // ここでは AddressTellerApplyFlow.Run / AddressTellerMenu.ApplyWithValidateCLI が共有する
+        // HasBlockingIssue そのものを直接検証する（上の ValidateIssues_* が古い `issues.Any(i => !i.IsOk)` を
+        // 再実装していたことで、実装を変えてもテストが追従しない問題があったため、実物の判定関数を使う）。
+
+        [Test]
+        public void HasBlockingIssue_OnlyManagedDuplicateAddress_ReturnsFalse()
+        {
+            var duplicate = new ValidationResult(null, ValidationStatus.DuplicateAddress, "dup", hasWritableDuplicate: true);
+            Assert.IsFalse(duplicate.IsOk, "前提条件: HasWritableDuplicate=true は IsOk=false のはず。");
+
+            var issues = new List<ValidationResult> { duplicate };
+
+            Assert.IsFalse(AddressTellerApplyFlow.HasBlockingIssue(issues),
+                "DuplicateAddress は IsOk=false であっても、書き込みを止めない報告専用ステータスのため中止理由にしてはならない。");
+        }
+
+        [Test]
+        public void HasBlockingIssue_DuplicateAddressMixedWithRealError_ReturnsTrue()
+        {
+            var duplicate = new ValidationResult(null, ValidationStatus.DuplicateAddress, "dup", hasWritableDuplicate: true);
+            var notFound = AddressTellerApplier.Validate(
+                Ctx("guid-1"), Resolution(new AddressCandidate("Missing", "addr")), ExistingGroupNames(), autoCreateMissingGroups: false);
+
+            var issues = new List<ValidationResult> { duplicate, notFound };
+
+            Assert.IsTrue(AddressTellerApplyFlow.HasBlockingIssue(issues),
+                "DuplicateAddress とは無関係な実際の問題（GroupNotFound）が1件でもあれば中止すべき。");
+        }
+
+        [Test]
+        public void HasBlockingIssue_OnlyUnmanagedDuplicateAddress_ReturnsFalse()
+        {
+            var duplicate = new ValidationResult(null, ValidationStatus.DuplicateAddress, "dup", hasWritableDuplicate: false);
+            Assert.IsTrue(duplicate.IsOk, "前提条件: HasWritableDuplicate=false は IsOk=true のはず。");
+
+            var issues = new List<ValidationResult> { duplicate };
+
+            Assert.IsFalse(AddressTellerApplyFlow.HasBlockingIssue(issues));
+        }
+
+        // --- AddressTellerApplyFlow.HasNoChanges に対する判定（M-6）---
+        //
+        // 差分ゼロでも Warning 相当の issue（IsOk=true。例: 管理外同士の DuplicateAddress）だけが残っている場合、
+        // 「変化なし」として毎回のダイアログ表示を抑止すべきで、Error（IsOk=false）が1件でもあれば
+        // 「変化なし」扱いにしてはならない。
+
+        [Test]
+        public void HasNoChanges_EmptyDiffNoIssues_ReturnsTrue()
+        {
+            var dryRun = new DryRunResult(new SnapshotDiff(), new List<ValidationResult>());
+
+            Assert.IsTrue(AddressTellerApplyFlow.HasNoChanges(dryRun));
+        }
+
+        [Test]
+        public void HasNoChanges_EmptyDiffWarningOnlyIssue_ReturnsTrue()
+        {
+            var warning = new ValidationResult(null, ValidationStatus.DuplicateAddress, "dup", hasWritableDuplicate: false);
+            var dryRun = new DryRunResult(new SnapshotDiff(), new List<ValidationResult> { warning });
+
+            Assert.IsTrue(AddressTellerApplyFlow.HasNoChanges(dryRun),
+                "AddressTeller に直しようが無い通知専用の issue だけなら「変化なし」として扱うべき。");
+        }
+
+        [Test]
+        public void HasNoChanges_EmptyDiffWithRealError_ReturnsFalse()
+        {
+            var notFound = AddressTellerApplier.Validate(
+                Ctx("guid-1"), Resolution(new AddressCandidate("Missing", "addr")), ExistingGroupNames(), autoCreateMissingGroups: false);
+            var dryRun = new DryRunResult(new SnapshotDiff(), new List<ValidationResult> { notFound });
+
+            Assert.IsFalse(AddressTellerApplyFlow.HasNoChanges(dryRun),
+                "書き込みを見送るべき実際の問題（GroupNotFound）が1件でもあれば「変化なし」扱いにしてはならない。");
         }
     }
 }

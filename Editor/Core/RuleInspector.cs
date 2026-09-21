@@ -29,9 +29,10 @@ namespace AddressTeller.Testing
         public static IReadOnlyList<AddressRuleEntry> Collect(AddressRuleBase rule)
         {
             if (rule == null) throw new ArgumentNullException(nameof(rule));
-            // sourceClass には RuleEvaluationPipeline.GetOrderedEntries と同じ値（rule.GetType().Name）を渡す。
-            // ここは意図的に try/catch しない設計のため共通化はせず、値が食い違わないことをコメントで担保する。
-            var builder = new AddressRuleBuilderImpl(rule.GetType().Name);
+            // sourceClass・order には RuleEvaluationPipeline.GetOrderedEntries と同じ値
+            // （rule.GetType().Name, rule.Order）を渡す。ここは意図的に try/catch しない設計のため
+            // 共通化はせず、値が食い違わないことをコメントで担保する。
+            var builder = new AddressRuleBuilderImpl(rule.GetType().Name, rule.Order);
             rule.Configure(builder);
             // AddressRuleBuilderImpl.Entries の宣言型は IReadOnlyList<AddressRuleEntry>（配列を返すのは
             // あくまで実装詳細）なので、無検査キャストせず List にコピーしてから読み取り専用ビューを返す。

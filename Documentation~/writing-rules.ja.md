@@ -7,7 +7,7 @@
 ```csharp
 public abstract class AddressRuleBase
 {
-    public virtual int Order => 0;          // 評価順序。小さいほど先に評価される
+    public virtual int Order => 0;          // 評価順序およびアドレスの優先順位。小さいほど勝つ
     public abstract void Configure(IAddressRuleBuilder rules);
 }
 ```
@@ -32,7 +32,7 @@ rules.Group("グループ名")
   `description` を指定すると、衝突時のエラーメッセージにその説明文が使われます。
 - `Address()` を呼ばなければ、そのグループルールはアドレスを発行しません（ラベル付与だけのルールとして使えます）。
 - `Label()` は**何度でも**呼び出せます。マッチした全ルールのラベルが蓄積されます。
-- 同じ `Configure()` 内で `Group()` を複数回呼び、複数のルールエントリを定義できます。
+- 同じ `Configure()` 内で `Group()` を複数回呼び、複数のルールエントリを定義できます。ただし `Order` はルール**クラス**単位であり `Group()` 呼び出し単位ではないため、同じ `Configure()` 内の複数の `Group()` は必ず同じ `Order` を共有し、同一アセットに対して両方アドレスを発行すれば同点で衝突します（[アドレスの優先順位と競合](#評価ルールと挙動)参照）。優先順位で上書きしたい場合は、別々のクラスに分けて異なる `Order` を与えてください。
 
 ## GroupDefault
 
@@ -47,6 +47,19 @@ rules.GroupDefault()
 
 - DefaultGroup は評価時に `AddressableAssetSettings.DefaultGroup` から解決されるため、**DefaultGroup をリネームしても追従**します（グループ名をコードに書く必要がありません）。
 - `Group("実名")` と `GroupDefault()` が同一の実グループを指している場合も、通常のグループルールと同様に競合検出の対象になります。
+
+## AnyGroup
+
+特定のグループを対象にしない、ラベルのみのルールには `AnyGroup()` を使います——返されるビルダーに `Address()` はありません。
+
+```csharp
+rules.AnyGroup()
+    .Where(ctx => ctx.Path.Contains("/Characters/"))
+    .Label("character");
+```
+
+- `AnyGroup()` はアドレスを一切発行せず、どのグループへもエントリを作成・移動しません。アセットが既に持っているエントリに対して、そのエントリが現在属しているグループを問わずラベルを加えるだけです。これによって AddressTeller がそのグループを所有することにはなりません（[設計上の決定事項: 削除は資産単位の所有権で判定する](design-decisions.ja.md#削除は資産単位の所有権で判定する)参照）。
+- `Where`/`Label`/`IncludeFolders` は `Group()` と同様にチェーンできます。
 
 ## Match / Naming ヘルパー
 
@@ -69,7 +82,7 @@ rules.Group("Characters")
 主なメソッド:
 - `Match.InFolder(string path)` — 指定フォルダ配下のアセットにマッチ
 - `Match.OfType<T>()` — 指定の型（GameObject, Sprite など）にマッチ
-- `Match.Glob(string pattern)` — ワイルドカード（`*.prefab` など）で照合
+- `Match.Glob(string pattern)` — フルパスに対するワイルドカード照合（例: `Assets/**/*.prefab`。`*` は `/` をまたがないため、単に `*.prefab` と書いても、`/` を含まないアセットパスは存在しないので一件もマッチしない。詳しい構文は `Match.Glob` の XML doc を参照）
 - `Match.All()` — 常に真（条件なしルール）
 - `condition.And(otherCondition)` — 条件を AND 合成
 
@@ -145,9 +158,38 @@ rules.Group("Bundles")
 
 ## 評価ルールと挙動
 
-- **評価順序**: 全ルールを `Order` の昇順で評価します。同じ `Order` 値を持つルールクラスが複数ある場合、`Apply All` / `Validate` 実行時に警告が出ます。
-- **アドレスの競合**: マッチしたルールのうち `Address()` を指定したものが2件以上あると **競合エラー**になり、そのアセットへの書き込みは行われません（Apply・Validate 共通）。1件だけマッチした場合にそのアドレスが採用されます。なぜこの挙動にしているかは [設計上の決定事項: アドレスは競合時にエラーにする](design-decisions.ja.md#アドレスは競合時にエラーにする) を参照してください。
+- **評価順序**: 全ルールを `Order` の昇順で評価します。同じ `Order` 値を持つルールクラスが複数ある場合、`Apply All` / `Validate` 実行時に警告が出ます。同じアセットに対してどちらもアドレスを発行した場合は競合になるためです（下記参照）。
+- **アドレスの優先順位と競合**: `Order` は優先順位も兼ねます。マッチしたルールのうち2件以上が同一アセットに対して `Address()` を呼んだ場合、`Order` が最小のものが採用され、そのアドレスが書き込まれます。これが、広いルールを特定のルールで上書きするための標準的な書き方です。
+
+  ```csharp
+  public class DefaultAudioRule : AddressRuleBase
+  {
+      public override int Order => 100; // 広い・優先度低
+
+      public override void Configure(IAddressRuleBuilder rules)
+      {
+          rules.Group("Audio")
+              .Where(ctx => ctx.IsInFolder("Assets/Audio"))
+              .Address(ctx => ctx.FileNameWithoutExtension);
+      }
+  }
+
+  public class BossAudioRule : AddressRuleBase
+  {
+      public override int Order => 0; // 特定・優先度高 — DefaultAudioRule に勝つ
+
+      public override void Configure(IAddressRuleBuilder rules)
+      {
+          rules.Group("Audio/Boss") // このグループは事前に作成しておくこと（AutoCreateMissingGroups は既定OFF）
+              .Where(ctx => ctx.IsInFolder("Assets/Audio/Boss"))
+              .Address(ctx => $"boss/{ctx.FileNameWithoutExtension}");
+      }
+  }
+  ```
+
+  **競合エラー**になるのは、*Order が最小*のマッチしたルールが2件以上で同点だった場合のみです。この場合、そのアセットへの書き込みは行われません（Apply・Validate 共通）。なぜこの挙動にしているかは [設計上の決定事項: アドレスの優先順位と競合](design-decisions.ja.md#アドレスの優先順位と競合) を参照してください。
+- **アセット間のアドレス重複**: 上記の競合は1アセットに対する複数ルール候補の話です。別々のアセットが同じアドレス文字列になってしまうケース——例えば、異なるフォルダにある同名ファイルにそれぞれ `Naming.FileNameWithoutExtension()` を使うルールが適用された場合——はここには含まれません。`Validate` / `Apply All` はこれを別途スキャンし、`ValidationStatus.DuplicateAddress` として報告します。書き込みを止めることはありませんが、重複しているアドレスのどちらかをこのランで AddressTeller 自身が書く場合はエラーとして報告されます。上記の競合との違いは [設計上の決定事項: アドレスの優先順位と競合](design-decisions.ja.md#アドレスの優先順位と競合) を参照してください。
 - **ラベルの蓄積**: `Label()` はモードに関わらず、マッチした全ルールから蓄積されます（複数ラベルが同時に付与されます）。理由は [設計上の決定事項: ラベルは全ルールから蓄積する](design-decisions.ja.md#ラベルは全ルールから蓄積する) を参照してください。
-- **マッチするルールが0件の場合**: そのアセットは対象外としてスキップされます。`CleanupStaleEntries`（[適用と運用](operations.ja.md) を参照）が有効な場合のみ、AddressTeller が管理するグループに残った既存エントリが削除されます。この削除はアドレス・ラベルのいずれも生成しない「真に無マッチ」の場合のみ適用されます。ラベルのみルール（`AnyGroup()` や `Address()` を呼ばない `Group()` ルール）がマッチしている場合はエントリは削除されず、そのラベルが更新されます。このラベルのみのケースでは、既存エントリの address / group は変更されません。そのアセットに対して最後にアドレスルールがマッチした時点の値のまま保持され、管理下グループに属する場合のみラベルが更新されます（管理外グループのエントリには一切触れません）。
+- **マッチするルールが0件の場合**: そのアセットは対象外としてスキップされます。`CleanupStaleEntries`（[適用と運用](operations.ja.md) を参照）が有効な場合のみ、AddressTeller が管理するグループに残った既存エントリが削除されます。この削除はアドレス・ラベルのいずれも生成しない「真に無マッチ」の場合のみ適用されます。ラベルのみルール（`AnyGroup()` や `Address()` を呼ばない `Group()` ルール）がマッチしている場合はエントリは削除されず、そのラベルが更新されます。このラベルのみのケースでは、既存エントリの address / group は変更されません。そのアセットに対して最後にアドレスルールがマッチした時点の値のまま保持されます。ラベルの更新は、既存エントリがどのグループに属していても——`Address()` を宣言しているルールが無いグループであっても——行われます（ラベルの書き込みは加算のみで非破壊であり、所有権では門番しません。[設計上の決定事項: 削除は資産単位の所有権で判定する](design-decisions.ja.md#削除は資産単位の所有権で判定する) 参照）。そのアセットに既存エントリが無い場合は何も作られません——ラベルのみルール単体では新規エントリを作りません。
 - **グループが存在しない場合**: `GroupNotFound` エラーになります。グループの自動作成は行いません。事前に Addressable Groups ウィンドウで作成してください。既定OFFのオプトイン設定**存在しないグループを自動作成する**（`AutoCreateMissingGroups`）を有効にすると、Apply がグループを自動作成するようになります。[Project Settings](operations.ja.md#project-settings) を参照してください。詳しくは [設計上の決定事項: 存在しないグループは作らない（既定）](design-decisions.ja.md#存在しないグループは作らない既定) も参照してください。
-- **ルール内で例外が発生した場合**: そのルールだけが `RuleError` として個別に報告され、他のルール・他のアセットの処理は継続されます。
+- **ルール内で例外が発生した場合**: そのルールだけが `RuleError` として個別に報告され、他のルール・他のアセットの処理は継続されます。その失敗したルールが、あるアセットに対して最も優先度が高い（Order が最小の）マッチだった場合、その候補は評価から単純に欠落し、代わりにより優先度の低いルールのアドレスが採用されます。このとき、そのアセットに対して競合は報告されません。

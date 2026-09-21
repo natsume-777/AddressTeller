@@ -122,9 +122,9 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void LabelsOnly_ExistingEntryInUnmanagedGroup_PredictsNoOp()
+        public void LabelsOnly_ExistingEntryInUnownedGroup_PredictsAddOrUpdate()
         {
-            // Apply 側と対称に、管理外グループのエントリはラベル変更も予測しない(NoOp)。
+            // Apply 側と対称に、ラベル加算の予測は所有権を問わない。既存エントリがあれば AddOrUpdate。
             var entry = _settings.CreateOrMoveEntry("guid-other", _otherGroup);
             entry.SetAddress("ExistingAddress");
             entry.SetLabel("existingLabel", true);
@@ -132,8 +132,11 @@ namespace AddressTeller.Editor.Tests
 
             var prediction = AddressTellerApplier.Predict(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
 
-            Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
+            Assert.AreEqual(PredictedAction.AddOrUpdate, prediction.Action);
             Assert.AreEqual(ValidationStatus.LabelsOnly, prediction.Validation.Status);
+            Assert.AreEqual("ExistingAddress", prediction.PredictedEntry.Address);
+            Assert.AreEqual(_otherGroup.Name, prediction.PredictedEntry.GroupName);
+            CollectionAssert.AreEqual(new[] { "existingLabel", "newLabel" }, prediction.PredictedEntry.Labels);
             Assert.IsNull(prediction.RemovedFromGroup);
         }
 
@@ -204,6 +207,24 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
             Assert.IsNull(prediction.RemovedFromGroup);
+        }
+
+        [Test]
+        public void SpecificOrderWins_PredictsWinnerGroupAndAddress()
+        {
+            // 広い(Order=100)+特定(Order=0) の2候補。Order 最小の特定側が予測にも反映される。
+            var resolution = Resolution(
+                new HashSet<string>(),
+                new AddressCandidate(_managedGroup.Name, "broadAddr", order: 100),
+                new AddressCandidate(_otherGroup.Name, "specificAddr", order: 0));
+            var managedGroups = new HashSet<string> { _managedGroup.Name, _otherGroup.Name };
+
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-priority"), resolution, _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(PredictedAction.AddOrUpdate, prediction.Action);
+            Assert.AreEqual(ValidationStatus.Ok, prediction.Validation.Status);
+            Assert.AreEqual("specificAddr", prediction.PredictedEntry.Address);
+            Assert.AreEqual(_otherGroup.Name, prediction.PredictedEntry.GroupName);
         }
 
         [Test]

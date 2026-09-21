@@ -40,7 +40,8 @@ namespace AddressTeller.Editor.Tests
                 sourceClass,
                 description,
                 ruleIndex,
-                includeFolders
+                includeFolders,
+                order: 0
             );
         }
 

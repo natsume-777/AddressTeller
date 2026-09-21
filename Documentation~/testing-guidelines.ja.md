@@ -7,7 +7,7 @@ AddressTeller のテスト（EditMode）を書く・レビューする際に守�
 
 ## 第1部: 設計が守る不変条件
 
-- **「Project」スコープの設定はプロジェクト配下に永続化する**: `Project Settings` に表示される設定は `ProjectSettings/AddressTellerSettings.asset` のようなプロジェクト配下のファイルに保存し、バージョン管理・チーム共有の対象にする。マシン全体に紐づく保存先（個人のエディタ設定のみが使うもの）には置かない。
+- **「Project」スコープの設定はプロジェクト配下に永続化する**: `Project Settings` に表示される設定は `ProjectSettings/AddressTellerSettings.json` のようなプロジェクト配下のファイルに保存し、バージョン管理・チーム共有の対象にする。マシン全体に紐づく保存先（個人のエディタ設定のみが使うもの）には置かない。
 - **横断処理は結果を返し、握りつぶさない**: `ApplyAll`/`ValidateAll` のようにアセットを横断処理するメソッドは `IReadOnlyList<ValidationResult>` のような結果を必ず呼び出し元に返す。Menu/CLI/Postprocessor などすべての呼び出し側は、返された結果を必ずログ等でユーザーに提示する。
 - **破壊的操作は資産単位の所有権で判定し、既定は安全側にする**: エントリ削除やラベル変更のような不可逆操作は、「そのエントリ・ラベルが AddressTeller によって作成・管理されているか」を資産単位で判定する。所有権の判定が難しい場合、関連する自動削除系オプションの既定値はOFFにする。削除を実行した場合は対象（パス・GUID・理由）を Warning 以上のログで個別に出す。
 - **Fluent API の重複呼び出しは例外にする**: `Where()` のように「複数回呼ぶと意図が曖昧になる」メソッドは、2回目以降の呼び出しで `InvalidOperationException` を投げ、サイレントな上書きを許さない。
@@ -24,6 +24,6 @@ AddressTeller のテスト（EditMode）を書く・レビューする際に守�
 - **`ConfigFolder` を参照するAPIのテストにはテスト用フォルダパスの注入が必要**: `ConfigFolder` を内部で参照するAPI（`ApplyAll`/`ValidateAll` 等）をテストする場合、テスト用のフォルダパスを設定に注入する。`ConfigFolder` を参照しないAPIのみをテストする場合は不要。
 - **グループ生成は静的変更イベントを発火させない**: テスト内でグループを作成する際は `postEvent: false` を指定し、Addressables の静的変更イベントを発火させない。
 - **テストアセンブリ全体の汚染検出ガードを壊さない**: 各テストアセンブリには `AddressTellerAddressablesPollutionGuard`（`[SetUpFixture]`、`Tests/Editor/AddressTellerAddressablesPollutionGuard.cs`）が常設されており、実行前後で本番 Addressables 設定のシリアライズ状態を比較し、差分があれば失敗する。新規テストを追加する際はこのガードを壊さないこと（非永続設定の使用・後始末を徹底する）。
-- **設定の永続化を触るテストは、`TearDown` 終了時点でメモリとディスクが揃っている状態にする**: `AddressTellerSettings.SaveToDisk()` / `ReloadFromDisk()` を検証するテストや、`ProjectSettings/AddressTellerSettings.asset` を直接書き換えるテストは、`TearDown` の終了時点でメモリとディスクの両方を元の状態へ戻し、かつ両者が食い違わない状態にすること。手順はどちらでもよい: 「まずメモリ上の値を元へ戻し、そのあとで `SaveToDisk()` を呼ぶ」でも、「まず元のバイト列をファイルへ書き戻し、そのあとで `ReloadFromDisk()`（または同等の破棄→再取得）でメモリへ反映する」でもよい。どちらか片方だけを復元する（例: 元のバイト列をファイルへ書き戻すだけでメモリ側は古いまま、あるいはその逆）と、もう片方が古いままになり、次の保存または再読み込み（このテストか、他のテストによるもの）で再び汚染されてしまう。
+- **設定の永続化を触るテストは、他のテストへ影響を漏らさない**: 設定ファイルを直接操作するテストは、まず `AddressTellerSettingsAsset.FilePathOverride`（テスト専用シーム）でテスト専用の一時パスへ切り替え、`TearDown` で `FilePathOverride` を元の値へ戻し `AddressTellerSettingsAsset.ResetInMemoryState()` を呼び、作成した一時ファイルを削除すること。`AddressTellerAddressablesPollutionGuard` がテストアセンブリ全体でこのシームを一時パスへ切り替え、終了後に本番ファイルのバイト列をそのまま復元する安全網を備えているが、個々のテストはそれだけに頼らず、自分専用の一時パスを使い後始末まで行うこと。
 
 EditMode テスト実行時、環境要因で2件 skip となるのが正常な状態。

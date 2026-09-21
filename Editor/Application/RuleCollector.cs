@@ -19,7 +19,9 @@ namespace AddressTeller.Editor
         /// <summary>
         /// 全ロード済みアセンブリから収集する。テストアセンブリ（nunit.framework 参照）は除外する。結果はドメインリロードまでキャッシュされる。
         /// キャッシュ初回構築時に <see cref="RuleEvaluationPipeline.WarnOnDuplicateOrders"/> を1回だけ呼び、
-        /// Order 重複の警告を出す（毎 import / 毎走査での重複警告を避けるため）。
+        /// Order 重複の警告を出す（毎 import / 毎走査での重複警告を避けるため）。Order は評価順序であると同時に
+        /// アドレスの優先順位でもあるため、この警告は「同じ Order の2ルールが同一アセットへアドレスを返すと
+        /// 競合になりうる」ことを知らせるもの。
         /// </summary>
         public static IReadOnlyList<AddressRuleBase> CollectRules()
         {

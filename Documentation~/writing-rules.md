@@ -7,7 +7,7 @@
 ```csharp
 public abstract class AddressRuleBase
 {
-    public virtual int Order => 0;          // Evaluation order — lower values are evaluated first
+    public virtual int Order => 0;          // Evaluation order and address priority — lower wins
     public abstract void Configure(IAddressRuleBuilder rules);
 }
 ```
@@ -32,7 +32,7 @@ rules.Group("GroupName")
   Providing a `description` includes it in conflict error messages.
 - If `Address()` is not called, the group rule emits no address (useful for label-only rules).
 - `Label()` can be called **any number of times**. Labels accumulate from all matching rules.
-- `Group()` can be called multiple times within the same `Configure()` to define multiple rule entries.
+- `Group()` can be called multiple times within the same `Configure()` to define multiple rule entries. Note that `Order` is per rule *class*, not per `Group()` call — several `Group()` calls in the same `Configure()` all share the same `Order` and therefore tie if they ever address the same asset (see [Address priority and conflicts](#evaluation-rules-and-behavior)). To let one rule override another by priority, put them in separate classes with different `Order` values.
 
 ## GroupDefault
 
@@ -47,6 +47,19 @@ rules.GroupDefault()
 
 - DefaultGroup is resolved from `AddressableAssetSettings.DefaultGroup` at evaluation time, so **it follows DefaultGroup renames automatically** (no need to hard-code the group name).
 - If `Group("actual name")` and `GroupDefault()` resolve to the same physical group, conflict detection still applies as usual.
+
+## AnyGroup
+
+Use `AnyGroup()` for a label-only rule that doesn't target a specific group — the builder it returns has no `Address()`.
+
+```csharp
+rules.AnyGroup()
+    .Where(ctx => ctx.Path.Contains("/Characters/"))
+    .Label("character");
+```
+
+- `AnyGroup()` never assigns an address and never creates or moves an entry into any group — it only adds labels to an asset's existing entry, in whichever group that entry currently belongs to. It does not make AddressTeller own that group (see [Design Decisions: Deletions Are Determined by Per-Asset Ownership](design-decisions.md#deletions-are-determined-by-per-asset-ownership)).
+- `Where`/`Label`/`IncludeFolders` chain the same way as with `Group()`.
 
 ## Match / Naming Helpers
 
@@ -69,7 +82,7 @@ rules.Group("Characters")
 Key methods:
 - `Match.InFolder(string path)` — matches assets under the specified folder
 - `Match.OfType<T>()` — matches assets of the specified type (GameObject, Sprite, etc.)
-- `Match.Glob(string pattern)` — matches by wildcard pattern (e.g., `*.prefab`)
+- `Match.Glob(string pattern)` — matches by wildcard pattern against the full path (e.g., `Assets/**/*.prefab`; a bare `*.prefab` never matches anything, since `*` doesn't cross `/` and there is no asset path without one — see the XML doc on `Match.Glob` for the full syntax)
 - `Match.All()` — always true (unconditional rule)
 - `condition.And(otherCondition)` — combines conditions with AND
 
@@ -145,9 +158,38 @@ Unit-test `AddressRuleBase` subclasses in isolation using the public `RuleInspec
 
 ## Evaluation Rules and Behavior
 
-- **Evaluation order**: All rules are evaluated in ascending `Order`. A warning is issued during `Apply All` / `Validate` when multiple rule classes share the same `Order` value.
-- **Address conflicts**: If two or more matching rules call `Address()`, a **conflict error** occurs and no write is performed for that asset (applies to both Apply and Validate). Only a single matching rule's address is accepted. See [Design Decisions: Address Conflicts Cause an Error](design-decisions.md#address-conflicts-cause-an-error) for the rationale.
+- **Evaluation order**: All rules are evaluated in ascending `Order`. A warning is issued during `Apply All` / `Validate` when multiple rule classes share the same `Order` value, since two rules sharing an `Order` will conflict if they ever both produce an address for the same asset (see below).
+- **Address priority and conflicts**: `Order` doubles as a priority. When two or more matching rules call `Address()` for the same asset, the one with the lowest `Order` wins and its address is written. This is the supported way to let a narrow rule override a broad one:
+
+  ```csharp
+  public class DefaultAudioRule : AddressRuleBase
+  {
+      public override int Order => 100; // broad, low priority
+
+      public override void Configure(IAddressRuleBuilder rules)
+      {
+          rules.Group("Audio")
+              .Where(ctx => ctx.IsInFolder("Assets/Audio"))
+              .Address(ctx => ctx.FileNameWithoutExtension);
+      }
+  }
+
+  public class BossAudioRule : AddressRuleBase
+  {
+      public override int Order => 0; // narrow, high priority — wins over DefaultAudioRule
+
+      public override void Configure(IAddressRuleBuilder rules)
+      {
+          rules.Group("Audio/Boss") // create this group first — AutoCreateMissingGroups is OFF by default
+              .Where(ctx => ctx.IsInFolder("Assets/Audio/Boss"))
+              .Address(ctx => $"boss/{ctx.FileNameWithoutExtension}");
+      }
+  }
+  ```
+
+  A **conflict error** occurs only when two or more of the *lowest-`Order`* matching rules tie — in that case no write is performed for that asset (applies to both Apply and Validate). See [Design Decisions: Address Priority and Conflicts](design-decisions.md#address-priority-and-conflicts) for the rationale.
+- **Duplicate addresses across assets**: The conflict above is about one asset with multiple rule candidates; it says nothing about two *different* assets ending up with the same address string — for example, two rules both calling `Naming.FileNameWithoutExtension()` on files that happen to share a name in different folders. `Validate` / `Apply All` separately scan for this and report it as `ValidationStatus.DuplicateAddress`; it never blocks a write, but it is reported as an error when AddressTeller itself would write one of the colliding addresses this run. See [Design Decisions: Address Priority and Conflicts](design-decisions.md#address-priority-and-conflicts) for how this differs from the per-asset conflict above.
 - **Label accumulation**: `Label()` accumulates from all matching rules regardless of mode (multiple labels are assigned simultaneously). See [Design Decisions: Labels Accumulate from All Rules](design-decisions.md#labels-accumulate-from-all-rules).
-- **No matching rule**: The asset is skipped. If `CleanupStaleEntries` is enabled (see [Apply & Operations](operations.md)), any existing entries in AddressTeller-managed groups are removed. This removal only applies when *no* rule matches at all (neither an address nor a label). If a label-only rule (e.g. `AnyGroup()` or a `Group()` rule with no `Address()`) still matches, the entry is **not** removed, and its labels are updated on the existing entry instead. In this label-only case, the existing entry's address and group are left unchanged — they keep whatever value was assigned the last time an address rule matched for that asset. Only its labels are updated, and only when the entry is in an AddressTeller-managed group; entries in unmanaged groups are left untouched.
+- **No matching rule**: The asset is skipped. If `CleanupStaleEntries` is enabled (see [Apply & Operations](operations.md)), any existing entries in AddressTeller-managed groups are removed. This removal only applies when *no* rule matches at all (neither an address nor a label). If a label-only rule (e.g. `AnyGroup()` or a `Group()` rule with no `Address()`) still matches, the entry is **not** removed, and its labels are updated on the existing entry instead. In this label-only case, the existing entry's address and group are left unchanged — they keep whatever value was assigned the last time an address rule matched for that asset. Only its labels are updated, and this happens regardless of which group the existing entry belongs to — including a group no rule declares `Address()` for (label writes are additive and are not gated by ownership; see [Design Decisions: Deletions Are Determined by Per-Asset Ownership](design-decisions.md#deletions-are-determined-by-per-asset-ownership)). If the asset has no existing entry at all, nothing is created — a label-only rule never creates an entry by itself.
 - **Group not found**: Results in a `GroupNotFound` error. Groups are not created automatically — create them first in the Addressable Groups window. The opt-in setting **Auto-create missing groups** (`AutoCreateMissingGroups`, default: OFF) makes Apply create the group instead; see [Project Settings](operations.md#project-settings). See also [Design Decisions: Missing Groups Are an Error](design-decisions.md#missing-groups-are-an-error-default).
-- **Exception inside a rule**: Only that rule is reported as `RuleError`; processing continues for other rules and other assets.
+- **Exception inside a rule**: Only that rule is reported as `RuleError`; processing continues for other rules and other assets. If the failing rule was the lowest-`Order` (highest-priority) match for an asset, its candidate is simply absent from evaluation — a lower-priority rule's address is adopted instead, without any conflict being reported for that asset.

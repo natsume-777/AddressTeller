@@ -6,19 +6,19 @@ using UnityEngine;
 namespace AddressTeller.Editor
 {
     /// <summary>
-    /// AddressTeller settings persisted to ProjectSettings/AddressTellerSettings.asset.
+    /// AddressTeller settings persisted to ProjectSettings/AddressTellerSettings.json.
     /// Shared across the project and tracked in version control; these values can be toggled from the
     /// Project Settings UI.
     /// Assigning a property the value it already has is a no-op and does not write the file (each setter
-    /// short-circuits on equality). If the file and the in-memory values have drifted apart, use
-    /// <see cref="SaveToDisk"/> to force a write, or <see cref="ReloadFromDisk"/> to load the file's
-    /// values back into memory.
+    /// short-circuits on equality).
     /// </summary>
     public static class AddressTellerSettings
     {
         /// <summary>
         /// When true (default), ApplyAll removes entries for assets that no longer match any rule, from
-        /// groups managed by AddressTeller (any group referenced as a rule's GroupName).
+        /// groups AddressTeller owns. See the "Deletions Are Determined by Per-Asset Ownership" section
+        /// in design-decisions.md for what counts as owned and what this means for manually registered
+        /// entries.
         /// Deletion is per-entry (<c>RemoveAssetEntry</c>), so both the address and any labels the entry
         /// held are lost. This does not affect labels on entries that remain matched: because labels
         /// accumulate from all rules by design, it is impossible to identify after the fact which rule
@@ -27,13 +27,13 @@ namespace AddressTeller.Editor
         /// </summary>
         public static bool CleanupStaleEntries
         {
-            get => AddressTellerSettingsAsset.instance._cleanupStaleEntries;
+            get => AddressTellerSettingsAsset.Current._cleanupStaleEntries;
             set
             {
-                var asset = AddressTellerSettingsAsset.instance;
-                if (asset._cleanupStaleEntries == value) return;
-                asset._cleanupStaleEntries = value;
-                asset.SaveChanges();
+                var data = AddressTellerSettingsAsset.Current;
+                if (data._cleanupStaleEntries == value) return;
+                data._cleanupStaleEntries = value;
+                AddressTellerSettingsAsset.SaveChanges();
             }
         }
 
@@ -44,13 +44,13 @@ namespace AddressTeller.Editor
         /// </summary>
         public static bool PostprocessEnabled
         {
-            get => AddressTellerSettingsAsset.instance._postprocessEnabled;
+            get => AddressTellerSettingsAsset.Current._postprocessEnabled;
             set
             {
-                var asset = AddressTellerSettingsAsset.instance;
-                if (asset._postprocessEnabled == value) return;
-                asset._postprocessEnabled = value;
-                asset.SaveChanges();
+                var data = AddressTellerSettingsAsset.Current;
+                if (data._postprocessEnabled == value) return;
+                data._postprocessEnabled = value;
+                AddressTellerSettingsAsset.SaveChanges();
             }
         }
 
@@ -67,13 +67,13 @@ namespace AddressTeller.Editor
         /// </summary>
         public static string SnapshotFolder
         {
-            get => AddressTellerSettingsAsset.instance._snapshotFolder;
+            get => AddressTellerSettingsAsset.Current._snapshotFolder;
             set
             {
-                var asset = AddressTellerSettingsAsset.instance;
-                if (asset._snapshotFolder == value) return;
-                asset._snapshotFolder = value;
-                asset.SaveChanges();
+                var data = AddressTellerSettingsAsset.Current;
+                if (data._snapshotFolder == value) return;
+                data._snapshotFolder = value;
+                AddressTellerSettingsAsset.SaveChanges();
             }
         }
 
@@ -128,13 +128,13 @@ namespace AddressTeller.Editor
         /// </summary>
         public static bool AutoSnapshotBeforeApplyAll
         {
-            get => AddressTellerSettingsAsset.instance._autoSnapshotBeforeApplyAll;
+            get => AddressTellerSettingsAsset.Current._autoSnapshotBeforeApplyAll;
             set
             {
-                var asset = AddressTellerSettingsAsset.instance;
-                if (asset._autoSnapshotBeforeApplyAll == value) return;
-                asset._autoSnapshotBeforeApplyAll = value;
-                asset.SaveChanges();
+                var data = AddressTellerSettingsAsset.Current;
+                if (data._autoSnapshotBeforeApplyAll == value) return;
+                data._autoSnapshotBeforeApplyAll = value;
+                AddressTellerSettingsAsset.SaveChanges();
             }
         }
 
@@ -144,14 +144,14 @@ namespace AddressTeller.Editor
         /// </summary>
         public static int AutoSnapshotRetention
         {
-            get => AddressTellerSettingsAsset.instance._autoSnapshotRetention;
+            get => AddressTellerSettingsAsset.Current._autoSnapshotRetention;
             set
             {
-                var asset = AddressTellerSettingsAsset.instance;
+                var data = AddressTellerSettingsAsset.Current;
                 var clamped = Mathf.Max(1, value);
-                if (asset._autoSnapshotRetention == clamped) return;
-                asset._autoSnapshotRetention = clamped;
-                asset.SaveChanges();
+                if (data._autoSnapshotRetention == clamped) return;
+                data._autoSnapshotRetention = clamped;
+                AddressTellerSettingsAsset.SaveChanges();
             }
         }
 
@@ -165,13 +165,13 @@ namespace AddressTeller.Editor
         /// </summary>
         public static bool AutoCreateMissingGroups
         {
-            get => AddressTellerSettingsAsset.instance._autoCreateMissingGroups;
+            get => AddressTellerSettingsAsset.Current._autoCreateMissingGroups;
             set
             {
-                var asset = AddressTellerSettingsAsset.instance;
-                if (asset._autoCreateMissingGroups == value) return;
-                asset._autoCreateMissingGroups = value;
-                asset.SaveChanges();
+                var data = AddressTellerSettingsAsset.Current;
+                if (data._autoCreateMissingGroups == value) return;
+                data._autoCreateMissingGroups = value;
+                AddressTellerSettingsAsset.SaveChanges();
             }
         }
 
@@ -182,14 +182,14 @@ namespace AddressTeller.Editor
         /// are not reflected in the setting.
         /// </summary>
         public static IReadOnlyList<string> DisabledRuleClassNames
-            => AddressTellerSettingsAsset.instance._disabledRuleClassNames.ToArray();
+            => AddressTellerSettingsAsset.Current._disabledRuleClassNames.ToArray();
 
         /// <summary>
         /// Returns whether the given rule class is enabled. Defaults to true (enabled) if it is not
         /// listed in <see cref="DisabledRuleClassNames"/>.
         /// </summary>
         public static bool IsRuleEnabled(string ruleClassFullName)
-            => !AddressTellerSettingsAsset.instance._disabledRuleClassNames.Contains(ruleClassFullName);
+            => !AddressTellerSettingsAsset.Current._disabledRuleClassNames.Contains(ruleClassFullName);
 
         /// <summary>
         /// Default value of <see cref="PostprocessOrder"/>. Set to a comparatively large value so that
@@ -200,174 +200,24 @@ namespace AddressTeller.Editor
         /// <summary>
         /// Value returned by <see cref="AddressTellerPostprocessor.GetPostprocessOrder"/>.
         /// Controls AssetPostprocessor execution order; smaller values run earlier.
-        /// If the field is unset (0) on an existing asset, falls back to <see cref="DefaultPostprocessOrder"/>.
-        /// Explicitly setting 0 is likewise read back as DefaultPostprocessOrder.
         /// </summary>
         public static int PostprocessOrder
         {
-            get
-            {
-                var value = AddressTellerSettingsAsset.instance._postprocessOrder;
-                return value == 0 ? DefaultPostprocessOrder : value;
-            }
+            get => AddressTellerSettingsAsset.Current._postprocessOrder;
             set
             {
-                var asset = AddressTellerSettingsAsset.instance;
-                if (asset._postprocessOrder == value) return;
-                asset._postprocessOrder = value;
-                asset.SaveChanges();
-            }
-        }
-
-        /// <summary>
-        /// Writes the current in-memory settings to ProjectSettings/AddressTellerSettings.asset, even when
-        /// nothing has changed, and verifies the write.
-        /// </summary>
-        /// <remarks>
-        /// Property setters already persist on change, so this is only needed when the file and the
-        /// in-memory values have drifted apart — for example after the file failed to load, or after it
-        /// was edited outside the Editor.
-        /// The in-memory values win: any change made to the file while the Editor was running is
-        /// overwritten. Call <see cref="ReloadFromDisk"/> first if the file is the side you want to keep.
-        /// Returns true if, after writing, the file's contents match a fresh re-serialization of the same
-        /// in-memory settings (this compares serialized text, not deserialized values — it confirms the
-        /// write was not lost, truncated, or partially applied; it does not confirm Unity itself can still
-        /// parse the file back). Returns false, and logs an error, if writing the file, re-serializing the
-        /// settings for the comparison, or reading either file fails (for example, no read/write
-        /// permission), or if that comparison does not match.
-        /// Also discards AddressTeller's cached settings-load diagnostic (used by the once-per-session
-        /// startup check and by <c>-addressTellerFailOnSettingsMismatch</c>) regardless of outcome, so the
-        /// next check reflects this call rather than a stale conclusion from before it.
-        /// </remarks>
-        public static bool SaveToDisk()
-        {
-            try
-            {
-                string diskText;
-                string reserializedText;
-                try
-                {
-                    var asset = AddressTellerSettingsAsset.instance;
-                    asset.SaveChanges();
-                    diskText = File.ReadAllText(AddressTellerSettingsAsset.GetAbsoluteFilePath());
-                    reserializedText = AddressTellerSettingsAsset.SaveCurrentInstanceToTempFileAndReadText();
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError("[AddressTeller] SaveToDisk: writing or verifying " +
-                        $"ProjectSettings/AddressTellerSettings.asset failed ({ex.GetType().Name}: {ex.Message}).");
-                    return false;
-                }
-
-                if (reserializedText == null)
-                {
-                    Debug.LogError("[AddressTeller] SaveToDisk: could not re-serialize the current settings to " +
-                        "a temporary file for verification. This does not necessarily mean the write to " +
-                        "ProjectSettings/AddressTellerSettings.asset itself failed.");
-                    return false;
-                }
-
-                if (reserializedText == diskText) return true;
-
-                Debug.LogError("[AddressTeller] SaveToDisk: the file content read back after writing does not " +
-                    "match a fresh re-serialization of the in-memory settings. " +
-                    "ProjectSettings/AddressTellerSettings.asset may not reflect the current settings.");
-                return false;
-            }
-            finally
-            {
-                // 成功・失敗・例外いずれの経路でも、この呼び出しの後は「診断はこの呼び出しを踏まえた結論を
-                // 出すべき」という前提が変わりうる（成功時はファイルとメモリの関係が変わったかもしれない。
-                // 失敗時でも SaveChanges 自体は走っていたかもしれない）ため、無条件にキャッシュを破棄する。
-                // AddressTellerSettingsLoadDiagnostics.GetOrDiagnoseForThisDomain の XML doc 参照。
-                AddressTellerSettingsLoadDiagnostics.InvalidateDomainCache();
-            }
-        }
-
-        /// <summary>
-        /// Reloads ProjectSettings/AddressTellerSettings.asset from disk into memory.
-        /// </summary>
-        /// <remarks>
-        /// Discards the current in-memory settings object and forces Unity to recreate it, which reads the
-        /// file fresh. Any unsaved in-memory changes are lost. Does not write to disk.
-        /// This changes the identity of the internal settings object; code that has cached a reference to
-        /// it directly (rather than looking it up again after calling this method) would hold a stale,
-        /// destroyed reference — the public API here always looks the object up on each call, so this only
-        /// matters for code that reaches into internal implementation details.
-        /// Because this discards and recreates a Unity object, call it from the main thread, outside of an
-        /// asset import callback or a serialization callback (e.g. <c>ISerializationCallbackReceiver</c>)
-        /// — destroying an object from those contexts is not supported by Unity.
-        /// If the file exists but is corrupted or otherwise unreadable, the result is the same as what
-        /// happens when the Editor itself starts up and reads that same file — which may mean the settings
-        /// reset to their default values, and Unity's own deserializer may log a parse error to the
-        /// Console while doing so (that log comes from Unity, not from this method — this method never
-        /// logs anything on its own, in either the success or failure case). This method cannot
-        /// distinguish a reset-to-defaults outcome from a normal successful reload, so it still returns
-        /// true in that case.
-        /// Returns false, without changing memory, only when the file does not exist or is not accessible
-        /// (e.g. on first run in a project that has never saved this asset, or if the process lacks read
-        /// permission), or if discarding and recreating the internal settings object itself fails
-        /// unexpectedly (in which case an error is also logged).
-        /// Also discards AddressTeller's cached settings-load diagnostic (used by the once-per-session
-        /// startup check and by <c>-addressTellerFailOnSettingsMismatch</c>) regardless of outcome, so the
-        /// next check reflects this call rather than a stale conclusion from before it.
-        /// </remarks>
-        public static bool ReloadFromDisk()
-        {
-            try
-            {
-                // File.Exists は「存在するが読めない」を確実に判別できるとは限らないため、実際に開けるかどうか
-                // で判定する。ファイルが存在しない場合もこの catch に落ちるが、この段階ではログは出さない
-                // （ログが出うるのは、この後 Unity 自身が壊れたファイルを読む場合のみ。XML doc 参照）。
-                // また、開けないファイルをそのまま下の破棄→再取得の経路（Unity 自身の再読み込み処理）へ渡すと、
-                // Editor のメインスレッドが長時間ブロックされる事象を1回の実測で観測した（再現性・原因ともに
-                // 未確認）。ここで事前に弾くことで、その経路へ入ること自体を避けている（この事前チェック自体は、
-                // 上記の観測結果とは独立に、「アクセスできない場合は false を返す」という契約を満たすために
-                // 元々必要なもの）。
-                try
-                {
-                    var path = AddressTellerSettingsAsset.GetAbsoluteFilePath();
-                    using (File.OpenRead(path)) { }
-                }
-                catch (Exception)
-                {
-                    return false;
-                }
-
-                // メモリ上の唯一のインスタンスを破棄してから instance に再アクセスすることで、
-                // ScriptableSingleton にディスクから読み直させる（Unity の内部読み込み経路に委ねる）。
-                // 同じファイルを2個目のオブジェクトとして読む方式は ScriptableSingleton のコンストラクタが
-                // 既存インスタンスの存在を検知して Debug.LogError を出す実装と衝突するため採用しない。
-                // DestroyImmediate / 再アクセスによる instance の再生成（CreateAndLoad 相当）が実際に
-                // どのような条件で例外を投げるかは未実測。ここでは「投げるかどうか」を断定せず、
-                // SaveToDisk() と対称に「投げても false を返す契約を満たす」ことだけを保証する。
-                try
-                {
-                    UnityEngine.Object.DestroyImmediate(AddressTellerSettingsAsset.instance);
-                    _ = AddressTellerSettingsAsset.instance;
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError("[AddressTeller] ReloadFromDisk: discarding and recreating the settings " +
-                        $"object failed unexpectedly ({ex.GetType().Name}: {ex.Message}).");
-                    return false;
-                }
-
-                return true;
-            }
-            finally
-            {
-                // SaveToDisk() と同じ理由で無条件に破棄する（AddressTellerSettingsLoadDiagnostics.
-                // GetOrDiagnoseForThisDomain の XML doc 参照）。
-                AddressTellerSettingsLoadDiagnostics.InvalidateDomainCache();
+                var data = AddressTellerSettingsAsset.Current;
+                if (data._postprocessOrder == value) return;
+                data._postprocessOrder = value;
+                AddressTellerSettingsAsset.SaveChanges();
             }
         }
 
         /// <summary>Enables or disables the given rule class.</summary>
         public static void SetRuleEnabled(string ruleClassFullName, bool enabled)
         {
-            var asset = AddressTellerSettingsAsset.instance;
-            var list = asset._disabledRuleClassNames;
+            var data = AddressTellerSettingsAsset.Current;
+            var list = data._disabledRuleClassNames;
 
             if (enabled)
             {
@@ -379,7 +229,24 @@ namespace AddressTeller.Editor
                 list.Add(ruleClassFullName);
             }
 
-            asset.SaveChanges();
+            AddressTellerSettingsAsset.SaveChanges();
+        }
+
+        /// <summary>
+        /// バッチ（Apply All / Validate / Preview / Explain / 各 CLI コマンド / Postprocessor の1回の
+        /// OnPostprocessAllAssets / Project Settings ページの activate）の入口で呼ぶ共通ゲート。
+        /// 設定ファイルが前回の読み込みから変化していれば読み直し、ファイルはあるが読めない・
+        /// AddressTeller の設定ファイルとして認識できない場合は Error を1本ログして false を返す
+        /// （呼び出し元はこれを見て Apply/Validate/Preview/Explain/CLI の実行を中止すること）。
+        /// ファイルがまだ存在しない場合は無言で true を返す（初回起動として正常）。
+        /// </summary>
+        internal static bool EnsureLoaded()
+        {
+            if (AddressTellerSettingsAsset.EnsureLoaded(out var error))
+                return true;
+
+            Debug.LogError($"[AddressTeller] {error}");
+            return false;
         }
     }
 }

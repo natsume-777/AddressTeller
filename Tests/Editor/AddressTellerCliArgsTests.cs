@@ -255,27 +255,75 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void NoFailOnSettingsMismatchFlag_DefaultsToFalse()
+        public void UnknownAddressTellerFlag_ReturnsErrorContainingFlagName()
         {
-            var args = new[] { "-batchmode", "-quit" };
+            // フラグ名の typo（例: -addressTellerRepot）を、値の typo と対称にエラー扱いする。
+            var args = new[] { "-addressTellerFoo" };
 
             var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
 
-            Assert.IsTrue(ok);
-            Assert.IsNull(error);
-            Assert.IsFalse(result.FailOnSettingsMismatch);
+            Assert.IsFalse(ok);
+            Assert.IsNull(result);
+            StringAssert.Contains("-addressTellerFoo", error);
         }
 
         [Test]
-        public void FailOnSettingsMismatchFlag_SetsFailOnSettingsMismatchTrue()
+        public void NonAddressTellerFlag_IsIgnored()
         {
-            var args = new[] { "-addressTellerFailOnSettingsMismatch" };
+            // "-addressTeller" で始まらない引数は Unity 自身が多数渡すため、無視されなければならない。
+            var args = new[] { "-someUnityFlag" };
 
             var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
 
             Assert.IsTrue(ok);
             Assert.IsNull(error);
-            Assert.IsTrue(result.FailOnSettingsMismatch);
+        }
+
+        [Test]
+        public void UnknownAddressTellerFlag_ErrorListsKnownFlagNames()
+        {
+            // 値の typo 側のエラー（例: "(must be 'json' or 'junit')"）と対称に、
+            // フラグ名の typo でも既知の語彙を提示する。
+            var args = new[] { "-addressTellerFoo" };
+
+            AddressTellerCliArgs.TryParse(args, out _, out var error);
+
+            StringAssert.Contains("-addressTellerReport", error);
+            StringAssert.Contains("-addressTellerClearScope", error);
+        }
+
+        [Test]
+        public void UppercasedAddressTellerPrefix_TypoIsStillDetectedAsError()
+        {
+            // フラグ名の先頭を誤って大文字にする（クラス名 "AddressTeller" の見た目に引きずられがちな typo）
+            // ケース。プレフィックス判定だけ大文字小文字を無視するため、これも黙って無視されず検出される。
+            var args = new[] { "-AddressTellerReport", "report.json" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsFalse(ok, "「成功したように見えて何もしない」が最悪の失敗の仕方であり、これを検出できることが本テストの主眼。");
+            Assert.IsNull(result);
+            StringAssert.Contains("-AddressTellerReport", error);
+        }
+
+        [Test]
+        public void RealisticUnityCommandLine_KnownFlagsParsedAndUnrelatedArgsIgnored()
+        {
+            // 実際の CI 起動に近い引数配列（Unity 自身が渡す引数の間に既知フラグが混ざる想定）で、
+            // 値を取るフラグの「値」自体が誤って未知フラグと判定されないこと、かつ Unity 側の引数が
+            // 素通りすることを合わせて固定する回帰テスト。
+            var args = new[]
+            {
+                "Unity.exe", "-batchmode", "-projectPath", "C:/p", "-executeMethod",
+                "AddressTeller.Editor.AddressTellerMenu.ApplyAllCLI", "-logFile", "-", "-quit",
+                "-hubSessionId", "x", "-accessToken", "y", "-addressTellerReport", "report.json",
+            };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok, error);
+            Assert.IsNotNull(result);
+            Assert.AreEqual("report.json", result.ReportPath);
         }
     }
 }
