@@ -8,6 +8,10 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+---
+
+## [0.6.0] - 2026-09-22
+
 ### Added
 
 - Broad-rule-overridden-by-specific-rule address authoring: `AddressRuleBase.Order` now also acts as a
@@ -70,6 +74,10 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   duplicate either way — it is only ever logged and reported, never a reason to abort or to change
   their exit code. See
   [Design Decisions: Address Priority and Conflicts](Documentation~/design-decisions.md#address-priority-and-conflicts).
+
+### Verified
+
+- EditMode test suite: 656 tests (654 pass / 0 fail / 2 skip), run on Unity 6000.3.8f1 with Addressables 2.8.1. The minimum Addressables requirement remains 2.8.1.
 
 ## [0.5.0] - 2026-09-17
 
