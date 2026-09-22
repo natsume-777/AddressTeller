@@ -106,7 +106,7 @@ namespace AddressTeller.Editor
         /// （同点でない他の候補は含めない。衝突メッセージに無関係な敗者を出さないため）。
         /// <paramref name="candidates"/> は1件以上であること（呼び出し側で Count==0 を別途処理済みの前提）。
         /// 単独勝者の通常ケース（同点なし）では LINQ を一切使わず配列走査のみで確定させ、同点時のみ
-        /// <c>Where().ToList()</c> で実体化する（常設指示9: 毎アセット呼ばれるためアロケーションを避ける）。
+        /// <c>Where().ToList()</c> で実体化する（毎アセット呼ばれる処理のためアロケーションを避ける）。
         /// </summary>
         private static bool TrySelectWinningCandidate(
             IReadOnlyList<AddressCandidate> candidates,

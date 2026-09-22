@@ -318,7 +318,7 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(issues.Any(i => !i.IsOk), "IsOk=false の要素が1件でも含まれれば中止判定は true になるべき。");
         }
 
-        // --- AddressTellerApplyFlow.HasBlockingIssue に対する判定（H-1）---
+        // --- AddressTellerApplyFlow.HasBlockingIssue に対する判定 ---
         //
         // DuplicateAddress は書き込みを止めない報告専用ステータスであり、IsOk=false（HasWritableDuplicate=true）
         // であっても Apply/Validate 自体を中止する理由にしてはならない（design-decisions.md 参照）。
@@ -362,7 +362,7 @@ namespace AddressTeller.Editor.Tests
             Assert.IsFalse(AddressTellerApplyFlow.HasBlockingIssue(issues));
         }
 
-        // --- AddressTellerApplyFlow.HasNoChanges に対する判定（M-6）---
+        // --- AddressTellerApplyFlow.HasNoChanges に対する判定 ---
         //
         // 差分ゼロでも Warning 相当の issue（IsOk=true。例: 管理外同士の DuplicateAddress）だけが残っている場合、
         // 「変化なし」として毎回のダイアログ表示を抑止すべきで、Error（IsOk=false）が1件でもあれば

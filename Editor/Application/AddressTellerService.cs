@@ -245,9 +245,17 @@ namespace AddressTeller.Editor
         /// </summary>
         /// <remarks>
         /// The return value may include <see cref="ValidationStatus.GroupWillBeCreated"/> entries
-        /// (IsOk=true; informational notices about a group that AutoCreateMissingGroups will create).
-        /// When treating the result as a "problem" (e.g. deciding whether to abort Apply), filter with
-        /// <c>!result.IsOk</c>.
+        /// (IsOk=true; informational notices about a group that AutoCreateMissingGroups will create), and
+        /// <see cref="ValidationStatus.DuplicateAddress"/> entries, which can have IsOk=false
+        /// (<see cref="ValidationResult.HasWritableDuplicate"/> is true) without meaning a write should be
+        /// blocked — DuplicateAddress is never a reason to abort an apply (see
+        /// <see cref="ValidationResult.IsOk"/> and <see cref="ValidationResult.HasWritableDuplicate"/> for
+        /// the exact rule). When deciding whether to abort based on this result (e.g. before an Apply),
+        /// filter with <c>!result.IsOk &amp;&amp; result.Status != ValidationStatus.DuplicateAddress</c>,
+        /// not <c>!result.IsOk</c> alone. Note also that a <see cref="ValidationStatus.RuleError"/> entry
+        /// for one rule does not by itself mean nothing would be written for that asset: if the failing
+        /// rule was the highest-priority (lowest-Order) match, a lower-priority rule's address is still
+        /// resolved for the same asset (and would still be written by a subsequent Apply) when one exists.
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings = null)
         {

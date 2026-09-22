@@ -176,8 +176,8 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void ApplyAll_ManagedDuplicate_NeverReportsDuplicateAddress()
         {
-            // 設計6（Postprocessor 経由の増分適用では重複検出を行わない。毎 import のプロジェクト全体走査は
-            // 常設指示9 に反するため）の回帰テスト。ApplyAll は唯一の書き込み系エントリポイントであり、
+            // Postprocessor 経由の増分適用では重複検出を行わない（毎 import のプロジェクト全体走査は
+            // コストに見合わないため）ことの回帰テスト。ApplyAll は唯一の書き込み系エントリポイントであり、
             // DuplicateAddressDetector を一切呼ばない。将来ここへ重複検出が足された場合の回帰を検出する。
             CreatePrefab(AssetPath1);
             CreatePrefab(AssetPath2);
@@ -192,8 +192,9 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void ValidateAllAndBuildPredictedSnapshot_AgreeWhenStaleEntryWouldBeRemoved()
         {
-            // H-2 回帰テスト: ValidateAll の予測後集合と BuildPredictedSnapshot の afterMap は、
-            // stale クリーンアップ（このランで削除される予定のエントリ）を同じように反映しなければならない。
+            // ValidateAll の予測後集合と BuildPredictedSnapshot の afterMap は、
+            // stale クリーンアップ（このランで削除される予定のエントリ）を同じように反映しなければならない
+            // ことの回帰テスト。
             // asset A はマッチしてアドレス "SharedAddress" を得る。
             CreatePrefab(AssetPath1);
 

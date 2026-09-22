@@ -8,9 +8,21 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+### Documentation
+
+- Expanded the 0.6.0 upgrade guidance for the settings-storage change into a dedicated "Upgrading from
+  0.5.x" note: a fuller list of the settings that reset to their defaults, what an early automatic apply
+  on import can and cannot do before you get a chance to restore your values, and safeguards that don't
+  depend on that timing. Also fixed inaccurate/incomplete notes for `ValidationResult.IsOk`, the
+  label-only rule change, and `PostprocessOrder` (all BREAKING), and for the `TypeBasedRules` sample
+  (not BREAKING).
+
 ---
 
 ## [0.6.0] - 2026-09-22
+
+_Several entries below were corrected after this version's initial release — see [Unreleased](#unreleased)
+above for what changed. The corrections only affect this document; 0.6.0's actual behavior is unchanged._
 
 ### Added
 
@@ -36,11 +48,16 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   [Design Decisions: Address Priority and Conflicts](Documentation~/design-decisions.md#address-priority-and-conflicts)
   and [Compatibility: Rule Authoring Behavior](Documentation~/compatibility.md#9-rule-authoring-behavior).
 - **BREAKING**: Settings now persist to `ProjectSettings/AddressTellerSettings.json` instead of
-  `ProjectSettings/AddressTellerSettings.asset`. The old `.asset` file is no longer read. Settings reset
-  to their defaults once, the first time this version runs — notably, this turns **Auto-apply on import**
-  and **Remove unmatched entries** back ON if you had turned either off, since that's their default. Check
-  `Project Settings > AddressTeller` and re-apply your values (including these two) after upgrading.
-  Delete the old `.asset` file — it is no longer used. See
+  `ProjectSettings/AddressTellerSettings.asset`. The old `.asset` file is no longer read, and there is no
+  migration from it: the first time this version runs against a project that does not yet have that
+  `.json` file, every setting resets to its default — **Auto-apply on import** and
+  **Remove unmatched entries** turn back ON if you had turned either off; every rule class you had
+  disabled in the rule list becomes enabled again; **Snapshot folder** reverts to
+  `AddressTellerSnapshots`, which can make `Tools/AddressTeller/Undo Last Apply` and
+  `Tools/AddressTeller/Snapshot/Manage Snapshots...` unable to find snapshots saved under a different
+  folder until you set it back; and **Auto-create missing groups** turns back OFF, which can turn a
+  previously-working `Apply All` into a `GroupNotFound` error for a rule that relied on it. See
+  **Upgrading from 0.5.x** below for what this reset can trigger and how to prepare for it. See
   [Settings Asset](Documentation~/compatibility.md#7-settings-asset).
 - **BREAKING**: Ownership for every deletion-related operation — `CleanupStaleEntries`, the invalid-path
   entry sweep, deletion follow-up for deleted assets, `ClearScope.Managed` (including CLI
@@ -51,7 +68,13 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   [Design Decisions: Deletions Are Determined by Per-Asset Ownership](Documentation~/design-decisions.md#deletions-are-determined-by-per-asset-ownership).
 - **BREAKING**: Label-only rules (`AnyGroup()`, or a `Group()` rule with no `Address()`) now add labels
   to an asset's existing entry regardless of which group it belongs to — previously, labels were only
-  added when that group was referenced by another rule's `Group()`. If your project has such a rule, run
+  added when that group was referenced by some *enabled* rule's `Group()` call (a rule disabled in
+  Project Settings did not count, and neither did a `GroupDefault()` reference left unresolved because
+  `AddressableAssetSettings.DefaultGroup` was unavailable), including the label-only rule's own reference,
+  if it made one and was itself enabled: an enabled `Group("X")` rule with no `Address()` already reached
+  entries sitting in group `X` by virtue of that call alone. What it could not previously reach was an
+  entry in a group no enabled rule referenced via `Group()` at all, or, for `AnyGroup()`, any entry
+  outside that referenced set. If your project has such a rule, run
   Preview (dry-run) before the first `Apply All` after upgrading: entries in groups the rule previously
   couldn't reach will gain labels, including via auto-apply on import if that setting is enabled. See
   [Writing Rules: AnyGroup](Documentation~/writing-rules.md#anygroup).
@@ -74,6 +97,81 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   duplicate either way — it is only ever logged and reported, never a reason to abort or to change
   their exit code. See
   [Design Decisions: Address Priority and Conflicts](Documentation~/design-decisions.md#address-priority-and-conflicts).
+- **BREAKING**: `!ValidationResult.IsOk` no longer always means the asset's write was skipped this run.
+  Two statuses can have `IsOk=false` while a write still happens: `ValidationStatus.RuleError` (tied to
+  the asset via `Context`, returned by both `ApplyAll` and `ValidateAll`) — if the exception came from
+  the highest-priority (lowest-`Order`) matching rule, that rule's candidate is simply absent from
+  evaluation and a lower-priority rule's address is still written for the asset when one exists; this was
+  already true before this release, see
+  [Writing Rules: Exception inside a rule](Documentation~/writing-rules.md#evaluation-rules-and-behavior)
+  — and `ValidationStatus.DuplicateAddress` (not tied to a single asset — `Context` is `null` — and
+  returned only by `ValidateAll` and in the `DryRunResult.Issues` that `BuildPredictedSnapshot` returns,
+  never by `ApplyAll`), where `IsOk` is `false` exactly when the duplicate includes an address
+  AddressTeller itself would write this run (see `HasWritableDuplicate`), but the write still happens
+  regardless — this status never blocks a write (see Added above). Code that filtered on `!result.IsOk` to
+  decide whether an Apply should abort must exclude `DuplicateAddress` specifically, the way `Apply All` /
+  `Apply with Validate`'s own abort decision and `ApplyAllCLI`/`ApplyWithValidateCLI`'s exit-code logic
+  already do; `CheckCLI` is the one entry point that intentionally does not exclude it, since it never
+  writes and its exit code 2 there is just a report signal, not an abort decision.
+- **BREAKING**: `AddressTellerSettings.PostprocessOrder` no longer treats `0` as a reserved "unset"
+  sentinel that falls back to `DefaultPostprocessOrder` (1000). If you had set it to `0` expecting it to
+  be read back as `1000`, it is now read back and passed through as literal `0` to
+  `AssetPostprocessor.GetPostprocessOrder()`, which runs this Postprocessor earlier than before relative
+  to other packages' postprocessors. See
+  [Apply & Operations: Project Settings](Documentation~/operations.md#project-settings).
+- `TypeBasedRules` sample: addresses are now prefixed by asset type (e.g. `prefab/Player` instead of
+  `Player`), so that two assets of different types sharing a file name in the same folder (e.g.
+  `Player.prefab` and `Player.png`) no longer resolve to the same address and get reported as
+  `ValidationStatus.DuplicateAddress`. Only affects the sample; only takes effect if you re-import it.
+- **Upgrading from 0.5.x:** the first time this version runs in a project that doesn't yet have
+  `ProjectSettings/AddressTellerSettings.json`, every setting listed in the settings-storage entry above
+  resets to its default. Because **Auto-apply on import** and **Remove unmatched entries** both default
+  ON, that default state is itself capable of running a destructive apply the moment it takes effect —
+  and not only for whatever asset happens to trigger it: `AddressTellerPostprocessor`'s automatic apply
+  writes addresses/labels, and (when `CleanupStaleEntries` is on) removes now-unmatched entries, only for
+  the specific assets in that import — but whenever `CleanupStaleEntries` is on and no rule failed to
+  configure this run, it also sweeps every entry already sitting in every group an enabled rule owns for
+  structurally invalid paths, regardless of which assets were actually imported. A rule that just went
+  from disabled back to enabled by this same reset changes what counts as "owned" for that sweep the
+  moment it first runs. An asset import that reaches this
+  Postprocessor does not require you to touch an asset yourself:
+  recompilation after an IDE save, an Editor Auto Refresh after a VCS pull or branch switch regaining
+  focus, or the updated package's own script files being imported as part of the update can each trigger
+  one. Whether upgrading the package itself reliably triggers one of these before you get a chance to
+  act is unconfirmed. AddressTeller itself does not trigger an asset import from
+  `Project Settings > AddressTeller` — changing a value there only reads and writes
+  `ProjectSettings/AddressTellerSettings.json`, which sits outside `Assets/`. What remains unconfirmed is
+  whether something else (the Editor, another package, or the upgrade itself) causes an import to reach
+  the Postprocessor before you get a chance to open that page.
+  **Before upgrading:** note down your current values from `Project Settings > AddressTeller` — Auto-apply
+  on import, Postprocessor order, Remove unmatched entries, Auto-create missing groups, Snapshot folder,
+  Auto-snapshot before Apply, Auto-snapshot retention count, and the enable/disable state of any rule
+  classes; save a manual snapshot (`Tools/AddressTeller/Snapshot/Save Snapshot`) as a restore point
+  independent of the settings reset — it saves to (and, in `Tools/AddressTeller/Snapshot/Manage
+  Snapshots...`, is only listed from) the current `Snapshot folder`, so if that setting is customized, the
+  file itself is unaffected by the reset but won't show up in the UI again until you set `Snapshot folder`
+  back to that value; and consider committing or otherwise backing up your Addressable Groups data
+  (`Assets/AddressableAssetsData` by default) so a plain `git diff`/revert is available regardless of what
+  the first post-upgrade apply does. **After upgrading**, before
+  triggering any asset import yourself, open `Project Settings > AddressTeller` and re-enter your recorded
+  values (Auto-apply on import and Remove unmatched entries first). The old `.asset` file is a Unity YAML
+  file using the same field names as the new JSON's keys (see
+  [Settings Asset](Documentation~/compatibility.md#7-settings-asset) for the list); if you didn't record
+  your values beforehand, that file is your only remaining record of what they used to be, and you can
+  still read them directly from it in a text editor as long as you haven't deleted it — this version never
+  reads it back automatically either way, so it is safe to delete only once you've recorded its values (or
+  no longer need them). For a team project, re-entering your values and
+  committing the resulting `AddressTellerSettings.json` in the same commit that bumps the package may help
+  teammates who pull that commit avoid ever running with a defaults-reset `AddressTellerSettings.json` on
+  their own machine, since the JSON would already exist with your values by the time they check out that
+  commit — this has not been verified against the import-timing question above, so treat it as a
+  suggestion rather than a guaranteed fix. If a destructive apply has already happened,
+  `Tools/AddressTeller/Undo Last Apply` does not have a dedicated snapshot of that specific apply to
+  restore, since the automatic apply on import never takes one — it restores to the most recent snapshot
+  taken automatically before a manual `Apply All` / `Apply with Validate`, under the *current* `Snapshot
+  folder` setting (if any exists there yet in this project — none will if `Snapshot folder` has reverted
+  to its default and your auto-snapshots were saved under a custom one, until you set it back), in Exact
+  mode, which undoes everything since that older snapshot together, not just this reset-triggered apply.
 
 ### Verified
 

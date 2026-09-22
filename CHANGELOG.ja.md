@@ -8,9 +8,20 @@
 
 ## [Unreleased]
 
+### Documentation
+
+- 0.6.0 の設定保存先変更に関するアップグレード案内を「0.5.x からのアップデート」の独立した注記へ拡充した:
+  既定値へリセットされる設定項目のより詳しい一覧、アップデート後最初の自動 apply が値を復旧する前に
+  できてしまうこと・できないこと、そのタイミングに依存しない保全策を追加した。あわせて
+  `ValidationResult.IsOk`・ラベルのみルールの変更・`PostprocessOrder`（いずれも BREAKING）と、
+  `TypeBasedRules` サンプル（BREAKING ではない）に関する不正確・記載漏れの記述も修正した。
+
 ---
 
 ## [0.6.0] - 2026-09-22
+
+_以下の一部の項目はこのバージョンの初回リリース後に訂正されている——何が変わったかは上の
+[Unreleased](#unreleased) を参照。訂正はこの文書のみに関するもので、0.6.0 の実際の挙動は変わっていない。_
 
 ### Added
 
@@ -35,11 +46,17 @@
   [設計上の決定事項: アドレスの優先順位と競合](Documentation~/design-decisions.ja.md#アドレスの優先順位と競合)
   と [互換性: ルール記述の挙動](Documentation~/compatibility.ja.md#9-ルール記述の挙動) を参照。
 - **BREAKING**: 設定の保存先が `ProjectSettings/AddressTellerSettings.asset` から
-  `ProjectSettings/AddressTellerSettings.json` に変わった。旧 `.asset` ファイルはもう読み込まれない。
-  このバージョンが最初に起動する際、設定は一度だけ既定値にリセットされる——特に、**Auto-apply on import**
-  と **Remove unmatched entries** をどちらかオフにしていた場合、既定値の ON に戻る。アップデート後は
-  `Project Settings > AddressTeller` を確認し、この2項目を含めて値を再設定すること。旧 `.asset` ファイルは
-  もう使われないため削除してよい。詳細は [Settings Asset](Documentation~/compatibility.ja.md#7-settings-asset) を参照。
+  `ProjectSettings/AddressTellerSettings.json` に変わった。旧 `.asset` ファイルはもう読み込まれず、
+  そこからの移行も行わない——この `.json` ファイルがまだ無いプロジェクトでこのバージョンが最初に動く際、
+  設定はすべて既定値にリセットされる。**Auto-apply on import** と **Remove unmatched entries** はどちらか
+  オフにしていた場合 ON に戻り、ルール一覧で無効化していたルールクラスはすべて再度有効に戻り、
+  **Snapshot folder** は既定の `AddressTellerSnapshots` に戻る（これにより
+  `Tools/AddressTeller/Undo Last Apply` と `Tools/AddressTeller/Snapshot/Manage Snapshots...` が、値を
+  戻すまで別フォルダに保存されたスナップショットを見つけられなくなることがある）。**Auto-create missing
+  groups** は OFF に戻る（これにより、この設定に依存していたルールで `Apply All` が `GroupNotFound`
+  エラーになることがある）。このリセットが何を引き起こしうるか、どう備えるかは下の
+  **0.5.x からのアップデート** を参照。詳細は
+  [Settings Asset](Documentation~/compatibility.ja.md#7-settings-asset) を参照。
 - **BREAKING**: 削除に関わる操作すべて——`CleanupStaleEntries`、無効パスエントリの掃除、資産削除時の削除追従、
   `ClearScope.Managed`（CLI の `-addressTellerClearScope managed` を含む）、`Undo Last Apply` の削除対象
   フィルタ——の所有権判定の対象グループが、`Group()` で参照しているだけのグループすべてではなく、ルールが
@@ -48,8 +65,14 @@
   [設計上の決定事項: 削除は資産単位の所有権で判定する](Documentation~/design-decisions.ja.md#削除は資産単位の所有権で判定する)
   を参照。
 - **BREAKING**: ラベルのみルール（`AnyGroup()`、または `Address()` を呼ばない `Group()` ルール）が、既存
-  エントリの所属グループを問わずラベルを加えるようになった——以前は、そのグループが別のルールの
-  `Group()` で参照されている場合にのみラベルが加わっていた。該当するルールを持つプロジェクトでは、
+  エントリの所属グループを問わずラベルを加えるようになった——以前は、そのグループが*有効な*いずれかの
+  ルールの `Group()` で参照されている場合にラベルが加わっていた（Project Settings で無効化されている
+  ルールの参照はカウントされず、`AddressableAssetSettings.DefaultGroup` が取得できず未解決のまま残った
+  `GroupDefault()` 参照もカウントされなかった）。この「いずれかのルール」には、そのラベルのみルール自身が
+  呼んだ `Group()` も含まれる——`Address()` を呼ばない `Group("X")` ルールは、それ自身が有効である限り、
+  その呼び出し自体によって、既にグループ `X` にあるエントリへはラベルを届かせられていた。以前届かなかった
+  のは、どの有効なルールの `Group()` からも一切参照されていないグループにあるエントリや、`AnyGroup()` の
+  場合にその参照済みグループの外にあるエントリだった。該当するルールを持つプロジェクトでは、
   アップデート後最初の `Apply All` の前に Preview（dry-run）で確認すること——これまでそのルールが
   届かなかったグループのエントリにもラベルが加わるようになる（import 時の自動適用が有効な場合は
   そちら経由でも同様）。詳しくは [ルールの書き方: AnyGroup](Documentation~/writing-rules.ja.md#anygroup) を参照。
@@ -73,6 +96,79 @@
   重複アドレスの有無に関わらず影響を受けない——ログ・レポートに載るのみで、中止や exit code の変化には
   つながらない。詳しくは
   [設計上の決定事項: アドレスの優先順位と競合](Documentation~/design-decisions.ja.md#アドレスの優先順位と競合) を参照。
+- **BREAKING**: `!ValidationResult.IsOk` が「このランでこのアセットへの書き込みが見送られた」を常に
+  意味するわけではなくなった。`IsOk=false` でも書き込みが行われるステータスが2つある。1つは
+  `ValidationStatus.RuleError`（`Context` でアセットに紐づき、`ApplyAll` と `ValidateAll` の両方が返す）
+  ——例外を投げたのが最も優先度の高い（Order が最小の）マッチしたルールだった場合、そのルールの候補は
+  評価から単純に欠落し、代わりに他の低優先度ルールのアドレスがあればそのアセットへ書き込まれる。これは
+  このリリースより前から既にそうだった。詳しくは
+  [ルールの書き方: ルール内で例外が発生した場合](Documentation~/writing-rules.ja.md#評価ルールと挙動) を
+  参照。もう1つは `ValidationStatus.DuplicateAddress`（単一のアセットに紐づかない——`Context` は
+  `null` ——ステータスで、`ValidateAll` と、`BuildPredictedSnapshot` が返す `DryRunResult.Issues` にのみ
+  含まれ、`ApplyAll` は返さない）——重複しているアドレスにこのランで AddressTeller 自身が書くものが
+  含まれていれば `IsOk` は正確に `false` になるが（`HasWritableDuplicate` 参照）、書き込み自体はそれに
+  関わらず行われる——`DuplicateAddress` が書き込みを止めることはない（上記 Added 参照）。`!result.IsOk`
+  を Apply を中止すべきかどうかの判定に使っていたコードは、`Apply All` / `Apply with Validate` 自身の
+  中止判定や `ApplyAllCLI` / `ApplyWithValidateCLI` の exit code 判定が既に行っているように、
+  `DuplicateAddress` を明示的に除外する必要がある。`CheckCLI` は唯一これを除外しない入口である
+  ——書き込みを一切行わないため、その exit code 2 は単なる報告シグナルであり中止判定ではない。
+- **BREAKING**: `AddressTellerSettings.PostprocessOrder` が、`0` を `DefaultPostprocessOrder`（1000）へ
+  読み替える予約済みの「未設定」センチネルとして扱わなくなった。`0` を設定して `1000` 扱いになることを
+  期待していた場合、これからは文字通り `0` のまま読み戻され `AssetPostprocessor.GetPostprocessOrder()`
+  に渡されるようになり、他パッケージの Postprocessor との相対順序で見て、この Postprocessor が
+  以前より早く動くようになる。
+  詳しくは [適用と運用: Project Settings](Documentation~/operations.ja.md#project-settings) を参照。
+- `TypeBasedRules` サンプル: アドレスにアセット種別のプレフィックスが付くようになった（例:
+  `Player` ではなく `prefab/Player`）。同じフォルダ内で型の異なる2つのアセットが同名になる場合
+  （例: `Player.prefab` と `Player.png`）に、同じアドレスへ解決されて `ValidationStatus.DuplicateAddress`
+  として報告されることを避けるため。サンプルにのみ影響し、再 import した場合のみ反映される。
+- **0.5.x からのアップデート:** `ProjectSettings/AddressTellerSettings.json` がまだ無いプロジェクトで
+  このバージョンが最初に動く際、上記の設定保存先変更の項に挙げた設定はすべて既定値にリセットされる。
+  Auto-apply on import と Remove unmatched entries はどちらも既定 ON のため、この既定状態自体が、有効化
+  された瞬間に破壊的な apply を走らせうる——しかも、それを引き起こしたインポート対象のアセットだけに
+  留まらない。`AddressTellerPostprocessor` の自動 apply がアドレス・ラベルを書き込み、
+  （`CleanupStaleEntries` が ON のとき）マッチしなくなったエントリを削除するのは、その import で
+  変更された対象アセットに限られる。一方で、`CleanupStaleEntries` が ON かつこのランで Configure() に
+  失敗したルールが無い限り、パスが構造的に不正なエントリの掃除だけは、実行のたびに有効なルールが所有する
+  すべてのグループの既存エントリ全件を対象に行われ、実際にインポートされたアセットには限られない。
+  この同じリセットで無効から有効に戻ったばかりのルールは、初めて動いた瞬間に、この掃除の対象となる
+  「所有」グループの範囲を変える。この Postprocessor へアセットインポートが届くのに、あなた自身が
+  アセットを操作する必要はない——IDE でスクリプトを保存した後の再コンパイル、VCS の pull やブランチ
+  切替後にフォーカスが戻ったときの Editor の Auto Refresh、更新されたパッケージ自身のスクリプトファイル
+  が更新の一部としてインポートされること、のいずれもトリガーになりうる。パッケージ自体の更新が、値を
+  復旧する機会を得る前にこれらのいずれかを確実に引き起こすかどうかは未確認。AddressTeller 自身は
+  `Project Settings > AddressTeller` からアセットインポートを発生させない——このページで値を変更しても
+  `Assets/` の外にある `ProjectSettings/AddressTellerSettings.json` を読み書きするだけである。未確認なのは、
+  それ以外の要因（Editor 自体、他のパッケージ、アップデートそのもの）が、このページを開く機会を得る前に
+  インポートを Postprocessor へ届けてしまうかどうかである。
+  **アップデート前に**、`Project Settings > AddressTeller` から現在の値——Auto-apply on import、
+  Postprocessor order、Remove unmatched entries、Auto-create missing groups、Snapshot folder、
+  Auto-snapshot before Apply、Auto-snapshot retention count、各ルールクラスの有効/無効状態——を控えて
+  おくこと。設定リセットの影響を受けない独立した復元手段として、手動スナップショット
+  （`Tools/AddressTeller/Snapshot/Save Snapshot`）も保存しておくこと——保存先は（そして
+  `Tools/AddressTeller/Snapshot/Manage Snapshots...` での一覧表示元も）現在の `Snapshot folder` なので、
+  この設定をカスタムしている場合、ファイル自体はリセットの影響を受けないが、`Snapshot folder` を元の値へ
+  戻すまで UI 上には再表示されない。さらに、アップデート後最初の apply が何をしても `git diff`／revert で
+  戻せるよう、Addressable Groups のデータ（既定では `Assets/AddressableAssetsData`）をコミットまたは
+  バックアップしておくことも検討すること。
+  **アップデート後**は、自分自身でアセットインポートを発生させる前に `Project Settings > AddressTeller`
+  を開き、控えておいた値を（Auto-apply on import と Remove unmatched entries を優先して）入れ直すこと。
+  旧 `.asset` ファイルは、新しい JSON のキーと同じフィールド名を使う Unity の YAML ファイルである
+  （一覧は [Settings Asset](Documentation~/compatibility.ja.md#7-settings-asset) を参照）——事前に値を
+  控え忘れていても、そのファイルが値を知るための唯一の手がかりとして残っており、削除していなければ
+  テキストエディタで直接読み取れる。このバージョンはどのみちそれを自動では二度と読まないため、値を
+  控えたか（もう必要ないと判断できた時点で）削除して構わない。
+  チームで運用する場合、値を入れ直した `AddressTellerSettings.json` をパッケージ更新と同じコミットに
+  含めておくと、そのコミットを pull したチームメンバーの手元では、チェックアウトした時点で既に
+  あなたの値が入った JSON が存在することになり、既定値にリセットされた状態で動く期間を避けられる
+  可能性がある——ただし上記のインポートのタイミング問題との関係は未検証のため、確実な対策としてではなく
+  提案として扱うこと。既に破壊的な apply が起きてしまった場合、`Tools/AddressTeller/Undo Last Apply` は
+  その特定の apply 専用のスナップショットを持たない——import 時の自動 apply はスナップショットを取らない
+  ため。直近の手動 `Apply All` / `Apply with Validate` の前に自動保存されたスナップショットまで、
+  *現在の* `Snapshot folder` 設定の下で（このプロジェクトにまだ存在すればの話——`Snapshot folder` が
+  既定値に戻っていて、自動スナップショットがカスタムフォルダに保存されていた場合、元の値へ戻すまでは
+  何も見つからない）Exact モードで戻すことしかできず、このリセットが引き起こした apply だけでなく、
+  それ以降の変更すべてをまとめて元に戻すことになる。
 
 ### 検証済み
 

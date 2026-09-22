@@ -29,10 +29,11 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// Apply 自体を中止すべき「書き込みを見送るべき」問題が <paramref name="issues"/> に1件でもあるかを判定する。
-        /// <see cref="ValidationStatus.DuplicateAddress"/> は書き込みを止めない報告専用ステータス（HasWritableDuplicate=true
-        /// でも実際にはそのアセットへの書き込みは行われる）であり、IsOk=false が従来意味していた
-        /// 「このアセットへの書き込みを見送った」とは異なる。そのため IsOk=false であってもこの判定からは除外し、
-        /// 「重複が1件あるだけでプロジェクト全体の Apply が止まる」ことを防ぐ（design-decisions.md 参照）。
+        /// <see cref="ValidationStatus.DuplicateAddress"/> は書き込みを止めない報告専用ステータスであり
+        /// （HasWritableDuplicate=true でも実際にはそのアセットへの書き込みは行われる）、IsOk=false が他の
+        /// ステータスで通常意味する「書き込みが見送られた」とは異なる。そのため IsOk=false であってもこの
+        /// 判定からは除外し、「重複が1件あるだけでプロジェクト全体の Apply が止まる」ことを防ぐ
+        /// （design-decisions.md 参照）。
         /// <see cref="AddressTellerMenu.ApplyWithValidateCLI"/> と共有する。
         /// </summary>
         internal static bool HasBlockingIssue(IReadOnlyList<ValidationResult> issues) =>
