@@ -48,6 +48,27 @@ namespace AddressTeller.Editor
         private static Data s_data = new();
 
         /// <summary>
+        /// <see cref="AddressTellerSettings.AutoSnapshotRetention"/> の下限（1）への正規化を1箇所に集約する。
+        /// setter（<see cref="AddressTellerSettings.AutoSnapshotRetention"/>）と、設定ファイル読み込み直後
+        /// （<see cref="EnsureLoaded(out string)"/>）の両方から使う——基準を2箇所に持つと将来どちらかだけが
+        /// 追従せず食い違う恐れがあるため。<paramref name="warnIfChanged"/> が true で正規化が働いた場合のみ
+        /// Warning を1本出す。setter からの呼び出しは false（利用者が直接指定した値をその場でクランプする
+        /// 通常の挙動であり、毎回警告を出すのは過剰）。読み込み時は true（設定ファイルという外部入力に
+        /// 想定外の値が入っていたことを知らせる）。
+        /// </summary>
+        internal static int NormalizeAutoSnapshotRetention(int value, bool warnIfChanged)
+        {
+            if (value >= 1) return value;
+
+            if (warnIfChanged)
+            {
+                Debug.LogWarning($"[AddressTeller] AutoSnapshotRetention in the settings file was {value}, which is below the minimum of 1. Using 1 instead; this load does not rewrite the file, so the value on disk stays {value} until something else saves a change to the settings.");
+            }
+
+            return 1;
+        }
+
+        /// <summary>
         /// 直近の <see cref="EnsureLoaded"/> 呼び出しでファイルを実際に読み込んだ時点の
         /// (更新日時, サイズ)。null は「まだ一度もファイルから読み込んでいない」
         /// （ファイル不在、またはドメインリロード直後で未読込）ことを表す。
@@ -184,6 +205,11 @@ namespace AddressTeller.Editor
                     "re-enter your values.";
                 return false;
             }
+
+            // ファイルは手編集され得る外部入力のため、setter のクランプ（Mathf.Max(1, value)）を経由せずに
+            // 下限未満の値がそのまま読み込まれる余地がある。ここでメモリ上の値だけを正規化し、
+            // ファイルへは書き戻さない（この読み込みが副作用としてファイルを書き換えないため）。
+            parsed._autoSnapshotRetention = NormalizeAutoSnapshotRetention(parsed._autoSnapshotRetention, warnIfChanged: true);
 
             s_data = parsed;
             s_loadedStamp = stamp;

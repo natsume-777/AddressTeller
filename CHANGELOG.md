@@ -8,8 +8,44 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+### Fixed
+
+- JUnit report: `CheckCLI` now attaches a `<failure>` to a Validation `<testcase>` only when its status has
+  at least one `IsOk=false` result — matching `CheckCLI`'s own exit code 2 criteria, so a `DuplicateAddress`
+  notice that only involves duplicates outside this run's writes (`IsOk=true`) does not get a `<failure>`.
+  `ApplyAllCLI` and `ApplyWithValidateCLI` now attach `<failure>` only to a status that actually blocks
+  Apply, matching their own exit code 2 criteria: a `DuplicateAddress` that does not block the write no
+  longer produces a `<failure>` from these two, even when reported as `IsOk=false` — this matches 0.6.0's
+  documented exit code contract, which already excluded `DuplicateAddress` from aborting Apply or affecting
+  its exit code. `<testcase>` elements are still generated for every status present, as before (unchanged);
+  only the presence of the nested `<failure>` element changes. Direct calls to the public
+  `AddressTellerReportWriter.ToJUnitXml` / `WriteToFile` overloads are unchanged: they still attach
+  `<failure>` unconditionally to every Validation `<testcase>`, regardless of `IsOk`.
+- Snapshot auto-rotation: if `Auto-snapshot retention count` is manually edited in
+  `ProjectSettings/AddressTellerSettings.json` to 0 or less, the safety snapshot `CaptureAndSave` had just
+  saved before an apply runs could be deleted by the rotation that same call performs right after saving it
+  — before Apply itself has even started — leaving `Undo Last Apply` unable to restore it. The count is now
+  clamped to 1 on load (in-memory only; the JSON file is not re-written with the correction), and a
+  `Warning` is logged. Values set via Project Settings UI are already constrained to 1 or more.
+
+### Changed
+
+- Project Settings UI: the empty-list message for "Managed Groups" now reflects the current ownership
+  definition: groups targeted by enabled rules' `Address()` calls, not just `Group()` references. Added a
+  note to `IAddressRuleBuilder.Group()`'s XML doc that Addressables replaces `/` and `\` in a group name
+  with `-` when the group is actually created or renamed, so a `Group()` name containing either character
+  may not match the group Addressables ends up with; changed the Writing Rules example accordingly
+  (`BossAudio` instead of `Audio/Boss`).
+
 ### Documentation
 
+- Documented that `Summary.Issues` counts every entry in `Issues[]`, including report-only notices that
+  don't affect `Summary.ExitCode` — check `Summary.ExitCode` to tell whether a report represents a passing
+  or failing run, not this count. The value itself is unchanged.
+- Documented that the JUnit report is built from the pre-Apply dry-run result, not the actual execution
+  result an apply's exit code is based on, so a status that can only be produced by actually performing a
+  write (e.g. `ValidationStatus.EntryRejectedByAddressables`) can affect `ApplyAllCLI` / `ApplyWithValidateCLI`'s
+  exit code without ever appearing in that run's JUnit output.
 - Expanded the 0.6.0 upgrade guidance for the settings-storage change into a dedicated "Upgrading from
   0.5.x" note: a fuller list of the settings that reset to their defaults, what an early automatic apply
   on import can and cannot do before you get a chance to restore your values, and safeguards that don't
@@ -109,10 +145,11 @@ above for what changed. The corrections only affect this document; 0.6.0's actua
   never by `ApplyAll`), where `IsOk` is `false` exactly when the duplicate includes an address
   AddressTeller itself would write this run (see `HasWritableDuplicate`), but the write still happens
   regardless — this status never blocks a write (see Added above). Code that filtered on `!result.IsOk` to
-  decide whether an Apply should abort must exclude `DuplicateAddress` specifically, the way `Apply All` /
+  decide whether an Apply should abort must exclude `DuplicateAddress` specifically, the way
   `Apply with Validate`'s own abort decision and `ApplyAllCLI`/`ApplyWithValidateCLI`'s exit-code logic
-  already do; `CheckCLI` is the one entry point that intentionally does not exclude it, since it never
-  writes and its exit code 2 there is just a report signal, not an abort decision.
+  already do; `Apply All` never runs Validate first and so has no abort decision to make on this basis, and
+  `CheckCLI` is the one entry point that intentionally does not exclude it, since it never writes and its
+  exit code 2 there is just a report signal, not an abort decision.
 - **BREAKING**: `AddressTellerSettings.PostprocessOrder` no longer treats `0` as a reserved "unset"
   sentinel that falls back to `DefaultPostprocessOrder` (1000). If you had set it to `0` expecting it to
   be read back as `1000`, it is now read back and passed through as literal `0` to
@@ -162,11 +199,12 @@ above for what changed. The corrections only affect this document; 0.6.0's actua
   reads it back automatically either way, so it is safe to delete only once you've recorded its values (or
   no longer need them). For a team project, re-entering your values and
   committing the resulting `AddressTellerSettings.json` in the same commit that bumps the package may help
-  teammates who pull that commit avoid ever running with a defaults-reset `AddressTellerSettings.json` on
-  their own machine, since the JSON would already exist with your values by the time they check out that
-  commit — this has not been verified against the import-timing question above, so treat it as a
-  suggestion rather than a guaranteed fix. If a destructive apply has already happened,
-  `Tools/AddressTeller/Undo Last Apply` does not have a dedicated snapshot of that specific apply to
+  teammates who pull that commit avoid ever running with AddressTeller's settings reset to defaults in
+  memory on their own machine (which is what happens while `AddressTellerSettings.json` does not exist yet
+  — no file is written until something saves a change), since the JSON would already exist with your
+  values by the time they check out that commit — this has not been verified against the import-timing
+  question above, so treat it as a suggestion rather than a guaranteed fix. If a destructive apply has
+  already happened, `Tools/AddressTeller/Undo Last Apply` does not have a dedicated snapshot of that specific apply to
   restore, since the automatic apply on import never takes one — it restores to the most recent snapshot
   taken automatically before a manual `Apply All` / `Apply with Validate`, under the *current* `Snapshot
   folder` setting (if any exists there yet in this project — none will if `Snapshot folder` has reverted

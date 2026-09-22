@@ -28,16 +28,26 @@ namespace AddressTeller.Editor
             EditorUtility.DisplayDialog(title, message, "OK");
 
         /// <summary>
-        /// Apply 自体を中止すべき「書き込みを見送るべき」問題が <paramref name="issues"/> に1件でもあるかを判定する。
+        /// 1件の <see cref="ValidationResult"/> が Apply を中止すべき「書き込みを見送るべき」問題かどうかを判定する。
         /// <see cref="ValidationStatus.DuplicateAddress"/> は書き込みを止めない報告専用ステータスであり
         /// （HasWritableDuplicate=true でも実際にはそのアセットへの書き込みは行われる）、IsOk=false が他の
         /// ステータスで通常意味する「書き込みが見送られた」とは異なる。そのため IsOk=false であってもこの
         /// 判定からは除外し、「重複が1件あるだけでプロジェクト全体の Apply が止まる」ことを防ぐ
         /// （design-decisions.md 参照）。
+        /// <see cref="HasBlockingIssue"/>（一覧向け）と <see cref="AddressTellerReportBuilder.DetermineApplyExitCode"/>
+        /// の exit code 判定、JUnit 出力の failure 判定（<see cref="AddressTellerMenu"/> 経由）が同じ基準を
+        /// 参照できるよう、ここに1つだけ持つ。
+        /// </summary>
+        internal static bool IsBlocking(ValidationResult issue) =>
+            !issue.IsOk && issue.Status != ValidationStatus.DuplicateAddress;
+
+        /// <summary>
+        /// Apply 自体を中止すべき「書き込みを見送るべき」問題が <paramref name="issues"/> に1件でもあるかを判定する。
+        /// 判定基準は <see cref="IsBlocking"/> を参照。
         /// <see cref="AddressTellerMenu.ApplyWithValidateCLI"/> と共有する。
         /// </summary>
         internal static bool HasBlockingIssue(IReadOnlyList<ValidationResult> issues) =>
-            issues.Any(i => !i.IsOk && i.Status != ValidationStatus.DuplicateAddress);
+            issues.Any(IsBlocking);
 
         /// <summary>
         /// dry-run の結果が「変化なし」（＝ダイアログを出さずに早期リターンしてよい）かどうかを判定する。

@@ -151,18 +151,46 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
+        /// 1件の <see cref="ValidationResult"/> が <see cref="AddressTellerMenu.CheckCLI"/> の exit code 判定
+        /// （<see cref="DetermineExitCode(DryRunResult)"/>）で問題として数えられるかどうか。CheckCLI は
+        /// 読み取り専用で <see cref="ValidationStatus.DuplicateAddress"/> のような書き込み専用の例外を
+        /// 設けないため、単純に <see cref="ValidationResult.IsOk"/> の否定で判定する
+        /// （Apply 系の基準は <see cref="AddressTellerApplyFlow.IsBlocking"/> を参照——DuplicateAddress の
+        /// 扱いが異なる）。
+        /// </summary>
+        internal static bool IsCheckCliFailing(ValidationResult issue) => !issue.IsOk;
+
+        /// <summary>
+        /// <paramref name="issues"/> から、<see cref="IsCheckCliFailing"/> を満たす（＝CheckCLI の exit code
+        /// 判定に反映される）Status 名の集合を作る。<see cref="AddressTellerMenu.CheckCLI"/> が JUnit 出力
+        /// （<see cref="AddressTellerReportWriter.ToJUnitXml(AddressTellerReport, bool, IReadOnlyCollection{string})"/>）
+        /// の failure 対象を絞り込むために使う。
+        /// </summary>
+        internal static IReadOnlyList<string> BuildCheckCliFailingStatusNames(IReadOnlyList<ValidationResult> issues) =>
+            issues.Where(IsCheckCliFailing).Select(i => i.Status.ToString()).Distinct().ToList();
+
+        /// <summary>
+        /// <paramref name="issues"/> から、<see cref="AddressTellerApplyFlow.IsBlocking"/> を満たす
+        /// （＝Apply 系の exit code 判定に反映される）Status 名の集合を作る。
+        /// <see cref="AddressTellerMenu.ApplyAllCLI"/> / <see cref="AddressTellerMenu.ApplyWithValidateCLI"/>
+        /// が JUnit 出力の failure 対象を絞り込むために使う。
+        /// </summary>
+        internal static IReadOnlyList<string> BuildApplyFailingStatusNames(IReadOnlyList<ValidationResult> issues) =>
+            issues.Where(AddressTellerApplyFlow.IsBlocking).Select(i => i.Status.ToString()).Distinct().ToList();
+
+        /// <summary>
         /// <see cref="AddressTellerMenu.CheckCLI"/> 向けの exit code 判定。
         /// 0 = 差分なし・問題なし、1 = ドリフトあり（Validation エラーなし）、2 = Validation エラーあり。
         /// 実行環境エラー（3）はここでは判定しない（CLI 側で扱う）。
         /// <see cref="DryRunResult.Issues"/> は本来 IsOk=false の結果のみを想定するが、
-        /// 任意のリストを受け取れる public 関数であるため <see cref="ValidationResult.IsOk"/> で判定する。
+        /// 任意のリストを受け取れる public 関数であるため <see cref="IsCheckCliFailing"/> で判定する。
         /// CheckCLI は読み取り専用（書き込みを行わない）ため、差分の有無自体が意味のある報告内容であり、
         /// exit code 1（ドリフトあり）を返してよい。書き込みを行う Apply 系の判定は
         /// <see cref="DetermineApplyExitCode"/> を参照（差分の有無を理由に exit code を変えない）。
         /// </summary>
         public static int DetermineExitCode(DryRunResult result)
         {
-            if (result.Issues.Any(issue => !issue.IsOk)) return 2;
+            if (result.Issues.Any(IsCheckCliFailing)) return 2;
             if (!result.Diff.IsEmpty) return 1;
             return 0;
         }

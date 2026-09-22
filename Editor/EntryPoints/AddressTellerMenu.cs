@@ -526,7 +526,7 @@ namespace AddressTeller.Editor
         /// 書き込みを完了しているため、差分があったことを理由に失敗扱い（exit 1）にすると、`set -e` の下で
         /// 正常な適用が毎回失敗になってしまう。差分検出は <see cref="CheckCLI"/> の役割。
         /// 同じ理由で、JUnit 出力の drift testcase も failure なしで出す
-        /// （<see cref="AddressTellerReportWriter.WriteToFile"/> に treatDriftAsFailure: false を渡す）——
+        /// （<see cref="AddressTellerReportWriter.WriteToFile(string, AddressTellerReport, ReportFormat, bool)"/> に treatDriftAsFailure: false を渡す）——
         /// そうしないと exit code は 0 でも、この report を取り込む CI ジョブは drift のたびに赤くなる。
         /// レポートの書き込みに失敗した場合は exit 3。
         /// このメソッドは ApplyAllCLI / ApplyWithValidateCLI からのみ呼ばれる（CheckCLI は独自に
@@ -542,10 +542,17 @@ namespace AddressTeller.Editor
                 var report = AddressTellerReportBuilder.Build(dryRun, settings);
                 report.Summary.ExitCode = exitCode;
 
+                // JUnit の Validation testcase は、Apply 系の exit code 判定と同じ基準（AddressTellerReportBuilder.
+                // BuildApplyFailingStatusNames、内部で AddressTellerApplyFlow.IsBlocking を使う）で failure を
+                // 付ける Status だけに絞る。report は dryRun から組み立てているため、report.Issues と同じ集合
+                // である dryRun.Issues から失敗対象を求める（executionIssues から求めると、report に現れない
+                // Status を failure 対象に含めてしまいうる）。
+                var failingStatusNames = AddressTellerReportBuilder.BuildApplyFailingStatusNames(dryRun.Issues);
+
                 // ReportPath が指定されている場合、TryParse で ReportFormat は必ず（明示または拡張子推定で）設定済み。
                 // treatDriftAsFailure: false — Apply は既に成功しているため、drift の存在を JUnit の
                 // <failure> として報告しない（CheckCLI と異なり、drift は失敗ではなく成功した変更の記録）。
-                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value, treatDriftAsFailure: false))
+                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value, treatDriftAsFailure: false, failingStatusNames))
                 {
                     AssetDatabase.SaveAssets();
                     EditorApplication.Exit(3);
@@ -611,11 +618,16 @@ namespace AddressTeller.Editor
             if (!string.IsNullOrEmpty(cliArgs.ReportPath))
             {
                 var report = AddressTellerReportBuilder.Build(result, settings);
+                // JUnit の Validation testcase は、CheckCLI の exit code 判定（DetermineExitCode）と同じ基準
+                // （AddressTellerReportBuilder.BuildCheckCliFailingStatusNames）で failure を付ける Status
+                // だけに絞る。全 Status に無条件で failure を付けると、exit code に影響しない通知
+                // （DuplicateAddress のうち IsOk=true のもの等）まで CI を落としてしまう。
+                var failingStatusNames = AddressTellerReportBuilder.BuildCheckCliFailingStatusNames(result.Issues);
                 // ReportPath が指定されている場合、TryParse で ReportFormat は必ず（明示または拡張子推定で）設定済み。
                 // treatDriftAsFailure: true（既定値と同じだが明示） — CheckCLI は drift の検出そのものが
                 // 目的の読み取り専用 dry-run であるため、ExitWithReport（適用系）とは対称に drift を
                 // JUnit の <failure> として報告する。
-                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value, treatDriftAsFailure: true))
+                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value, treatDriftAsFailure: true, failingStatusNames))
                 {
                     EditorApplication.Exit(3);
                     return;
