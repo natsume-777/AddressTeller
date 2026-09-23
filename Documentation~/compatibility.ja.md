@@ -127,6 +127,8 @@ BundleDistribution                                  (常に存在する。詳細
 SchemaVersion                                         (System.Int32)
 ```
 
+**`Summary.Issues`**: `Issues[]` の総件数（`Summary.ExitCode` に影響しない報告専用の通知、例えば `DuplicateAddress` も含む）。`Summary.Issues` が0でないことは、それ自体では実行が失敗したことを意味しません——合否は `Summary.ExitCode` を確認してください。
+
 **`BundleDistribution`**: このキーは常に JSON 出力に含まれ、省略されることも JSON の `null` になることもありません。`JsonUtility` は `UnityEngine.Object` を継承しない `[Serializable]` クラスの null 参照を表現する手段を持たないため、`BundleDistribution` が null であっても、全フィールドが C# の既定値（`Bundles: []`、`TotalLogicalBundleCount: 0`、`UnknownGroupCount: 0`、`Disclaimer: ""`）を持つオブジェクトとしてシリアライズされます（省略や `null` にはなりません）。この全既定値の形は、dry-run の `After` が null な場合、`AddressableAssetSettings` が渡されなかった場合、あるいはバンドル分布の算出処理自体が例外を投げた場合（内部でキャッチされ警告ログのみ出力）に現れます。消費者は、この「件数がすべて0・`Bundles[]` が空・`Disclaimer` が空文字」という組み合わせを「算出されなかった」ことを示すものとして扱うべきであり、「バンドル数0」を意味するわけではありません。
 
 **値の語彙**:
@@ -143,7 +145,8 @@ SchemaVersion                                         (System.Int32)
 
 - `<testsuite name="AddressTeller" tests="..." failures="...">` — `name` 属性は `"AddressTeller"` に固定。
 - drift 全体で1つの `<testcase>`: `name="drift"`、`classname="AddressTeller.Drift"`。`Drift[]` が空でないときにこの testcase へ入れ子の `<failure>` を付けるかどうかは、そのレポートを書き出した際の `treatDriftAsFailure` パラメータ（後述）に依存する——`CheckCLI` は `true` で書き出す（drift の検出自体が目的のため）。`ApplyAllCLI` / `ApplyWithValidateCLI` は `false` で書き出す（Apply は既に成功しており、その drift 自体は失敗ではないため）。
-- レポートの issues に含まれる `ValidationStatus` の種類ごとに1つの `<testcase>`: `name="<ステータス名>"`（例: `"ConflictingAddress"`）、`classname="AddressTeller.Validation"`。`treatDriftAsFailure` の影響を受けない。
+- レポートの issues に含まれる `ValidationStatus` の種類ごとに1つの `<testcase>`: `name="<ステータス名>"`（例: `"ConflictingAddress"`）、`classname="AddressTeller.Validation"`。`treatDriftAsFailure` の影響を受けない。このステータスが存在する限り、入れ子の `<failure>` が付くかどうかにかかわらずこの testcase 自体は必ず存在します——`<failure>` が付くかどうかは次の項目を参照。
+- Validation の `<testcase>` に入れ子の `<failure>` が付くかどうかは、そのステータスの `ValidationResult` に `IsOk=false` のものが1件でもあるかだけでなく、呼び出し元エントリポイント自身の exit code 判定基準に依存します。`CheckCLI` は `IsOk=false` の結果を1件でも持つステータスに `<failure>` を付けます（自身の exit code 2 判定と一致）。`ApplyAllCLI` / `ApplyWithValidateCLI` は、Apply を中止すべき問題として扱われるステータスにのみ `<failure>` を付けます（自身の exit code 2 判定と一致）——報告専用の `DuplicateAddress` 通知は、`IsOk=false` として報告されている場合でも、この2つのエントリポイントからは Apply を中止しないため `<failure>` が付きません。dry-run で予測できる issue については、`failures="0"` だけを見るCIジョブは、任意の `IsOk=false` issue の有無ではなく、そのエントリポイント自身の実際の exit code を追跡することになります。ただし、実際に書き込みを行って初めて発生しうるステータス（例えば `ValidationStatus.EntryRejectedByAddressables`。`ApplyAll` 自身のエントリ作成処理内でのみ発生し、dry-run の `Predict` からは発生しません）はこの限りではありません——`ApplyAllCLI` / `ApplyWithValidateCLI` は、実際の exit code の根拠となる実行結果ではなく、Apply 前の dry-run 結果からレポートを組み立てるため、そのようなステータスは exit code に影響しうる一方で、この JUnit 出力には一切現れないことがあります。
 - `tests` / `failures` の件数、および入れ子の `<failure>` 要素の有無は、標準的なJUnit消費者の期待に従います（`<failure>` の無い `<testcase>` は成功、有る場合は失敗）。
 - `treatDriftAsFailure`（`AddressTellerReportWriter.ToJUnitXml` / `WriteToFile`、既定 `true`）: 上記どちらの挙動になるかを切り替えるパラメータ。どの CLI エントリポイントがどちらの値を渡すかは前述の通りであり、既定値そのものが契約ではない——将来のエントリポイントがどちらを必要とするかは個別に妥当。
 

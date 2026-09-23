@@ -180,7 +180,7 @@ rules.Group("Bundles")
 
       public override void Configure(IAddressRuleBuilder rules)
       {
-          rules.Group("Audio/Boss") // このグループは事前に作成しておくこと（AutoCreateMissingGroups は既定OFF）
+          rules.Group("BossAudio") // このグループは事前に作成しておくこと（AutoCreateMissingGroups は既定OFF）
               .Where(ctx => ctx.IsInFolder("Assets/Audio/Boss"))
               .Address(ctx => $"boss/{ctx.FileNameWithoutExtension}");
       }

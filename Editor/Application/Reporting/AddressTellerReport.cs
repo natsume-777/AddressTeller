@@ -86,7 +86,13 @@ namespace AddressTeller.Editor
         /// <summary>Number of entries changed by the predicted diff.</summary>
         public int Changed;
 
-        /// <summary>Number of validation problems detected.</summary>
+        /// <summary>
+        /// Number of validation problems detected, including report-only notices that do not affect
+        /// <see cref="ExitCode"/> (for example a <see cref="ValidationStatus.DuplicateAddress"/> notice that
+        /// does not abort Apply). Always equal to the number of entries in <see cref="AddressTellerReport.Issues"/>.
+        /// To tell whether the report corresponds to a passing or failing run, check <see cref="ExitCode"/>,
+        /// not this count.
+        /// </summary>
         public int Issues;
 
         /// <summary>Process exit code this report corresponds to.</summary>

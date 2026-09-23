@@ -8,8 +8,41 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- JUnit レポート: `CheckCLI` は、そのステータスに `IsOk=false` の結果が1件でもある場合にのみ、Validation の
+  `<testcase>` に `<failure>` を付けるようになった——`CheckCLI` 自身の exit code 2 判定基準と一致させたもので、
+  このランで書き込む対象を含まない重複（`IsOk=true` の `DuplicateAddress` 通知）だけの場合は `<failure>` が付かない。
+  `ApplyAllCLI` / `ApplyWithValidateCLI` は、Apply を実際に中止させるステータスにのみ `<failure>` を付けるように
+  なった——こちらも自身の exit code 2 判定基準と一致させたもので、書き込みを止めない `DuplicateAddress` は
+  `IsOk=false` として報告されている場合でも、この2つのエントリポイントからは `<failure>` が付かなくなった
+  （0.6.0 が文書化した exit code の契約——`DuplicateAddress` は Apply を中止させず exit code にも影響しない——と
+  一致する）。`<testcase>` 要素は従来どおり、存在する各ステータスについて生成される（変わらない）。`<failure>`
+  子要素の有無のみが変わる。公開の `AddressTellerReportWriter.ToJUnitXml` / `WriteToFile` の直接呼び出しは変わらず、
+  `IsOk` に関係なく、すべての Validation `<testcase>` に無条件で `<failure>` を付ける。
+- スナップショット自動ローテーション: `ProjectSettings/AddressTellerSettings.json` で `Auto-snapshot retention count` を
+  手動編集して 0 以下にすると、`CaptureAndSave` が apply の実行前に保存したばかりのセーフティスナップショットが、
+  保存直後に同じ呼び出しの中で行われるローテーションによって——Apply 自体が始まってすらいない時点で——削除されてしまい、
+  `Undo Last Apply` が復元に失敗していた。読み込み時に 1 に補正し（メモリ上のみ。JSON ファイルは書き戻さない）、
+  Warning をログ出力するようになった。Project Settings UI 経由での設定は既に 1 以上に制限されている。
+
+### Changed
+
+- Project Settings UI: 「Managed Groups」の空リスト表示文言を、現在の所有権の定義（有効なルールが `Address()` を宣言している
+  グループ）に合わせた。`IAddressRuleBuilder.Group()` のXML docに、グループが実際に作成・リネームされる際、
+  Addressables がグループ名に含まれる `/` や `\` を `-` に置き換えるため、いずれかの文字を含む `Group()` の名前は
+  実際のグループ名と一致しないことがある旨の注記を追加した。Writing Rules の例をそれに合わせて変更した
+  （`Audio/Boss` ではなく `BossAudio`）。
+
 ### Documentation
 
+- `Summary.Issues` は `Summary.ExitCode` に影響しない報告専用の通知も含む `Issues[]` の総件数であり、レポートが
+  合格・不合格のどちらのランに対応するかは、この件数ではなく `Summary.ExitCode` で判断すべきことを明記した
+  （値そのものは変わらない）。
+- JUnit レポートは、apply の exit code の根拠となる実際の実行結果ではなく、Apply 前の dry-run 結果から組み立てられる
+  ため、実際に書き込みを行って初めて発生しうるステータス（例: `ValidationStatus.EntryRejectedByAddressables`）は、
+  `ApplyAllCLI` / `ApplyWithValidateCLI` の exit code に影響しうる一方で、そのランの JUnit 出力には一切現れないことが
+  ある旨を明記した。
 - 0.6.0 の設定保存先変更に関するアップグレード案内を「0.5.x からのアップデート」の独立した注記へ拡充した:
   既定値へリセットされる設定項目のより詳しい一覧、アップデート後最初の自動 apply が値を復旧する前に
   できてしまうこと・できないこと、そのタイミングに依存しない保全策を追加した。あわせて
@@ -108,10 +141,11 @@ _以下の一部の項目はこのバージョンの初回リリース後に訂�
   含まれ、`ApplyAll` は返さない）——重複しているアドレスにこのランで AddressTeller 自身が書くものが
   含まれていれば `IsOk` は正確に `false` になるが（`HasWritableDuplicate` 参照）、書き込み自体はそれに
   関わらず行われる——`DuplicateAddress` が書き込みを止めることはない（上記 Added 参照）。`!result.IsOk`
-  を Apply を中止すべきかどうかの判定に使っていたコードは、`Apply All` / `Apply with Validate` 自身の
-  中止判定や `ApplyAllCLI` / `ApplyWithValidateCLI` の exit code 判定が既に行っているように、
-  `DuplicateAddress` を明示的に除外する必要がある。`CheckCLI` は唯一これを除外しない入口である
-  ——書き込みを一切行わないため、その exit code 2 は単なる報告シグナルであり中止判定ではない。
+  を Apply を中止すべきかどうかの判定に使っていたコードは、`Apply with Validate` 自身の中止判定や
+  `ApplyAllCLI` / `ApplyWithValidateCLI` の exit code 判定が既に行っているように、`DuplicateAddress`
+  を明示的に除外する必要がある。`Apply All` はそもそも先に Validate を実行しないため、この基準での
+  中止判定自体が存在しない。`CheckCLI` は唯一これを除外しない入口である——書き込みを一切行わないため、
+  その exit code 2 は単なる報告シグナルであり中止判定ではない。
 - **BREAKING**: `AddressTellerSettings.PostprocessOrder` が、`0` を `DefaultPostprocessOrder`（1000）へ
   読み替える予約済みの「未設定」センチネルとして扱わなくなった。`0` を設定して `1000` 扱いになることを
   期待していた場合、これからは文字通り `0` のまま読み戻され `AssetPostprocessor.GetPostprocessOrder()`

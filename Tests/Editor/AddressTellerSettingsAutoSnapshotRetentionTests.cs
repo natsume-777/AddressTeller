@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine.TestTools;
 
 namespace AddressTeller.Editor.Tests
 {
@@ -32,6 +33,18 @@ namespace AddressTeller.Editor.Tests
             AddressTellerSettings.AutoSnapshotRetention = input;
 
             Assert.AreEqual(expected, AddressTellerSettings.AutoSnapshotRetention);
+        }
+
+        [Test]
+        public void AutoSnapshotRetention_SetterClampBelowMinimum_DoesNotLogWarning()
+        {
+            // 正規化ロジックは setter と設定ファイル読み込み（EnsureLoaded）で共有している
+            // （AddressTellerSettingsAsset.NormalizeAutoSnapshotRetention）が、Warning を出すのは
+            // 読み込み時のみ（warnIfChanged: true）。setter は利用者がその場で指定した値をクランプする
+            // 通常の挙動であり、EnsureLoaded 側の Warning テストと違い、setter 側では出てはならない。
+            AddressTellerSettings.AutoSnapshotRetention = -5;
+
+            LogAssert.NoUnexpectedReceived();
         }
     }
 }

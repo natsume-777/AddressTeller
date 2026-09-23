@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -405,6 +406,294 @@ namespace AddressTeller.Editor.Tests
             var omitted = AddressTellerReportWriter.ToJUnitXml(report);
 
             Assert.AreEqual(explicitTrue, omitted);
+        }
+
+        // 以下は internal オーバーロード（failingStatusNames による failure 対象の絞り込み）を検証する。
+        // JUnit の testcase 構成（1 Status = 1 testcase）自体は公開オーバーロードと変わらず、
+        // failure の有無だけが failingStatusNames に応じて変わることを確認する。
+
+        // failure 対象の Status 名集合そのものは、本番で使われている
+        // AddressTellerReportBuilder.BuildCheckCliFailingStatusNames / BuildApplyFailingStatusNames を
+        // そのまま呼ぶ（基準を再実装せず、本番と同じ関数で検証する）。
+
+        /// <summary><paramref name="issues"/> の Status 名をそのまま <see cref="AddressTellerReportIssue"/> に写したレポートを作る。</summary>
+        private static AddressTellerReport ReportFromIssues(IReadOnlyList<ValidationResult> issues)
+        {
+            var report = new AddressTellerReport();
+            foreach (var issue in issues)
+            {
+                report.Issues.Add(new AddressTellerReportIssue
+                {
+                    Path = "Assets/Dummy.prefab",
+                    Status = issue.Status.ToString(),
+                    Message = issue.Message,
+                });
+            }
+            return report;
+        }
+
+        /// <summary><paramref name="xml"/> から name 属性が <paramref name="statusName"/> の Validation testcase を取り出す。</summary>
+        private static XElement FindValidationTestCase(string xml, string statusName) =>
+            XDocument.Parse(xml).Root.Elements("testcase").First(tc => tc.Attribute("name").Value == statusName);
+
+        [Test]
+        public void ToJUnitXml_FailingStatusNames_LimitsFailureToSpecifiedStatuses()
+        {
+            // ReportWithDriftAndIssues は ConflictingAddress / GroupNotFound の2 Statusを持つ。
+            // 集合に ConflictingAddress のみを含めると、GroupNotFound の testcase は残るが failure が外れる。
+            var report = ReportWithDriftAndIssues();
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true, failingStatusNames: new[] { "ConflictingAddress" });
+            var doc = XDocument.Parse(xml);
+            var testsuite = doc.Root;
+
+            // testcase 数（drift + ConflictingAddress + GroupNotFound = 3）は不変。
+            Assert.AreEqual("3", testsuite.Attribute("tests").Value);
+            // failures は drift(1) + ConflictingAddress(1) = 2 に減る（GroupNotFoundの分だけ減少）。
+            Assert.AreEqual("2", testsuite.Attribute("failures").Value);
+
+            Assert.IsNotNull(FindValidationTestCase(xml, "ConflictingAddress").Element("failure"));
+            Assert.IsNull(FindValidationTestCase(xml, "GroupNotFound").Element("failure"), "集合に無い Status は testcase を残したまま failure だけ外れるべき。");
+        }
+
+        [Test]
+        public void ToJUnitXml_FailingStatusNamesNull_MatchesAllStatusesFailing()
+        {
+            // failingStatusNames が null の場合、全 Status に無条件で failure が付く公開オーバーロードと同じ挙動。
+            var report = ReportWithDriftAndIssues();
+
+            var withNullSet = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true, failingStatusNames: null);
+            var publicOverload = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true);
+
+            Assert.AreEqual(publicOverload, withNullSet);
+        }
+
+        [Test]
+        public void ToJUnitXml_CheckCliCriteria_NoticeOnlyDuplicateAddress_HasNoFailure()
+        {
+            // 通知専用（管理外同士の重複、HasWritableDuplicate=false → IsOk=true）のみの場合、
+            // CheckCLI 基準（!IsOk）では failure 対象に含まれない。
+            var issues = new List<ValidationResult>
+            {
+                new ValidationResult(null, ValidationStatus.DuplicateAddress, "notice", hasWritableDuplicate: false),
+            };
+            var report = ReportFromIssues(issues);
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true, AddressTellerReportBuilder.BuildCheckCliFailingStatusNames(issues));
+
+            Assert.IsNull(FindValidationTestCase(xml, "DuplicateAddress").Element("failure"));
+        }
+
+        [Test]
+        public void ToJUnitXml_CheckCliCriteria_WritableDuplicateAddress_HasFailure()
+        {
+            // 書き込み対象を含む重複（HasWritableDuplicate=true → IsOk=false）は CheckCLI 基準で failure 対象。
+            var issues = new List<ValidationResult>
+            {
+                new ValidationResult(null, ValidationStatus.DuplicateAddress, "writable", hasWritableDuplicate: true),
+            };
+            var report = ReportFromIssues(issues);
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true, AddressTellerReportBuilder.BuildCheckCliFailingStatusNames(issues));
+
+            Assert.IsNotNull(FindValidationTestCase(xml, "DuplicateAddress").Element("failure"));
+        }
+
+        [Test]
+        public void ToJUnitXml_CheckCliCriteria_MixedDuplicateAddress_HasFailure()
+        {
+            // 通知専用と書き込み対象を含む重複が同じ Status 内に混在する場合、1件でも !IsOk があれば
+            // その Status 全体（testcase 単位）が failure 対象になる。
+            var issues = new List<ValidationResult>
+            {
+                new ValidationResult(null, ValidationStatus.DuplicateAddress, "notice", hasWritableDuplicate: false),
+                new ValidationResult(null, ValidationStatus.DuplicateAddress, "writable", hasWritableDuplicate: true),
+            };
+            var report = ReportFromIssues(issues);
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true, AddressTellerReportBuilder.BuildCheckCliFailingStatusNames(issues));
+
+            Assert.IsNotNull(FindValidationTestCase(xml, "DuplicateAddress").Element("failure"));
+        }
+
+        [Test]
+        public void ToJUnitXml_ApplyCriteria_WritableDuplicateAddress_HasNoFailure()
+        {
+            // Apply 系の基準（AddressTellerApplyFlow.IsBlocking）は DuplicateAddress を常に除外する
+            // ——書き込み対象を含み IsOk=false であっても、Apply を中止しない報告専用ステータスのため。
+            var issues = new List<ValidationResult>
+            {
+                new ValidationResult(null, ValidationStatus.DuplicateAddress, "writable", hasWritableDuplicate: true),
+            };
+            var report = ReportFromIssues(issues);
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: false, AddressTellerReportBuilder.BuildApplyFailingStatusNames(issues));
+
+            Assert.IsNull(FindValidationTestCase(xml, "DuplicateAddress").Element("failure"));
+        }
+
+        [Test]
+        public void ToJUnitXml_ApplyCriteria_ConflictingAndGroupNotFound_HaveFailure()
+        {
+            // DuplicateAddress 以外の !IsOk ステータスは Apply 系の基準でも通常どおり failure 対象になる。
+            var issues = new List<ValidationResult>
+            {
+                new ValidationResult(null, ValidationStatus.ConflictingAddress, "conflict"),
+                new ValidationResult(null, ValidationStatus.GroupNotFound, "missing"),
+            };
+            var report = ReportFromIssues(issues);
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: false, AddressTellerReportBuilder.BuildApplyFailingStatusNames(issues));
+
+            Assert.IsNotNull(FindValidationTestCase(xml, "ConflictingAddress").Element("failure"));
+            Assert.IsNotNull(FindValidationTestCase(xml, "GroupNotFound").Element("failure"));
+        }
+
+        [Test]
+        public void ToJUnitXml_FailingStatusNamesEmpty_NoValidationTestCaseHasFailure()
+        {
+            // 空集合は「failure対象のStatusがひとつも無い」という意味であり、null（全Status対象）とは異なる。
+            var report = ReportWithDriftAndIssues();
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true, failingStatusNames: Array.Empty<string>());
+            var doc = XDocument.Parse(xml);
+            var testsuite = doc.Root;
+
+            // testcase数（drift + ConflictingAddress + GroupNotFound = 3）は不変。
+            Assert.AreEqual("3", testsuite.Attribute("tests").Value);
+            // failures は drift(1)のみ。Validation側の2 Statusはどちらも空集合に含まれないためfailureなし。
+            Assert.AreEqual("1", testsuite.Attribute("failures").Value);
+
+            Assert.IsNull(FindValidationTestCase(xml, "ConflictingAddress").Element("failure"));
+            Assert.IsNull(FindValidationTestCase(xml, "GroupNotFound").Element("failure"));
+        }
+
+        [Test]
+        public void ToJUnitXml_FailingStatusNames_ContainsUnknownStatus_IsIgnoredWithoutError()
+        {
+            // 集合に、このレポートに実在しないStatus名が混じっていても例外を投げず、
+            // 実在するtestcaseのfailure判定にも影響しない。
+            var report = ReportWithDriftAndIssues();
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true,
+                failingStatusNames: new[] { "ConflictingAddress", "StatusThatDoesNotExistInThisReport" });
+            var doc = XDocument.Parse(xml);
+
+            Assert.AreEqual("3", doc.Root.Attribute("tests").Value);
+            Assert.IsNotNull(FindValidationTestCase(xml, "ConflictingAddress").Element("failure"));
+            Assert.IsNull(FindValidationTestCase(xml, "GroupNotFound").Element("failure"));
+        }
+
+        [Test]
+        public void ToJUnitXml_FailingStatusNames_DriftFailureGovernedOnlyByTreatDriftAsFailure()
+        {
+            // failingStatusNamesはValidation系testcaseにのみ作用する。drift testcaseのfailure有無は
+            // treatDriftAsFailureだけで決まり、failingStatusNamesに"drift"を含めても除いても変わらない。
+            var report = ReportWithDriftAndIssues();
+
+            // Validation側を全滅させる空集合でも、treatDriftAsFailure:trueならdriftはfailureを持つ。
+            var xmlDriftTrue = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true, failingStatusNames: Array.Empty<string>());
+            Assert.IsNotNull(FindValidationTestCase(xmlDriftTrue, "drift").Element("failure"));
+
+            // "drift"という名前自体を含む集合を渡しても、treatDriftAsFailure:falseならdriftはfailureを持たない。
+            var xmlDriftFalse = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: false,
+                failingStatusNames: new[] { "ConflictingAddress", "GroupNotFound", "drift" });
+            Assert.IsNull(FindValidationTestCase(xmlDriftFalse, "drift").Element("failure"));
+        }
+
+        // 以下は「validation系testcaseにfailureが1つ以上ある」⇔「exit code 2」という不変条件が、
+        // CheckCLI基準・Apply基準の両方で成り立つことを、テスト側で基準を再実装せず本番の関数
+        // （AddressTellerReportBuilder.BuildCheckCliFailingStatusNames/BuildApplyFailingStatusNames、
+        // DetermineExitCode/DetermineApplyExitCode）を直接呼んで検証する。
+
+        /// <summary>xmlの中にfailure付きのtestcaseが1件でもあるかどうか。</summary>
+        private static bool AnyTestCaseHasFailure(string xml) =>
+            XDocument.Parse(xml).Root.Elements("testcase").Any(tc => tc.Element("failure") != null);
+
+        private static IEnumerable<TestCaseData> InvariantIssueSets()
+        {
+            yield return new TestCaseData(new List<ValidationResult>())
+                .SetName("{m}_Empty");
+            yield return new TestCaseData(new List<ValidationResult>
+            {
+                new(null, ValidationStatus.Ok, "ok"),
+            }).SetName("{m}_OkOnly");
+            yield return new TestCaseData(new List<ValidationResult>
+            {
+                new(null, ValidationStatus.Skipped, "skipped"),
+            }).SetName("{m}_SkippedOnly");
+            yield return new TestCaseData(new List<ValidationResult>
+            {
+                new(null, ValidationStatus.ConflictingAddress, "conflict"),
+            }).SetName("{m}_ConflictingAddress");
+            yield return new TestCaseData(new List<ValidationResult>
+            {
+                new(null, ValidationStatus.DuplicateAddress, "notice", hasWritableDuplicate: false),
+            }).SetName("{m}_DuplicateAddressNoticeOnly");
+            yield return new TestCaseData(new List<ValidationResult>
+            {
+                new(null, ValidationStatus.DuplicateAddress, "writable", hasWritableDuplicate: true),
+            }).SetName("{m}_DuplicateAddressWritable");
+            yield return new TestCaseData(new List<ValidationResult>
+            {
+                new(null, ValidationStatus.Ok, "ok"),
+                new(null, ValidationStatus.ConflictingAddress, "conflict"),
+            }).SetName("{m}_MixedOkAndConflict");
+        }
+
+        [TestCaseSource(nameof(InvariantIssueSets))]
+        public void ToJUnitXml_CheckCliBasis_FailurePresence_MatchesExitCodeTwo(List<ValidationResult> issues)
+        {
+            var report = ReportFromIssues(issues);
+            var failingNames = AddressTellerReportBuilder.BuildCheckCliFailingStatusNames(issues);
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true, failingNames);
+            var dryRun = new DryRunResult(new SnapshotDiff(), issues);
+            var exitCodeIsTwo = AddressTellerReportBuilder.DetermineExitCode(dryRun) == 2;
+
+            Assert.AreEqual(exitCodeIsTwo, AnyTestCaseHasFailure(xml),
+                "CheckCLI基準で「exit code 2」と「JUnitにfailureが1つ以上ある」は同値であるべき。");
+        }
+
+        [TestCaseSource(nameof(InvariantIssueSets))]
+        public void ToJUnitXml_ApplyBasis_FailurePresence_MatchesExitCodeTwo(List<ValidationResult> issues)
+        {
+            var report = ReportFromIssues(issues);
+            var failingNames = AddressTellerReportBuilder.BuildApplyFailingStatusNames(issues);
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: false, failingNames);
+            var exitCodeIsTwo = AddressTellerReportBuilder.DetermineApplyExitCode(issues) == 2;
+
+            Assert.AreEqual(exitCodeIsTwo, AnyTestCaseHasFailure(xml),
+                "Apply系基準で「exit code 2」と「JUnitにfailureが1つ以上ある」は同値であるべき。");
+        }
+
+        [Test]
+        public void WriteToFile_Json_FailingStatusNames_DoesNotAffectOutput()
+        {
+            // JSONはfailureの概念を持たないため、failingStatusNamesの指定有無・中身に関わらず出力は同一。
+            var report = ReportWithDriftAndIssues();
+            var tempDir = Path.Combine(Path.GetTempPath(), "AddressTellerReportWriterTests_" + Guid.NewGuid());
+            var pathWithoutFilter = Path.Combine(tempDir, "without.json");
+            var pathWithFilter = Path.Combine(tempDir, "with.json");
+
+            try
+            {
+                Assert.IsTrue(AddressTellerReportWriter.WriteToFile(pathWithoutFilter, report, ReportFormat.Json));
+                Assert.IsTrue(AddressTellerReportWriter.WriteToFile(pathWithFilter, report, ReportFormat.Json,
+                    treatDriftAsFailure: true, failingStatusNames: new[] { "ConflictingAddress" }));
+
+                var contentWithout = File.ReadAllText(pathWithoutFilter);
+                var contentWith = File.ReadAllText(pathWithFilter);
+
+                Assert.AreEqual(contentWithout, contentWith);
+                Assert.AreEqual(AddressTellerReportWriter.ToJson(report), contentWithout);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir))
+                    Directory.Delete(tempDir, true);
+            }
         }
 
         [Test]

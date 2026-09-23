@@ -193,7 +193,7 @@ namespace AddressTeller.Editor
             var managedFoldout = new Foldout { text = $"Managed Groups ({managedGroups.Count})", value = false };
             if (managedGroups.Count == 0)
             {
-                var emptyLabel = new Label("(No groups are referenced by enabled rules)");
+                var emptyLabel = new Label("(No enabled rule declares Address() for any group)");
                 emptyLabel.AddToClassList("at-muted");
                 managedFoldout.Add(emptyLabel);
             }

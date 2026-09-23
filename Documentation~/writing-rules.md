@@ -180,7 +180,7 @@ Unit-test `AddressRuleBase` subclasses in isolation using the public `RuleInspec
 
       public override void Configure(IAddressRuleBuilder rules)
       {
-          rules.Group("Audio/Boss") // create this group first — AutoCreateMissingGroups is OFF by default
+          rules.Group("BossAudio") // create this group first — AutoCreateMissingGroups is OFF by default
               .Where(ctx => ctx.IsInFolder("Assets/Audio/Boss"))
               .Address(ctx => $"boss/{ctx.FileNameWithoutExtension}");
       }

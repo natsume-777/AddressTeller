@@ -148,7 +148,7 @@ namespace AddressTeller.Editor
             set
             {
                 var data = AddressTellerSettingsAsset.Current;
-                var clamped = Mathf.Max(1, value);
+                var clamped = AddressTellerSettingsAsset.NormalizeAutoSnapshotRetention(value, warnIfChanged: false);
                 if (data._autoSnapshotRetention == clamped) return;
                 data._autoSnapshotRetention = clamped;
                 AddressTellerSettingsAsset.SaveChanges();

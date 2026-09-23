@@ -42,7 +42,26 @@ namespace AddressTeller.Editor
         /// ingests this file fail on every successful apply that changed anything — the same problem
         /// exit code 1 used to cause for those two methods (see <see cref="AddressTellerReportBuilder.DetermineApplyExitCode"/>).
         /// </param>
-        public static string ToJUnitXml(AddressTellerReport report, bool treatDriftAsFailure = true)
+        /// <remarks>
+        /// Depending on the caller, some <see cref="AddressTellerReport.Issues"/> statuses do not affect that
+        /// entry point's exit code (for example a report-only <see cref="ValidationStatus.DuplicateAddress"/>
+        /// notice that does not abort Apply). This overload always marks every ValidationStatus testcase with
+        /// a &lt;failure&gt; element; callers that need the &lt;failure&gt; presence to track the exit code
+        /// exactly (as <see cref="AddressTellerMenu.CheckCLI"/> / <see cref="AddressTellerMenu.ApplyAllCLI"/> /
+        /// <see cref="AddressTellerMenu.ApplyWithValidateCLI"/> do) use an internal overload that limits
+        /// &lt;failure&gt; to the statuses that are actually blocking.
+        /// </remarks>
+        public static string ToJUnitXml(AddressTellerReport report, bool treatDriftAsFailure = true) =>
+            ToJUnitXml(report, treatDriftAsFailure, failingStatusNames: null);
+
+        /// <summary>
+        /// <see cref="ToJUnitXml(AddressTellerReport, bool)"/> に、failure を付ける対象 Status を絞り込む
+        /// <paramref name="failingStatusNames"/> を追加したオーバーロード。testcase の構成（1 Status = 1 testcase）
+        /// 自体は変えない——failure の有無だけを、呼び出し元のエントリポイントが「exit code に反映する issue」と
+        /// して数えたかどうかに揃える。<paramref name="failingStatusNames"/> が null の場合は全 Status を failure
+        /// 対象とする（公開オーバーロードと同じ挙動）。
+        /// </summary>
+        internal static string ToJUnitXml(AddressTellerReport report, bool treatDriftAsFailure, IReadOnlyCollection<string> failingStatusNames)
         {
             var testCases = new List<(string name, string classname, string failureMessage)>();
 
@@ -75,7 +94,10 @@ namespace AddressTeller.Editor
                 foreach (var issue in ordered)
                     sb.Append('\n').Append(issue.Path).Append(": ").Append(issue.Message);
 
-                testCases.Add((group.Key, "AddressTeller.Validation", sb.ToString()));
+                // failingStatusNames が null なら常に failure（従来どおり）。集合が渡された場合は、
+                // その Status がエントリポイントの exit code に反映される issue かどうかで failure の有無を決める。
+                var isFailingStatus = failingStatusNames == null || failingStatusNames.Contains(group.Key);
+                testCases.Add((group.Key, "AddressTeller.Validation", isFailingStatus ? sb.ToString() : null));
             }
 
             int totalTests = testCases.Count;
@@ -116,11 +138,19 @@ namespace AddressTeller.Editor
         /// <param name="format">Output format. Throws <see cref="ArgumentException"/> for an undefined value.</param>
         /// <param name="treatDriftAsFailure">
         /// Only meaningful for <see cref="ReportFormat.Junit"/>; ignored for <see cref="ReportFormat.Json"/>.
-        /// See <see cref="ToJUnitXml"/> for what this controls and why the two apply CLI entry points pass false.
+        /// See <see cref="ToJUnitXml(AddressTellerReport, bool)"/> for what this controls and why the two apply CLI entry points pass false.
         /// </param>
         /// <returns>True if the write succeeded; false on failure (a message is already logged).</returns>
         /// <exception cref="ArgumentNullException"><paramref name="report"/> is null.</exception>
-        public static bool WriteToFile(string path, AddressTellerReport report, ReportFormat format, bool treatDriftAsFailure = true)
+        public static bool WriteToFile(string path, AddressTellerReport report, ReportFormat format, bool treatDriftAsFailure = true) =>
+            WriteToFile(path, report, format, treatDriftAsFailure, failingStatusNames: null);
+
+        /// <summary>
+        /// <see cref="WriteToFile(string, AddressTellerReport, ReportFormat, bool)"/> に、JUnit 出力の failure を
+        /// 絞り込む <paramref name="failingStatusNames"/> を追加したオーバーロード。<see cref="ReportFormat.Json"/>
+        /// の場合は無視される（JSON 出力は failure の概念を持たないため挙動不変）。
+        /// </summary>
+        internal static bool WriteToFile(string path, AddressTellerReport report, ReportFormat format, bool treatDriftAsFailure, IReadOnlyCollection<string> failingStatusNames)
         {
             if (report == null) throw new ArgumentNullException(nameof(report));
 
@@ -131,7 +161,7 @@ namespace AddressTeller.Editor
                     content = ToJson(report);
                     break;
                 case ReportFormat.Junit:
-                    content = ToJUnitXml(report, treatDriftAsFailure);
+                    content = ToJUnitXml(report, treatDriftAsFailure, failingStatusNames);
                     break;
                 default:
                     throw new ArgumentException($"Unknown report format: {format}", nameof(format));
