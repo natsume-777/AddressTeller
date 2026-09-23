@@ -8,6 +8,10 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+---
+
+## [0.6.1] - 2026-09-23
+
 ### Fixed
 
 - JUnit report: `CheckCLI` now attaches a `<failure>` to a Validation `<testcase>` only when its status has

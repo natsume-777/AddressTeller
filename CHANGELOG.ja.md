@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+---
+
+## [0.6.1] - 2026-09-23
+
 ### Fixed
 
 - JUnit レポート: `CheckCLI` は、そのステータスに `IsOk=false` の結果が1件でもある場合にのみ、Validation の
