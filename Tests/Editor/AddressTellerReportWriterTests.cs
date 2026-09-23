@@ -519,7 +519,7 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void ToJUnitXml_ApplyCriteria_WritableDuplicateAddress_HasNoFailure()
         {
-            // Apply 系の基準（AddressTellerApplyFlow.IsBlocking）は DuplicateAddress を常に除外する
+            // Apply 系の基準（ValidationResult.IsBlocking）は DuplicateAddress を常に除外する
             // ——書き込み対象を含み IsOk=false であっても、Apply を中止しない報告専用ステータスのため。
             var issues = new List<ValidationResult>
             {

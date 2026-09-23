@@ -65,7 +65,7 @@ Unity Editor へのフック・UI・CLI。名前空間は `AddressTeller.Editor`
 
 ### Tests/Editor
 
-NUnit の EditMode テスト（`AddressTeller.Editor.Tests`）。`AddressTeller.Core`・`AddressTeller.Editor` の両方を直接参照し、それぞれのアセンブリが宣言する `InternalsVisibleTo` により `internal` 型を直接検証する。`Tests` フォルダは UPM のテストアセンブリとして扱われ、配布物には含まれない。
+NUnit の EditMode テスト（`AddressTeller.Editor.Tests`）。`AddressTeller.Core`・`AddressTeller.Editor` の両方を直接参照し、それぞれのアセンブリが宣言する `InternalsVisibleTo` により `internal` 型を直接検証する。`Documentation~`/`Samples~` と異なり `Tests` フォルダ名には `~` が付かないため、git URL でインストールした場合もダウンロードはされる。このテストアセンブリ自体はエディタ専用であり、asmdef の `defineConstraints` に `UNITY_INCLUDE_TESTS` を持つ——テストを走らせる場合を除き、利用者側プロジェクトのビルドでコンパイルされることは想定していない。
 
 ### Samples~
 

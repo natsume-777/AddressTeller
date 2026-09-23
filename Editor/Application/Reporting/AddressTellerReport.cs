@@ -145,6 +145,31 @@ namespace AddressTeller.Editor
 
         /// <summary>Human-readable description of the issue.</summary>
         public string Message;
+
+        /// <summary>
+        /// Mirrors <see cref="ValidationResult.IsBlocking"/> for the issue this entry was built from: true
+        /// when this issue should abort a write (Apply), false for a report-only notice (for example a
+        /// <see cref="ValidationStatus.DuplicateAddress"/> entry that does not block Apply). Note this
+        /// reflects Apply's own blocking criteria regardless of which entry point produced the report —
+        /// <c>CheckCLI</c>'s exit code uses a different, broader criterion (<see cref="Ok"/> alone) since
+        /// it has no write to abort; see the Compatibility Policy for the exact contract.
+        /// </summary>
+        public bool Blocking;
+
+        /// <summary>
+        /// Mirrors <see cref="ValidationResult.IsOk"/> for the issue this entry was built from: false when
+        /// this issue represents a problem, true for a status that is never a problem or for a report-only
+        /// notice like <see cref="ValidationStatus.DuplicateAddress"/> that involves no writable duplicate
+        /// (it is <see cref="ValidationStatus.DuplicateAddress"/> <em>with</em> a writable duplicate —
+        /// <c>HasWritableDuplicate</c> true — that has <c>Ok</c> false and <see cref="Blocking"/> false at
+        /// the same time). Together with <see cref="Blocking"/>, this tells a JSON consumer whether a given
+        /// issue is counted toward exit code 2 by <c>CheckCLI</c> (which uses <c>!Ok</c>) or by the Apply
+        /// CLIs (which use <see cref="Blocking"/> — see its own doc for the dry-run caveat that applies
+        /// there). It does not by itself reproduce the actual exit code: <c>CheckCLI</c>'s exit 1 depends on
+        /// <see cref="AddressTellerReport.Drift"/> too, and the real exit code for any run is
+        /// <see cref="AddressTellerReportSummary.ExitCode"/>.
+        /// </summary>
+        public bool Ok;
     }
 
     /// <summary>

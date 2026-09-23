@@ -35,6 +35,41 @@ namespace AddressTeller.Editor.Tests
             }
         }
 
+        /// <summary>
+        /// StubFolder 配下のアセットに対し、Predicate 評価時に必ず例外を投げる高優先度（Order=0）ルール。
+        /// BlockedByRuleError を end-to-end で再現するために使う。
+        /// </summary>
+        private sealed class ThrowingHighPriorityRule : AddressRuleBase
+        {
+            public override int Order => 0;
+
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("StubGroup")
+                    .Where(ctx => ctx.Path.StartsWith(StubFolder + "/", System.StringComparison.Ordinal)
+                        ? throw new System.InvalidOperationException("boom")
+                        : false)
+                    .Address(_ => "unreachable");
+            }
+        }
+
+        /// <summary>
+        /// StubRule と同じマッチ条件だが、Order がより大きい（優先度がより低い）版。
+        /// RuleCollector はテストアセンブリ全体を対象にリフレクションでルールクラスを収集するため、Order の値は
+        /// 同アセンブリ内の他のテスト専用ルールクラス（RuleCollectorTests 等）と衝突しない値を選ぶこと。
+        /// </summary>
+        private sealed class LowerPriorityStubRule : AddressRuleBase
+        {
+            public override int Order => 84210;
+
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("StubGroup")
+                    .Where(ctx => ctx.Path.StartsWith(StubFolder + "/", System.StringComparison.Ordinal))
+                    .Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
         private AddressableAssetSettings _settings;
         private AddressableAssetGroup _stubGroup;
         private bool _originalCleanupSetting;
@@ -127,6 +162,39 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void ValidateAll_HigherPriorityRuleThrows_ReportsBothRuleErrorAndBlockedByRuleError()
+        {
+            // ThrowingHighPriorityRule(Order=0) が例外を投げ、LowerPriorityStubRule(Order がより大きい)
+            // が候補を出す。RuleError（例外そのもの）と BlockedByRuleError（そのため書き込みを見送った結果）
+            // の両方が同じ issues に現れることを確認する（原因と結果は別エントリで二重計上にならない）。
+            CreatePrefab(StubAssetPath);
+            var rules = new AddressRuleBase[] { new ThrowingHighPriorityRule(), new LowerPriorityStubRule() };
+
+            var issues = AddressTellerService.ValidateAll(_settings, NullProgressReporter.Instance, rules);
+
+            var forAsset = issues.Where(i => i.Context?.Path == StubAssetPath).ToList();
+            Assert.IsTrue(forAsset.Any(i => i.Status == ValidationStatus.RuleError), "Expected a RuleError entry.");
+            Assert.IsTrue(forAsset.Any(i => i.Status == ValidationStatus.BlockedByRuleError), "Expected a BlockedByRuleError entry.");
+            Assert.AreEqual(1, forAsset.Count(i => i.Status == ValidationStatus.RuleError));
+            Assert.AreEqual(1, forAsset.Count(i => i.Status == ValidationStatus.BlockedByRuleError));
+        }
+
+        [Test]
+        public void ApplyAll_HigherPriorityRuleThrows_WritesNothingAndReportsBothStatuses()
+        {
+            CreatePrefab(StubAssetPath);
+            var rules = new AddressRuleBase[] { new ThrowingHighPriorityRule(), new LowerPriorityStubRule() };
+
+            var issues = AddressTellerService.ApplyAll(new[] { StubAssetPath }, _settings, NullProgressReporter.Instance, rules);
+
+            Assert.IsNull(_settings.FindAssetEntry(Guid(StubAssetPath)),
+                "The lower-priority rule's address must not be written while a higher-priority rule failed.");
+            var forAsset = issues.Where(i => i.Context?.Path == StubAssetPath).ToList();
+            Assert.IsTrue(forAsset.Any(i => i.Status == ValidationStatus.RuleError));
+            Assert.IsTrue(forAsset.Any(i => i.Status == ValidationStatus.BlockedByRuleError));
+        }
+
+        [Test]
         public void Explain_WithInjectedRules_ReportsMatchedRule()
         {
             CreatePrefab(StubAssetPath);
@@ -139,6 +207,49 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(1, explanation.Explanation.Details.Count);
             Assert.AreEqual(RuleMatchOutcome.Matched, explanation.Explanation.Details[0].Outcome);
             Assert.AreEqual("StubAsset", explanation.Explanation.Details[0].ProducedAddress);
+        }
+
+        [Test]
+        public void Explain_WithInjectedRules_WinnerPropagatesToConclusionText()
+        {
+            // RuleExplainService.Explain が Validate(..., out winner) の winner をそのまま
+            // AssetExplanation.Winner に伝え、AddressTellerExplainWindow.DescribeConclusion が
+            // それを使って正しい採用アドレスを表示することを、内部の勝者選定を経由せず end-to-end で確認する。
+            CreatePrefab(StubAssetPath);
+
+            var explanations = RuleExplainService.Explain(new[] { StubAssetPath }, _settings, new AddressRuleBase[] { new StubRule() });
+            var explanation = explanations.Single(e => e.AssetPath == StubAssetPath);
+
+            Assert.AreEqual(ValidationStatus.Ok, explanation.Validation.Status);
+            Assert.AreEqual("StubGroup", explanation.Winner.GroupName);
+            Assert.AreEqual("StubAsset", explanation.Winner.Address);
+
+            var (text, cssClass) = AddressTellerExplainWindow.DescribeConclusion(
+                explanation.Validation, explanation.Explanation.Resolution, explanation.Winner);
+
+            StringAssert.Contains("StubAsset", text);
+            Assert.AreEqual("at-conclusion--ok", cssClass);
+        }
+
+        [Test]
+        public void Explain_HigherPriorityRuleThrows_WinnerNotAdoptedAndConclusionSaysBlocked()
+        {
+            // 勝者候補は存在する(LowerPriorityStubRule 由来)が、より優先度の高いルールの例外により
+            // BlockedByRuleError になるケースを end-to-end で確認する。結論テキストは Blocked を明示し、
+            // (adopted) を出してはならない。
+            CreatePrefab(StubAssetPath);
+            var rules = new AddressRuleBase[] { new ThrowingHighPriorityRule(), new LowerPriorityStubRule() };
+
+            var explanations = RuleExplainService.Explain(new[] { StubAssetPath }, _settings, rules);
+            var explanation = explanations.Single(e => e.AssetPath == StubAssetPath);
+
+            Assert.AreEqual(ValidationStatus.BlockedByRuleError, explanation.Validation.Status);
+
+            var (text, cssClass) = AddressTellerExplainWindow.DescribeConclusion(
+                explanation.Validation, explanation.Explanation.Resolution, explanation.Winner);
+
+            StringAssert.Contains("Blocked by rule error", text);
+            Assert.AreEqual("at-conclusion--error", cssClass);
         }
     }
 }

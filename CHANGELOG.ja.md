@@ -8,6 +8,191 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-24
+
+### Added
+
+- `ValidationResult.IsBlocking`: 1件の validation 結果が書き込みを中止すべきかどうかを表す新しい公開
+  プロパティ。定義は `!IsOk && Status != ValidationStatus.DuplicateAddress`——この判定基準はこれで一本化され、
+  これを必要とする内部ロジック（Apply with Validate の中止判定、Apply 側 CLI の exit code、JUnit の failure
+  判定）は同じ条件を複数箇所で再実装せず、このプロパティを参照するようになった。Apply All（Validate を
+  先行させない場合）は中止判定の対象となる dry-run issue を持たないため、これを参照しない。`CheckCLI` の
+  exit code は影響を受けない——中止すべき書き込みが無いため、引き続き意図的に `IsOk` の否定のみを使う。
+- JSON レポート: `Issues[]` の各エントリに、そのエントリの元になった issue の `ValidationResult.IsBlocking` を
+  反映する `Blocking`、`ValidationResult.IsOk` を反映する `Ok`（いずれも bool）フィールドを追加。これにより、
+  ある issue が `CheckCLI` の exit code 2 判定（`!Ok` を使う）と Apply 系 CLI の exit code 2 判定（`Blocking`
+  を使う。dry-run に関する但し書きは `Blocking` 自身のドキュメント参照）のどちらに数えられるかを消費者が
+  判別できるようになる。どちらの値も単独では実際の exit code を再現しない——`CheckCLI` の exit 1 は `Drift[]`
+  にも依存し、実行の実際の exit code は常に `Summary.ExitCode` である。`SchemaVersion` は `1` のまま
+  （非破壊なキー追加）。
+- `ValidationStatus.SettingsUnavailable`: 設定ファイルが読み込めなかった場合に返す新しいステータス。
+  `AddressTellerService.ApplyAll`/`ValidateAll` と `AddressTellerSnapshotService.BuildPredictedSnapshot`
+  は中核オーバーロードで設定ファイルをゲートするようになり、失敗した場合は既定値のまま黙って動くのではなく
+  このステータス1件だけを結果として返す。`AddressTellerService.RemoveEntriesForDeletedAssets` は
+  `ValidationResult` を返さない API のため、同じ失敗時はエラーをログして空リストを返す。これらのゲートは
+  いずれもそれ以外の場面では静か（ログしない）——ログを出す責務は、既にゲート済みの呼び出し元（メニュー・
+  CLI・Postprocessor）側に残す。
+- Project Settings: 設定ファイルが読み込めない状態になると「Back Up Broken File (.bak) and Recreate with
+  Defaults」ボタンが表示されるようになった。確認ダイアログ（「Auto-apply on import」「Remove unmatched
+  entries」を含む全設定が既定値に戻る旨）を経てから、壊れたファイルをタイムスタンプ付きの名前で退避し
+  （複数回復旧しても以前の退避ファイルを上書きしない）、既定値の新しい正常なファイルを書き直す。
+  ボタンを押した時点で（他の何かにより）既にファイルが読める状態へ直っていた場合は、ファイルへは
+  一切触れず退避も行わない。ファイルが読めない間は全ての設定項目が無効化される——各 setter が
+  この状態で例外を投げるようになったため（詳細は下記 Changed 参照）、操作させても保存できないため。
+- `ApplyAllCLI` / `ApplyWithValidateCLI` / `CheckCLI` / `ClearCLI` は、設定ファイルがまだ存在しない状態で
+  実行されると Info として1行ログするようになった（`No settings file; using defaults.`）——既定値のまま
+  実行されたことが CI のログから確認できるようにするため。Project Settings 画面にも同じ内容を1行表示する。
+  import 時の自動適用（Postprocessor）は意図的にこのログを出さない——既定値のまま意図的に運用している
+  プロジェクトで、import のたびにログが出るのを避けるため。
+- `ValidationStatus.UnmatchedEntryKept`: `CleanupStaleEntries` が OFF の間、`ValidateAll` と
+  `BuildPredictedSnapshot` の全呼び出し元（`Validate`、`Apply with Validate`、`CheckCLI`、Preview 系
+  ウィンドウ）が報告する、書き込みを止めない新しい通知専用ステータス（`IsOk` は常に true）。`CleanupStaleEntries`
+  が ON なら削除されていたはずの所有グループ内エントリ——どのルールにもマッチしなくなったもの、または
+  パスが構造的に無効なもの——を示し、設定を ON にする前にその影響を確認できるようにする。コンソールには
+  1件ずつではなく件数のみの1行サマリを出す（個別の内容は常に Result Window と JSON/JUnit レポートにある）。
+  `AddressTellerPostprocessor` によるインポート時の差分適用ではこのステータスは報告されない。
+- `ValidationStatus.BlockedByRuleError`: あるアセットに対して単独の勝者アドレス候補が確定した（同点なし）
+  にもかかわらず、勝者の `Order` 以下（同点含む・つまり勝者と同等以上に優先される立場）を持つアドレス産出
+  ルールがそのアセットの評価中に例外を送出した場合に返す新しいブロック系ステータス（`IsOk=false`、
+  `IsBlocking=true`）。これは通常、勝者とは別の、勝者と同等以上に優先されるルールだが、勝者となったルール
+  そのものである場合もある（`AddressSelector` は成功して勝者候補を出したものの、同じルールチェーン上の
+  後続の `LabelSelector` が例外を送出したケース）。そのアセットには一切書き込まれない——勝者のアドレスも、
+  マッチした他のルールのラベルも書かれない。`ApplyAll`・`ValidateAll`・`BuildPredictedSnapshot` はいずれも
+  同じ評価処理を共有するため、同じ判定になる。例外を送出したルールの `RuleError` が必ず同じ結果リストの中で
+  合わせて報告される——`RuleError` が原因、`BlockedByRuleError` がそのアセットの書き込みが見送られたという
+  結果。Explain ウィンドウでは同じ内容を UI 上で表示する——例外を送出したルールはそのアセットの `[Error]`
+  行として現れ、結論は「Blocked by rule error」になる。Explain ウィンドウで勝者になるはずだったアドレス候補の
+  `[Match]` 行は、実際には書き込みがブロックされている場合に `(adopted)` ではなく、その旨を明示するように
+  なった。ルール例外が原因だとその行だけでは特定できないステータス（`GroupNotFound`、`InvalidAddress`、
+  `DefaultGroupUnavailable` 等）では、ルール例外が原因であるかのように誤解させないよう、中立な
+  「not written」表示にする。コンソールでは `BlockedByRuleError` を（`UnmatchedEntryKept` と同様に）
+  個別には出さず件数だけの1行サマリにまとめる——ただしこちらは実際の問題（IsOk=false）なので `LogError`
+  にする（1つのルール例外が多数のアセットへ波及しうるため）。この結果の `ValidationResult.Message` は
+  例外本文そのものを再掲せず、ブロックの原因になったルール名と `Order` のみを示す——本文は対になる
+  `RuleError` 側にすでに載っているため。
+- `ValidationStatus.DuplicateAssetEntry`: 同一アセット（GUID）が2つ以上の Addressables グループに同時に
+  エントリを持つ場合に返す新しいブロック系ステータス（`IsOk=false`、`IsBlocking=true`）。Addressables
+  自身はグループを跨いだ重複除去を行わないため、一度この状態になると（例えば2つのブランチが別々の
+  グループへ同じアセットを追加した状態を VCS のマージが合成してしまった場合など）そのまま残り続ける。
+  `ApplyAll`・`ValidateAll`・`BuildPredictedSnapshot` は、そのランで*いずれかの*アセットを評価・書き込む
+  前にこれを検出し、「1アセットにつき、どのエントリを対象とすべきか定義できない」状態のままルールを
+  評価するのではなく、`DuplicateAssetEntry` のエントリ（重複しているアセットごとに1件、関与するグループ・
+  アドレスを列挙）だけを返す。`RemoveEntriesForDeletedAssets` は `ValidationResult` を返せないため、同じ
+  内容をエラーとしてログに出し、そのランでは何も削除しない点だけが異なる。Explain ウィンドウはこの影響を
+  受けず、引き続きアセットごとに動作する。
+
+### Changed
+
+- **BREAKING**: `CleanupStaleEntries`（「マッチしなくなったエントリを削除する」）と
+  `PostprocessEnabled`（「インポート時に自動適用する」）の既定値が、どちらも `true` から `false` に
+  変わった。従来の挙動を維持するには `Project Settings > AddressTeller` で両方を ON にすること。
+  AddressTeller をゼロから導入する場合に ON にする推奨順序は [クイックスタート](README.ja.md#クイックスタート)
+  を参照。
+- **BREAKING**: 設定ファイルが読み込めない状態のとき、各設定プロパティの setter（`SetRuleEnabled` 含む）
+  が、既定値や古い値のまま黙って上書きするのではなく `InvalidOperationException` を投げるようになった。
+  これは全 setter を単一の書き込み経路（`AddressTellerSettingsAsset.Mutate`）へ集約した副作用であり、
+  その経路が保存に関して実際に何を変えたかは下記 Fixed を参照。
+- **BREAKING**: `IAddressRuleBuilder.Group(groupName)` が、`groupName` に `/` または `\` を含む場合
+  `ArgumentException` を投げるようになった。従来は Addressables が実際には決して作らない名前を黙って
+  受け入れていた。Addressables はグループの作成・改名時にこれらの文字を `-` に置き換えるため、
+  置換前の名前をルールに書いても一致することはない——**Auto-create missing groups** が ON の場合は
+  さらに悪く、一致しないまま実行のたびに意図せず重複したグループを新規作成し続けていた。既に
+  `/` `\` を含まない名前を使っているルールには影響しない。
+- **BREAKING**: アドレス産出ルールがあるアセットの評価中に例外を送出し、その `Order` が実際の勝者候補の
+  `Order` 以下（同点含む）だった場合、`Apply`/`ApplyAll` はもはやその低優先勝者のアドレスを黙って書き込まない
+  ——書き込みは一切行われず、`RuleError` と合わせて `ValidationStatus.BlockedByRuleError` が報告される。
+  従来は例外を送出したルールだけが報告され、低優先候補のアドレスが、あたかも優先度の高いルールが
+  最初からマッチしなかったかのように書き込まれていた。例外を送出したルールより純粋に優先度が高い
+  （Order がより小さい）勝者の書き込みは、この仕組みではブロックされない——例外を送出したルールが
+  そもそもその勝者に優先度で勝てなかったはずだからである。また `Address()` を呼ばないラベルのみルールの
+  例外は、その `Order` に関わらずこの形で書き込みをブロックしない。
+- **BREAKING**: `ClearCLI` が、同一アセットが2つ以上の Addressables グループに同時にエントリを持つ状態
+  （`ValidationStatus.DuplicateAssetEntry`）を検出した場合、クリア前スナップショットの保存や削除を行う前に
+  新しい exit code 2 で終了するようになった。詳細は [互換性ポリシー: Exit Code](Documentation~/compatibility.ja.md#4-exit-code)
+  を参照。
+
+### Fixed
+
+- 各設定プロパティの setter（`SetRuleEnabled` 含む）が、単一の書き込み経路（`AddressTellerSettingsAsset.Mutate`）
+  を経由するようになった。この経路は、前回の読み込み以降ディスク上のファイルが変化していれば（例えば
+  `git pull` による更新）書き込み前にまず読み直し、変更を複製に適用してから、ディスクへの書き込みが実際に
+  成功した場合のみメモリ上の値を差し替える。従来は、ディスク上で変化したファイルを古いメモリ上のコピーで
+  上書きしてしまうことがあり、また書き込みに失敗した場合もメモリ上の値だけが新しい値のまま残り、設定 API
+  が報告する値と実際に保存されている値の食い違いが広がっていく余地があった。この経路が使う no-op 判定
+  （setter に既に持っている値を代入した場合は書き込みをスキップする）は、両辺とも設定ファイルのマーカーを
+  埋める前の状態で比較するため、設定ファイルがまだ存在しない状態でプロパティへ既定値と同じ値を代入しても
+  ファイルは作られない。
+- Project Settings: setter の呼び出しが（読み込みゲートによる拒否ではなく）ディスクへの書き込み自体に
+  失敗した場合でも、変更したコントロールに実際には保存されなかった値が表示され続けることがなくなった——
+  ゲート失敗時に既に備えていた「表示を戻してログする」処理が、書き込み失敗の場合も同様にカバーするように
+  なった。
+- import 時の自動 Apply（Postprocessor）が、設定ファイルが壊れたままの間、同じエラーを import のたびに
+  ログし続けなくなった——最初の1回だけログし、ファイルが変化する（またはエラー内容自体が変わる）まで
+  静かになる。メニュー・CLI 等の他の入口は、これまでどおり実行のたびに毎回ログする。
+- Save Snapshot、Snapshot Manager ウィンドウの Refresh、結果ウィンドウの「Apply with this content」
+  ボタンから実行する経路（Apply All / Apply with Validate のダイアログを経由しない経路）も、設定ファイル
+  が読み込めない場合は既定値のまま黙って処理を進めず、中止するようになった。Snapshot Manager ウィンドウは
+  この場合、画面内にエラーを表示し一覧を空にする。Apply の経路でも、ボタンを押すとウィンドウが閉じるため
+  Console のログだけでは中止したことに気付きにくく、ダイアログでも中止理由を表示する。
+- ラベルのみのルール（`AnyGroup()`、または `Address()` を呼ばない `Group()` ルール）が、読み取り専用の
+  エントリまたはそのグループにラベルを書き込まなくなった。`AddressableAssetSettings.SetLabel` 自体は
+  これを検査しないため、従来はラベルのみのルールが読み取り専用のエントリにもラベルを追加できてしまって
+  いた。AddressTeller は読み取り専用のエントリ・グループを他の何かが管理しているものとみなし、
+  エントリが存在しないアセットに対する既存の静かなスキップ挙動と同様、Apply・Predict とも静かに
+  スキップする（報告なし）。この挙動はラベルのみのルールに限る——アドレスルール（`Address()` を伴う
+  `Group()`）は引き続き `CreateOrMoveEntry` 経由でエントリを移動し、その既存の副作用として `ReadOnly`
+  を解除する（今回の変更による影響なし）。
+- `SnapshotFolder` に空文字・空白のみの値を設定しても、プロジェクトルート直下が保存先にならなくなった。
+  setter（Project Settings の「Snapshot folder」欄も同じ setter を経由する）に空文字・空白のみを渡すと、
+  保存前に既定値（`AddressTellerSnapshots`）へ正規化される。既にディスク上の設定ファイルに空文字・空白のみの
+  `_snapshotFolder` が入っていた場合も、読み込み時に同様にメモリ上の値だけを正規化し、Warning を1回ログする
+  （ファイルへは書き戻さない）。
+- `ValidateAll`・`BuildPredictedSnapshot`・公開 `AddressTellerSnapshotService.Diff` が、同一アセット（GUID）
+  が2つ以上の Addressables グループに同時にエントリを持つ状態（上記 `ValidationStatus.DuplicateAssetEntry`
+  参照）で `ArgumentException` を投げなくなった——従来はこの状態のまま評価に入ると未捕捉の例外で評価全体が
+  落ち、報告すらされなかった。また `ApplyAll` は例外こそ出さないものの、
+  `AddressableAssetSettings.FindAssetEntry` がたまたま選んだ側のエントリだけを黙って動かし、もう片方を
+  記録に残さないまま消していた。
+- すべての `-executeMethod` CLI 入口（`CheckCLI`・`ApplyAllCLI`・`ApplyWithValidateCLI`・`ClearCLI`）が、
+  自身の文書化された分岐のどれにも該当しない例外が到達した場合にそれを catch してログに出し、exit code 1
+  （ドリフトありと区別できない）で Editor プロセスが未捕捉例外のまま終了する代わりに、exit code 3
+  （実行環境エラー）で終了するようになった。詳細は [互換性ポリシー: Exit Code](Documentation~/compatibility.ja.md#4-exit-code)
+  を参照。
+- `Undo Last Apply` と Snapshot Manager ウィンドウからの Restore も、上記と同じ重複 guid 状態を検出して
+  中止するようになった——従来はそのまま `Diff`/`Restore` まで進み、
+  `AddressableAssetSettings.FindAssetEntry` がたまたま見つけた側のエントリだけに作用していた。
+- `Save Snapshot`、および `Apply All`/`Apply with Validate` が実行前に取る自動スナップショットも、
+  同一 guid を2件含む（そのままでは二度と読み込めない——
+  `AddressTellerSnapshotService.LoadFromFile` は重複 guid を明示的に拒否する）スナップショットファイルを
+  書き出す代わりに中止するようになった。
+- `AddressTellerClearService.Clear` が、各エントリを guid 経由（`AddressableAssetSettings.RemoveAssetEntry(guid)`、
+  先に見つかったグループのエントリを解決する）ではなく、そのエントリが実際に属していたグループから直接
+  （`AddressableAssetGroup.RemoveAssetEntry(entry)`）削除するようになった——同一 guid のエントリが
+  クリア対象のグループと対象外のグループの両方に存在する場合に限り、従来は guid ベースの削除が
+  対象外グループ側のエントリを誤って消しうる問題があった。`Clear All Addresses & Labels...` と `ClearCLI` も、
+  上記 Save Snapshot と同じ理由でクリア前スナップショットを保存する前に重複 guid 状態を検出して中止する
+  ようになった。
+- `AddressTellerPostprocessor` が、重複 guid 状態が解消されないまま import が繰り返されても、同じ内容を
+  毎回ログし続けなくなった——設定ファイルが壊れたままの場合と同じ `OncePerDistinctFailure` 方式で、
+  最初の1回だけログし内容が変わるまで静かになる。また、変更と削除の両方を含む import で `ApplyAll` と
+  `RemoveEntriesForDeletedAssets` がそれぞれ独立に同じ重複を検出してログしていたため、1回の import で
+  同じ内容が二重にログされていた問題も解消した。
+- `BundleDistributionSummarizer.Build` が、渡されたスナップショットに同一 guid のエントリが複数含まれていても
+  例外を出さなくなった——公開 `AddressTellerSnapshotService.Diff` と同じフォールバック（その guid の最初の
+  エントリを採用する）を使う。
+
+### Documentation
+
+- [適用と運用](Documentation~/operations.ja.md) の「インポート時自動適用」の説明を、無効化できる旨だけでなく
+  既定が OFF であることを先に明記する書き方に修正した。すべての CLI exit code 表に `ClearCLI` の exit code 2
+  （重複アセットエントリ）の行と予期しない例外のケースを追加し、[互換性ポリシー](Documentation~/compatibility.ja.md)
+  と揃えた。README に、ルールクラスを置く場所についての注記を追加した——asmdef が `nunit.framework` を参照する
+  アセンブリはルール収集から警告なく除外される。`Tests` フォルダが配布物に含まれないという記述を訂正した——
+  `~` の付かないフォルダ名のため git URL でのインストールでもパッケージの他の部分と一緒にダウンロードされるが、
+  asmdef が `UNITY_INCLUDE_TESTS` を要求するためコンパイルはされない。スナップショット保存先フォルダをバージョン管理に
+  含めるかどうかの指針を追記し、トラブルシューティングに、重複した Addressables エントリを削除する前にラベルと
+  アドレスを控えておく旨の注記を追加した。
+
 ---
 
 ## [0.6.1] - 2026-09-23

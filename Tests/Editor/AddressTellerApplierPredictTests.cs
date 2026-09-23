@@ -109,6 +109,10 @@ namespace AddressTeller.Editor.Tests
             var entry = _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             entry.SetAddress("ExistingAddress");
             entry.SetLabel("existingLabel", true);
+            // guid が実アセットへ解決できないため readOnly=true で作られてしまう。ReadOnly ガードとは
+            // 無関係な既存挙動を検証したいので明示的に外し、前提を固定する。
+            entry.ReadOnly = false;
+            Assert.IsFalse(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly ではない。");
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
             var prediction = AddressTellerApplier.Predict(Ctx("guid-managed"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
@@ -128,6 +132,9 @@ namespace AddressTeller.Editor.Tests
             var entry = _settings.CreateOrMoveEntry("guid-other", _otherGroup);
             entry.SetAddress("ExistingAddress");
             entry.SetLabel("existingLabel", true);
+            // guid が実アセットへ解決できないため readOnly=true で作られてしまう。上と同じ理由で外す。
+            entry.ReadOnly = false;
+            Assert.IsFalse(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly ではない。");
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
             var prediction = AddressTellerApplier.Predict(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
@@ -138,6 +145,52 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(_otherGroup.Name, prediction.PredictedEntry.GroupName);
             CollectionAssert.AreEqual(new[] { "existingLabel", "newLabel" }, prediction.PredictedEntry.Labels);
             Assert.IsNull(prediction.RemovedFromGroup);
+        }
+
+        [Test]
+        public void LabelsOnly_ExistingEntryIsReadOnly_PredictsNoOp()
+        {
+            var entry = _settings.CreateOrMoveEntry("guid-other", _otherGroup);
+            entry.SetAddress("ExistingAddress");
+            entry.SetLabel("existingLabel", true);
+            entry.ReadOnly = true;
+            Assert.IsTrue(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly。");
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
+            Assert.AreEqual(ValidationStatus.LabelsOnly, prediction.Validation.Status);
+            Assert.IsNull(prediction.RemovedFromGroup);
+        }
+
+        [Test]
+        public void LabelsOnly_ExistingEntryInReadOnlyGroup_PredictsNoOp()
+        {
+            var readOnlyGroup = _settings.CreateGroup("ReadOnlyGroup", false, true, false, null);
+            try
+            {
+                var entry = _settings.CreateOrMoveEntry("guid-readonly-group", readOnlyGroup);
+                entry.SetAddress("ExistingAddress");
+                entry.SetLabel("existingLabel", true);
+                // guid が実アセットへ解決できないため、エントリ自体も readOnly=true で作られてしまう。
+                // 「エントリは非 ReadOnly、グループだけ ReadOnly」を検証したいので、エントリ側だけ
+                // 明示的に外し、両方の前提を固定する。
+                entry.ReadOnly = false;
+                Assert.IsFalse(entry.ReadOnly, "このテストの前提: 既存エントリ自体は ReadOnly ではない。");
+                Assert.IsTrue(readOnlyGroup.ReadOnly, "このテストの前提: グループは ReadOnly。");
+                var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+                var prediction = AddressTellerApplier.Predict(Ctx("guid-readonly-group"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+
+                Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
+                Assert.AreEqual(ValidationStatus.LabelsOnly, prediction.Validation.Status);
+                Assert.IsNull(prediction.RemovedFromGroup);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(readOnlyGroup, true);
+            }
         }
 
         [Test]
@@ -155,16 +208,23 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void Skipped_AssetInManagedGroup_CleanupDisabled_PredictsNoOp()
+        public void Skipped_AssetInManagedGroup_CleanupDisabled_PredictsUnmatchedEntryKeptNotice()
         {
             AddressTellerSettings.CleanupStaleEntries = false;
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
+            var ctx = Ctx("guid-managed");
 
-            var prediction = AddressTellerApplier.Predict(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups);
+            var prediction = AddressTellerApplier.Predict(ctx, EmptyResolution(), _settings, ExistingGroupNames(), managedGroups);
 
             Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
             Assert.IsNull(prediction.RemovedFromGroup);
+            // CleanupStaleEntries が ON なら削除される対象だったことを、IsOk=true の通知として報告する
+            // （書き込みも削除も行わない）。
+            Assert.AreEqual(ValidationStatus.UnmatchedEntryKept, prediction.Validation.Status);
+            Assert.IsTrue(prediction.Validation.IsOk);
+            Assert.IsFalse(prediction.Validation.IsBlocking);
+            Assert.AreSame(ctx, prediction.Validation.Context);
         }
 
         [Test]
@@ -186,7 +246,7 @@ namespace AddressTeller.Editor.Tests
             AddressTellerSettings.CleanupStaleEntries = true;
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
-            var resolution = EmptyResolution(new RuleEvaluationError("MyRule", "boom"));
+            var resolution = EmptyResolution(new RuleEvaluationError("MyRule", "boom", order: 0, canProduceAddress: true));
 
             var prediction = AddressTellerApplier.Predict(Ctx("guid-managed"), resolution, _settings, ExistingGroupNames(), managedGroups);
 
@@ -207,6 +267,22 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
             Assert.IsNull(prediction.RemovedFromGroup);
+        }
+
+        [Test]
+        public void Skipped_WithRuleErrors_CleanupDisabled_DoesNotReportUnmatchedEntryKept()
+        {
+            // ルール例外があった実行では所有権が信頼できないため、CleanupStaleEntries が OFF でも
+            // UnmatchedEntryKept 通知（＝ON なら削除される対象だったという判定）自体を行ってはならない。
+            AddressTellerSettings.CleanupStaleEntries = false;
+            _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+            var resolution = EmptyResolution(new RuleEvaluationError("MyRule", "boom", order: 0, canProduceAddress: true));
+
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-managed"), resolution, _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
+            Assert.AreEqual(ValidationStatus.Skipped, prediction.Validation.Status);
         }
 
         [Test]

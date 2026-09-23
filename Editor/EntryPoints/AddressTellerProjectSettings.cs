@@ -142,14 +142,50 @@ namespace AddressTeller.Editor
             if (psSS != null) root.styleSheets.Add(psSS);
 
             // 設定ファイルの読み込みに失敗していても、画面自体は開ける（直せるように）。失敗した場合は
-            // 警告を表示するのみで、以降の描画は既定値（またはメモリ上に残っている前回の値）で続行する。
-            if (!AddressTellerSettings.EnsureLoaded())
+            // 警告と復旧ボタンを表示し、以降の描画で各設定項目を無効化する（setter が
+            // InvalidOperationException を投げるようになった以上、操作させても意味が無いため）。
+            var settingsGate = AddressTellerSettings.EnsureLoaded();
+            var gateOk = settingsGate.Success;
+            if (!gateOk)
             {
                 root.Add(new HelpBox(
                     "AddressTeller's settings file could not be loaded (see the Console for details). " +
-                    "The values below may not reflect what is currently saved. Changing any value here " +
-                    "will save a fresh, valid settings file.",
+                    "The values below may not reflect what is currently saved, and are disabled until the " +
+                    "file is fixed or recreated.",
                     HelpBoxMessageType.Error));
+
+                var recoverButton = new Button(() =>
+                {
+                    if (!EditorUtility.DisplayDialog(
+                        "AddressTeller",
+                        "If the settings file still cannot be read, this backs it up and recreates it with " +
+                        "default values, resetting all settings — including \"Auto-apply on import\" and " +
+                        "\"Remove unmatched entries\" — to their defaults. (If it turns out to already be " +
+                        "readable, nothing is changed.) Continue?",
+                        "Recreate with Defaults",
+                        "Cancel"))
+                        return;
+
+                    if (AddressTellerSettingsAsset.TryRecoverFromBrokenFile(out var recoverError))
+                    {
+                        // 復旧に成功したら画面を作り直し、最新状態（既定値、またはボタンを押すまでの間に
+                        // 既に直っていた場合はその内容）を反映する。
+                        root.Clear();
+                        BuildUI(searchContext, root);
+                    }
+                    else
+                    {
+                        EditorUtility.DisplayDialog("AddressTeller", $"Failed to recover the settings file: {recoverError}", "OK");
+                    }
+                })
+                { text = "Back Up Broken File (.bak) and Recreate with Defaults" };
+                root.Add(recoverButton);
+            }
+            else if (!settingsGate.FileExists)
+            {
+                root.Add(new HelpBox(
+                    "Showing default values (no settings file exists yet). Changing any value below will create one.",
+                    HelpBoxMessageType.Info));
             }
 
             var overviewCache = GetRuleOverviewCache();
@@ -165,24 +201,36 @@ namespace AddressTeller.Editor
             container.Add(MakeSectionLabel("Apply / Validate Behavior"));
 
             var autoApplyToggle = new Toggle("Auto-apply on import") { value = AddressTellerSettings.PostprocessEnabled };
-            autoApplyToggle.RegisterValueChangedCallback(e => AddressTellerSettings.PostprocessEnabled = e.newValue);
+            autoApplyToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () => AddressTellerSettings.PostprocessEnabled = e.newValue,
+                () => autoApplyToggle.SetValueWithoutNotify(AddressTellerSettings.PostprocessEnabled)));
+            autoApplyToggle.SetEnabled(gateOk);
             container.Add(autoApplyToggle);
-            container.Add(MakeDescription("Runs ApplyAll whenever assets are imported, moved, or deleted."));
+            container.Add(MakeDescription("Runs ApplyAll whenever assets are imported, moved, or deleted. Off by default; recommended as the second step of adoption, once a manual Apply All does what you expect (see the README's Quick Start)."));
 
             // isDelayed: フォーカスが外れる/Enter が押されるまで値の変更を通知しない。
             // キーストロークごとに ProjectSettings/*.json へ書き出すことを防ぐ。
             var orderField = new IntegerField("Postprocessor order") { value = AddressTellerSettings.PostprocessOrder, isDelayed = true };
-            orderField.RegisterValueChangedCallback(e => AddressTellerSettings.PostprocessOrder = e.newValue);
+            orderField.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () => AddressTellerSettings.PostprocessOrder = e.newValue,
+                () => orderField.SetValueWithoutNotify(AddressTellerSettings.PostprocessOrder)));
+            orderField.SetEnabled(gateOk);
             container.Add(orderField);
             container.Add(MakeDescription("Value passed to AssetPostprocessor.GetPostprocessOrder(). Lower values run before other postprocessors. Default is 1000 (runs later)."));
 
             var cleanupToggle = new Toggle("Remove unmatched entries") { value = AddressTellerSettings.CleanupStaleEntries };
-            cleanupToggle.RegisterValueChangedCallback(e => AddressTellerSettings.CleanupStaleEntries = e.newValue);
+            cleanupToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () => AddressTellerSettings.CleanupStaleEntries = e.newValue,
+                () => cleanupToggle.SetValueWithoutNotify(AddressTellerSettings.CleanupStaleEntries)));
+            cleanupToggle.SetEnabled(gateOk);
             container.Add(cleanupToggle);
-            container.Add(MakeDescription("Automatically removes assets that no longer match any rule from groups managed by AddressTeller. The entry itself is deleted, so both the address and labels (in Addressables) are lost."));
+            container.Add(MakeDescription("Automatically removes assets that no longer match any rule from groups managed by AddressTeller. The entry itself is deleted, so both the address and labels (in Addressables) are lost. Off by default; recommended as the third step of adoption, once you know which groups your rules own — turn it on and run Apply All from the menu right afterward. While off, an entry that would be removed is instead reported as a non-blocking UnmatchedEntryKept notice."));
 
             var autoCreateToggle = new Toggle("Auto-create missing groups") { value = AddressTellerSettings.AutoCreateMissingGroups };
-            autoCreateToggle.RegisterValueChangedCallback(e => AddressTellerSettings.AutoCreateMissingGroups = e.newValue);
+            autoCreateToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () => AddressTellerSettings.AutoCreateMissingGroups = e.newValue,
+                () => autoCreateToggle.SetValueWithoutNotify(AddressTellerSettings.AutoCreateMissingGroups)));
+            autoCreateToggle.SetEnabled(gateOk);
             container.Add(autoCreateToggle);
             container.Add(MakeDescription("When a group referenced by a rule does not exist, Apply will create it by duplicating the DefaultGroup schema. Validate/Predict only displays it as a pending creation and does not actually create the group."));
 
@@ -237,7 +285,7 @@ namespace AddressTeller.Editor
             foreach (var overview in overviewRules)
             {
                 var type = overview.RuleType;
-                container.Add(BuildRuleRow(overview, type, addressablesSettings, ruleInstancesByType));
+                container.Add(BuildRuleRow(overview, type, addressablesSettings, ruleInstancesByType, gateOk));
             }
 
             // ---- Operations ----
@@ -269,38 +317,81 @@ namespace AddressTeller.Editor
             // isDelayed: フォーカスが外れる/Enter が押されるまで値の変更を通知しない。
             // キーストロークごとに ProjectSettings/*.json へ書き出すことを防ぐ。
             var snapshotField = new TextField("Snapshot folder") { value = AddressTellerSettings.SnapshotFolder, isDelayed = true };
-            snapshotField.RegisterValueChangedCallback(e => AddressTellerSettings.SnapshotFolder = e.newValue);
+            snapshotField.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () =>
+                {
+                    AddressTellerSettings.SnapshotFolder = e.newValue;
+                    // SnapshotFolder のセッターは空文字・空白のみを既定値へ正規化する。UI 表示にも
+                    // 正規化後の値を反映し、入力欄に空欄が表示され続けないようにする（retention と同じ理由）。
+                    snapshotField.SetValueWithoutNotify(AddressTellerSettings.SnapshotFolder);
+                },
+                () => snapshotField.SetValueWithoutNotify(AddressTellerSettings.SnapshotFolder)));
+            snapshotField.SetEnabled(gateOk);
             container.Add(snapshotField);
             container.Add(MakeDescription("Relative path from the project root (parent directory of Assets). Default is \"AddressTellerSnapshots\" (outside Assets, not imported by Unity)."));
 
             var browseRow = new VisualElement();
             browseRow.AddToClassList("at-browse-row");
-            var browseBtn = new Button(() =>
-            {
-                PickSnapshotFolder();
-                // フォルダ選択後に TextField へ反映する
-                snapshotField.SetValueWithoutNotify(AddressTellerSettings.SnapshotFolder);
-            }) { text = "Browse...", style = { width = 120 } };
+            var browseBtn = new Button(() => TrySetSettingsValue(
+                () =>
+                {
+                    PickSnapshotFolder();
+                    // フォルダ選択後に TextField へ反映する
+                    snapshotField.SetValueWithoutNotify(AddressTellerSettings.SnapshotFolder);
+                },
+                () => snapshotField.SetValueWithoutNotify(AddressTellerSettings.SnapshotFolder)))
+            { text = "Browse...", style = { width = 120 } };
+            browseBtn.SetEnabled(gateOk);
             browseRow.Add(browseBtn);
             container.Add(browseRow);
 
             var autoSnapshotToggle = new Toggle("Auto-snapshot before Apply") { value = AddressTellerSettings.AutoSnapshotBeforeApplyAll };
-            autoSnapshotToggle.RegisterValueChangedCallback(e => AddressTellerSettings.AutoSnapshotBeforeApplyAll = e.newValue);
+            autoSnapshotToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () => AddressTellerSettings.AutoSnapshotBeforeApplyAll = e.newValue,
+                () => autoSnapshotToggle.SetValueWithoutNotify(AddressTellerSettings.AutoSnapshotBeforeApplyAll)));
+            autoSnapshotToggle.SetEnabled(gateOk);
             container.Add(autoSnapshotToggle);
             container.Add(MakeDescription("Applies only to the Apply All / Apply with Validate menu actions. Auto-apply on import and CLI execution are not covered. If saving the snapshot fails, Apply itself is aborted (see the Console for details)."));
 
             // isDelayed: フォーカスが外れる/Enter が押されるまで値の変更を通知しない。
             // キーストロークごとに ProjectSettings/*.json へ書き出すことを防ぐ。
             var retentionField = new IntegerField("Auto-snapshot retention count") { value = AddressTellerSettings.AutoSnapshotRetention, isDelayed = true };
-            retentionField.RegisterValueChangedCallback(e =>
-            {
-                AddressTellerSettings.AutoSnapshotRetention = e.newValue;
-                // AutoSnapshotRetention のセッターは最小値1へクランプする。UI 表示にもクランプ後の値を反映し、
-                // 入力欄に無効な値（0以下）が表示され続けないようにする。
-                retentionField.SetValueWithoutNotify(AddressTellerSettings.AutoSnapshotRetention);
-            });
+            retentionField.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () =>
+                {
+                    AddressTellerSettings.AutoSnapshotRetention = e.newValue;
+                    // AutoSnapshotRetention のセッターは最小値1へクランプする。UI 表示にもクランプ後の値を反映し、
+                    // 入力欄に無効な値（0以下）が表示され続けないようにする。
+                    retentionField.SetValueWithoutNotify(AddressTellerSettings.AutoSnapshotRetention);
+                },
+                () => retentionField.SetValueWithoutNotify(AddressTellerSettings.AutoSnapshotRetention)));
+            retentionField.SetEnabled(gateOk);
             container.Add(retentionField);
             container.Add(MakeDescription("Auto snapshots exceeding this count are automatically deleted. Minimum is 1."));
+        }
+
+        /// <summary>
+        /// 設定値を変更する操作（各 Toggle/Field の変更コールバック、および Browse ボタン）を共通で
+        /// 受け止めるラッパー。<paramref name="apply"/>（実際の setter 呼び出し）が何らかの例外——
+        /// ゲート失敗中の <see cref="InvalidOperationException"/> だけでなく、ディスクへの書き込み自体が
+        /// 失敗した場合の <see cref="IOException"/> 等も含む——を投げた場合、エラーをログし、
+        /// <paramref name="revertUi"/>（対象コントロールを現在値へ SetValueWithoutNotify で戻す処理）を
+        /// 呼んで表示だけを元に戻す。これにより、書き込みに失敗して値が変わっていないにもかかわらず
+        /// UI 表示だけが新しい値のまま残る（中身と表示が食い違う）事態を防ぐ。ゲート失敗中は各コントロールを
+        /// <c>SetEnabled(gateOk)</c> で無効化しているが、それとは独立に必要な保護——ゲートが成功していても
+        /// 書き込み自体は失敗しうるため。
+        /// </summary>
+        private static void TrySetSettingsValue(Action apply, Action revertUi)
+        {
+            try
+            {
+                apply();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AddressTeller] {ex.Message}");
+                revertUi();
+            }
         }
 
         /// <summary>ルール1件分の行（有効無効トグル + Foldout + ボタン群）を組み立てる。</summary>
@@ -308,7 +399,8 @@ namespace AddressTeller.Editor
             in RuleClassOverview overview,
             Type type,
             AddressableAssetSettings addressablesSettings,
-            Dictionary<Type, AddressRuleBase> ruleInstancesByType)
+            Dictionary<Type, AddressRuleBase> ruleInstancesByType,
+            bool gateOk)
         {
             var wrapper = new VisualElement();
             wrapper.AddToClassList("at-rule-row");
@@ -318,7 +410,10 @@ namespace AddressTeller.Editor
 
             var enabledToggle = new Toggle { value = AddressTellerSettings.IsRuleEnabled(type.FullName) };
             enabledToggle.AddToClassList("at-rule-row__toggle");
-            enabledToggle.RegisterValueChangedCallback(e => AddressTellerSettings.SetRuleEnabled(type.FullName, e.newValue));
+            enabledToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () => AddressTellerSettings.SetRuleEnabled(type.FullName, e.newValue),
+                () => enabledToggle.SetValueWithoutNotify(AddressTellerSettings.IsRuleEnabled(type.FullName))));
+            enabledToggle.SetEnabled(gateOk);
             header.Add(enabledToggle);
 
             var ruleFoldout = new Foldout { text = $"{type.Name}  (Order: {overview.Order})", value = false };

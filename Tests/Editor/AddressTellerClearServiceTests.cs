@@ -120,5 +120,25 @@ namespace AddressTeller.Editor.Tests
 
             Assert.IsEmpty(cleared);
         }
+
+        [Test]
+        public void Clear_Managed_DuplicateGuidAcrossManagedAndUnmanagedGroups_RemovesOnlyTheManagedCopy()
+        {
+            // settings.RemoveAssetEntry(guid) は内部で FindAssetEntry(guid)（settings.groups を先頭から
+            // 探して最初に見つかった1件を返す）を経由するため、修正前は GroupA（対象）を走査して見つけた
+            // エントリを消すつもりが、guid だけを頼りに削除すると先頭グループの GroupB（対象外）の
+            // コピーを誤って消しうる状態だった。エントリ単位の削除（target.Entry.parentGroup.RemoveAssetEntry）に
+            // 直したことで、常に実際に走査対象とした側（GroupA）だけが消えることを確認する。
+            _settings.CreateOrMoveEntry("guid-dup", _groupA).SetAddress("Managed");
+            DuplicateAssetEntryTestInjector.InjectDuplicateEntry(_groupB, "guid-dup", "Unmanaged");
+
+            var managedGroups = new HashSet<string> { "GroupA" };
+            var cleared = AddressTellerClearService.Clear(_settings, ClearScope.Managed, managedGroups);
+
+            Assert.AreEqual(1, cleared.Count);
+            Assert.AreEqual("GroupA", cleared[0].GroupName);
+            CollectionAssert.DoesNotContain(_groupA.entries.Select(e => e.guid).ToList(), "guid-dup");
+            CollectionAssert.Contains(_groupB.entries.Select(e => e.guid).ToList(), "guid-dup");
+        }
     }
 }

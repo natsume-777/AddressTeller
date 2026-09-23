@@ -71,7 +71,7 @@ namespace AddressTeller.Editor
         /// Apply/Predict はこれを使うことで、Validate 内で一度確定させた勝者を自分で選び直さずに済む
         /// （勝者選定ロジックの重複と、選び直しに伴う無駄な走査を避けるため）。
         /// それ以外の Status（Skipped/LabelsOnly/ConflictingAddress/InvalidAddress/DefaultGroupUnavailable/
-        /// GroupNotFound）では <paramref name="winner"/> は既定値（<c>default(AddressCandidate)</c>）のまま。
+        /// GroupNotFound/BlockedByRuleError）では <paramref name="winner"/> は既定値（<c>default(AddressCandidate)</c>）のまま。
         /// </summary>
         internal static ValidationResult Validate(
             AssetContext context,
@@ -97,7 +97,57 @@ namespace AddressTeller.Editor
             if (!TrySelectWinningCandidate(resolution.AddressCandidates, out winner, out var tiedCandidates))
                 return BuildConflictResult(context, tiedCandidates);
 
+            // 勝者が確定した直後、勝者と同等以上に優先されるはずだったアドレス産出ルール（Order が勝者以下、
+            // 同点含む）に例外があれば、その勝者を書き込まない。例外が無ければ勝者になっていたかもしれない
+            // ルールを差し置いて、たまたま残った低優先ルールのアドレスを黙って採用してしまうのを防ぐため
+            // （ConflictingAddress が同点を黙って解決しないのと同じ考え方）。ラベル専用ルール
+            // （AddressSelector == null）の例外はここでは対象外（そもそも勝者と優先度を争わないため）。
+            if (TryBuildBlockedByRuleErrorResult(context, winner, resolution.Errors, out var blockedResult))
+            {
+                winner = default;
+                return blockedResult;
+            }
+
             return ValidateWinningCandidate(context, winner, existingGroupNames, autoCreateMissingGroups);
+        }
+
+        /// <summary>
+        /// 勝者候補と同等以上の優先度（Order が勝者以下、同点含む）を持つアドレス産出ルールの例外を
+        /// <paramref name="errors"/> から探し、1件以上あれば <see cref="ValidationStatus.BlockedByRuleError"/>
+        /// の結果を組み立てて true を返す。無ければ false。
+        /// </summary>
+        private static bool TryBuildBlockedByRuleErrorResult(
+            AssetContext context,
+            AddressCandidate winner,
+            IReadOnlyList<RuleEvaluationError> errors,
+            out ValidationResult result)
+        {
+            List<RuleEvaluationError> blocking = null;
+            for (var i = 0; i < errors.Count; i++)
+            {
+                var error = errors[i];
+                if (error.CanProduceAddress && error.Order <= winner.Order)
+                {
+                    blocking ??= new List<RuleEvaluationError>();
+                    blocking.Add(error);
+                }
+            }
+
+            if (blocking == null)
+            {
+                result = null;
+                return false;
+            }
+
+            // 例外本文はこのメッセージでは繰り返さない（同じ例外がこの直前に RuleError として issues に
+            // 積まれており、本文はそちらに載る。ここで再掲すると1つの例外の本文が Error として2回表示される）。
+            // ここではどのルールが（どの Order で）ブロックの原因になったかだけを示す。
+            var names = string.Join(", ", blocking.Select(e => $"{e.RuleSource} (Order={e.Order})"));
+            result = new ValidationResult(
+                context,
+                ValidationStatus.BlockedByRuleError,
+                $"Not writing an address for '{context.Path}': blocked by: {names}; see RuleError for the exception detail.");
+            return true;
         }
 
         /// <summary>
@@ -272,8 +322,14 @@ namespace AddressTeller.Editor
                 // グループ、ユーザーが手動登録したグループも含め）ラベルを加える。これは Addressables 標準
                 // UI がどのグループのエントリにもラベルを付けられることと揃えるための挙動。
                 var existingEntry = settings.FindAssetEntry(context.Guid);
-                if (existingEntry?.parentGroup != null)
+                if (existingEntry?.parentGroup != null
+                    && !existingEntry.ReadOnly && !existingEntry.parentGroup.ReadOnly)
                 {
+                    // ReadOnly なエントリ/グループには何もしない（報告もしない）。ReadOnly は
+                    // AddressTeller 以外の何か（他のツール・Addressables 本体の内部処理など）が
+                    // 管理しているものとみなし、ラベル専用ルールであっても書き込まないという
+                    // AddressTeller 独自の方針。Addressables 本体の SetLabel 自体は ReadOnly を
+                    // 検査しないため、このガードが無ければ書き込めてしまう。
                     foreach (var label in resolution.Labels)
                     {
                         settings.AddLabel(label);
@@ -394,11 +450,19 @@ namespace AddressTeller.Editor
                 var entry = settings.FindAssetEntry(context.Guid);
                 if (entry?.parentGroup != null
                     && ownedGroups.Contains(entry.parentGroup.Name)
-                    && AddressTellerSettings.CleanupStaleEntries
                     && resolution.Errors.Count == 0
                     && !hasConfigureFailures)
                 {
-                    return new ApplyPrediction(PredictedAction.Remove, result, null, entry.parentGroup.Name);
+                    if (AddressTellerSettings.CleanupStaleEntries)
+                        return new ApplyPrediction(PredictedAction.Remove, result, null, entry.parentGroup.Name);
+
+                    // CleanupStaleEntries が OFF なので削除しないが、ON なら削除される対象だったことを
+                    // 通知する（UnmatchedEntryKept は IsOk=true の通知専用ステータス。書き込みも削除も行わない）。
+                    var keptResult = new ValidationResult(
+                        context,
+                        ValidationStatus.UnmatchedEntryKept,
+                        $"'{context.Path}' no longer matches any rule and would be removed from group '{entry.parentGroup.Name}' if Remove unmatched entries were on.");
+                    return new ApplyPrediction(PredictedAction.NoOp, keptResult, null, null);
                 }
 
                 return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
@@ -412,7 +476,9 @@ namespace AddressTeller.Editor
                     return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
 
                 // Apply 側と対称に、ラベル加算は所有権を問わない（既存エントリがあれば加算する）。
-                if (existingEntryForLabels.parentGroup == null)
+                // ただし ReadOnly なエントリ/グループには Apply 側と同様に書かないため、予測も NoOp にする。
+                if (existingEntryForLabels.parentGroup == null
+                    || existingEntryForLabels.ReadOnly || existingEntryForLabels.parentGroup.ReadOnly)
                     return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
 
                 // 既存エントリの address/group は維持しつつ、ラベルのみ既存分と resolution.Labels の和集合にする。

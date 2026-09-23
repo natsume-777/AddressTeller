@@ -15,17 +15,28 @@ namespace AddressTeller.Editor
     {
         /// <summary>
         /// Computes the logical bundle distribution from the post-apply snapshot and the current
-        /// <see cref="AddressableAssetSettings"/>. Callers must catch exceptions (the internal report
-        /// builder used by <c>CheckCLI</c>/<c>ApplyAllCLI</c>/<c>ApplyWithValidateCLI</c> does so).
+        /// <see cref="AddressableAssetSettings"/>. If <paramref name="after"/> has more than one entry for
+        /// the same GUID (the same asset had an entry in two or more Addressables groups at once when it
+        /// was captured), this does not throw: it keeps only the first entry for that GUID (in
+        /// <paramref name="after"/>'s own <see cref="AddressTellerSnapshot.Entries"/> order) and ignores the
+        /// rest — the same fallback <see cref="AddressTellerSnapshotService.Diff"/> uses. AddressTeller's own
+        /// entry points detect this state up front as <see cref="ValidationStatus.DuplicateAssetEntry"/> and
+        /// refuse to evaluate or write anything that run, so in practice this only matters when a caller
+        /// hands this method a snapshot built some other way. Callers should still catch exceptions from
+        /// this method (the internal report builder used by <c>CheckCLI</c>/<c>ApplyAllCLI</c>/
+        /// <c>ApplyWithValidateCLI</c> does so) for genuinely unexpected failures.
         /// <paramref name="warnings"/> receives any group-name-duplication warnings detected by
         /// <see cref="BundleModeReader.ReadBundleModes"/> (may be empty). This method does not log
         /// directly, so the caller can decide whether to log them.
         /// </summary>
         public static BundleDistribution Build(AddressTellerSnapshot after, AddressableAssetSettings settings, out IReadOnlyList<string> warnings)
         {
-            var placements = after.Entries.ToDictionary(
-                e => e.Guid,
-                e => new BundleAssetPlacement(e.GroupName, e.Labels));
+            var placements = new Dictionary<string, BundleAssetPlacement>(after.Entries.Count, StringComparer.Ordinal);
+            foreach (var entry in after.Entries)
+            {
+                if (!placements.ContainsKey(entry.Guid))
+                    placements[entry.Guid] = new BundleAssetPlacement(entry.GroupName, entry.Labels);
+            }
 
             var groupModes = BundleModeReader.ReadBundleModes(settings.groups, out warnings);
 

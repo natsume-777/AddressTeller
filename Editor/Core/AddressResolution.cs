@@ -60,10 +60,25 @@ namespace AddressTeller
         /// <summary>例外メッセージ。</summary>
         public string Message { get; }
 
-        public RuleEvaluationError(string ruleSource, string message)
+        /// <summary>
+        /// 例外を送出したルールの <see cref="AddressRuleBase.Order"/>。AddressTellerApplier.Validate が、
+        /// 勝者候補の Order 以下（同点含む）のアドレス産出ルールに例外があったかを判定するために使う。
+        /// </summary>
+        public int Order { get; }
+
+        /// <summary>
+        /// 例外を送出したルールがアドレスを出しうるか（<c>AddressSelector != null</c>）。例外の発生箇所が
+        /// Predicate / AddressSelector / LabelSelector のいずれであっても、このエントリ自体がアドレスを
+        /// 産出しうるルールかどうかで判定する（ラベル専用ルールの例外は書き込みを止めないため）。
+        /// </summary>
+        public bool CanProduceAddress { get; }
+
+        public RuleEvaluationError(string ruleSource, string message, int order, bool canProduceAddress)
         {
             RuleSource = ruleSource;
             Message = message;
+            Order = order;
+            CanProduceAddress = canProduceAddress;
         }
     }
 

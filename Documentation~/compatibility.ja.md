@@ -80,7 +80,7 @@
 | 0 | 差分なし・問題なし |
 | 1 | ドリフトあり（差分あり、Validation エラーなし） |
 | 2 | Validation エラーあり |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または設定ファイルの読み込み失敗） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗・設定ファイルの読み込み失敗、または予期しない例外） |
 
 `ApplyAllCLI` / `ApplyWithValidateCLI`（成功時に書き込みを行う。exit code は差分の有無に依存しない）:
 
@@ -88,7 +88,7 @@
 |---|---|
 | 0 | 差分の有無を問わず、適用に成功した |
 | 2 | Validation エラーあり |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗、または設定ファイルの読み込み失敗） |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗・設定ファイルの読み込み失敗、または予期しない例外） |
 
 この2メソッドは 1 を返しません——Apply が完了した以上、何かを変更したこと自体は失敗ではないからです。差分だけを（適用せずに）検出したい場合は `CheckCLI` を使ってください。
 
@@ -97,8 +97,11 @@
 | exit code | 意味 |
 |---|---|
 | 0 | クリア完了 |
-| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `ownedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗、または設定ファイルの読み込み失敗） |
+| 2 | 同一アセットが2つ以上の Addressables グループに同時にエントリを持つ状態（`ValidationStatus.DuplicateAssetEntry`）を検出し、クリア前スナップショットを保存する前に中止した |
+| 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`scope=managed` で `ownedGroups` の信頼性を損なうルール構成エラー・スナップショット保存失敗・設定ファイルの読み込み失敗、または予期しない例外） |
 | 4 | `-addressTellerConfirmClear` が指定されていないため拒否 |
+
+上記いずれの `-executeMethod` 入口（`CheckCLI` を含む）も、各表に列挙した分岐のどれにも該当しない例外が到達した場合はそれを catch してログに出し、exit code 1（ドリフトありと区別できない）で終了させる代わりに exit code 3 で終了します。既知の失敗系（同一 GUID が2つ以上のグループに存在する状態など——`ValidationStatus.DuplicateAssetEntry`、[Enum](#enum) 参照）は、例外が送出される前に通常の結果として検出・報告されるため、実際にはこの catch に到達すること自体まれです。
 
 新しい exit code 値の追加（いずれのCLI系統でも）は、既知のコードだけをチェックするCIスクリプトを必ずしも壊さないとしても、**メジャー**変更として扱います。理由は、CIスクリプトは既知コードごとの等値判定で分岐し「それ以外」を予期しない失敗区分として扱う書き方が一般的だからです（例: `case 0/1/2/3: ... ; default: ビルド失敗`）。新しいコードを追加すると、既存の分岐の意味が変わらなくても「それ以外」が捕捉する範囲が変わってしまいます。
 
@@ -118,6 +121,7 @@ Drift[]
     Labels[]                                        (System.String)
 Issues[]
   Path, Status, Message                             (System.String)
+  Blocking, Ok                                      (System.Boolean)
 BundleDistribution                                  (常に存在する。詳細は下記の注記を参照)
   Bundles[]
     GroupName, Mode, SplitKey                        (System.String)
@@ -135,6 +139,8 @@ SchemaVersion                                         (System.Int32)
 
 - `ChangeType`: 固定文字列 `"Added"` / `"Removed"` / `"Changed"`。
 - `Status`: `ValidationStatus` メンバーの名前（例: `"ConflictingAddress"`）。この一覧がどう増えうるかは [Enum](#enum) を参照。
+- `Blocking`（`Issues[]` 内）: そのエントリの元になった issue の `ValidationResult.IsBlocking` をそのまま反映します——書き込み（Apply）を中止すべき issue なら true、報告専用の通知（例えば Apply を止めない `DuplicateAddress` エントリ）なら false です。これはレポートを生成したエントリポイントに関わらず Apply 自身のブロック基準を表します。`CheckCLI` の exit code は中止すべき書き込みが無いためこれとは異なる、より広い基準（`Ok` の否定のみ）を使います——ステータスごとの `Ok` と `Blocking` の固定された関係は [Enum](#enum) を参照してください。
+- `Ok`（`Issues[]` 内）: そのエントリの元になった issue の `ValidationResult.IsOk` をそのまま反映します——issue が問題を表す場合は false、常に問題にならないステータスの場合は true、書き込み対象を含まない `DuplicateAddress` 通知の場合も true です（`Ok` が false かつ `Blocking` が false に同時になるのは、書き込み対象を含む方の `DuplicateAddress`——`HasWritableDuplicate` が true——です）。`Blocking` と組み合わせることで、ある issue が `CheckCLI` の exit code 2 判定（`!Ok` を使う）と Apply 系 CLI の exit code 2 判定（`Blocking` を使う——dry-run に関する但し書きは上の項目を参照）のどちらに数えられるかを消費者は判別できます。どちらの値も単独では実際の exit code を再現しません——`CheckCLI` の exit 1 は `Drift[]` にも依存し、実行の実際の exit code は常に `Summary.ExitCode` です。
 - `Mode`（`Bundles[]` 内）: `BundleModeKind` メンバーの名前（`PackTogether`、`PackSeparately`、`PackTogetherByLabel`、`Unknown`）。
 - `SplitKey`（`Bundles[]` 内）: `PackTogether` の場合は固定文字列 `"all"`。`Unknown` の場合は固定文字列 `"(unknown)"`（`BundleDistributionCalculator.UnknownSplitKey`）。`PackTogetherByLabel` の場合は、そのバンドルに属するアセットにラベルが無ければ固定文字列 `"(no labels)"`（`BundleDistributionCalculator.NoLabelsSplitKey`）、そうでなければアセットのラベルを Ordinal でソートして `|` で連結したもの。`PackSeparately` の場合はアセット識別子（この固定語彙には含まれません）。
 - `Bundles[]` の順序: `GroupName`（Ordinal）→ `Mode` の基底の数値（文字列比較ではない）→ `SplitKey`（Ordinal）の順でソートされます。`BundleModeKind` に新しいメンバーを、既存メンバーの数値の間に挟まる値で追加するとこの並び順が変わります（[Enum](#enum)参照）。
@@ -185,8 +191,8 @@ SchemaVersion                             (System.Int32)
 
 | キー | 型 | 既定値 |
 |---|---|---|
-| `_cleanupStaleEntries` | `bool` | `true` |
-| `_postprocessEnabled` | `bool` | `true` |
+| `_cleanupStaleEntries` | `bool` | `false` |
+| `_postprocessEnabled` | `bool` | `false` |
 | `_snapshotFolder` | `string` | `"AddressTellerSnapshots"` |
 | `_autoSnapshotBeforeApplyAll` | `bool` | `true` |
 | `_autoSnapshotRetention` | `int` | `10` |
@@ -225,6 +231,7 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 - **収集方法**: ロード済みの全アセンブリ（`nunit.framework` を参照するアセンブリを除く）からリフレクションで検出します。abstract でない型で、public な引数なしコンストラクタを持つことが条件です。オープンジェネリック型は別途フィルタされているわけではありません。コンストラクタの存在チェック自体は通過しますが、実際のインスタンス化時に `Activator.CreateInstance` が例外を投げるため、コンストラクタが例外を投げるルールクラスと同じ扱い（警告ログを出したうえでスキップ、収集全体は中断しない）になります。
 - **Order**: `Order` の昇順で評価されます。評価順序の同値タイブレークはルールクラスの完全修飾型名（Ordinal）で決定的に行われます。`Order` はアドレス競合を解決する優先順位も兼ねており（下記の**競合**を参照）、値が小さい方が勝ちます。クラス間で `Order` が重複していると警告が出ます。同じ `Order` の2ルールが同一アセットに対してともにアドレスを発行すると競合するためです。
 - **競合**: 同一アセットに対して2件以上のマッチしたルールが `Address()` を呼んだ場合、`Order` が最小の候補が勝ちそのアドレスが書き込まれます。`Order` がより大きい候補は単に採用されません。競合（`ValidationStatus.ConflictingAddress`）——そのアセットへのアドレス・ラベルとも書き込まれない（アドレスだけでなく、そのアセットへの書き込み自体がスキップされる）——になるのは、*Order が最小*の候補が2件以上で同点だった場合のみです。
+- **例外と勝者の優先度**: 単独の勝者候補が確定した後（同点なし）、勝者以下の `Order`（アドレスを産出しうるルール、`AddressSelector != null`）に例外があった場合、そのアセットには一切書き込みが行われません——勝者のアドレスも、マッチした他のルールのラベルも書かれず、その例外を送出したルールの `RuleError` と合わせて `ValidationStatus.BlockedByRuleError` が報告されます。純粋に優先度がより低い（Order がより大きい）ルールの例外は勝者の書き込みに影響しません。ラベルのみルール（`AddressSelector == null`）の例外は、その `Order` に関わらず `BlockedByRuleError` を発生させません——勝者候補を争う立場にそもそも無いためです。詳しい説明は [Writing Rules: Evaluation Rules and Behavior](writing-rules.ja.md#評価ルールと挙動) を参照してください。
 - **ラベルの蓄積**: マッチした全ルールからの `Label()` 呼び出しは、既存エントリがどのグループに属していても（所有権を問わず）アセットに蓄積されます。マッチしなくなったルールによってラベルが暗黙に削除されることはありません（唯一ラベルを削除するのは `CleanupStaleEntries` によるエントリ全体の削除です）。
 - **`Where()` / `Address()` / `IncludeFolders()` の単回呼び出し制約**: 同一ルールチェーン上でこれらのいずれかを2回呼び出すと `InvalidOperationException` を投げます。
 - **`GroupDefault()` の解決**: `Configure()` 実行時ではなく評価時に `AddressableAssetSettings.DefaultGroup` から解決されるため、DefaultGroup のリネームに自動的に追従します。
@@ -239,7 +246,17 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 
 **メンバー追加がコンパイルを壊さずに実行時の挙動を壊しうる理由**: `default` アームの無い `switch` 文は、認識していない新しいenum値に対してもコンパイル・実行ができてしまいます。ただ何もしない（あるいは周辺コード次第でフォールスルーする）だけで、これは呼び出し元が見たことのないステータスに対してはたいてい誤った挙動です。追加をパッチではなくマイナーとして扱うのはこのためです。ビルドは失敗しないものの、CHANGELOGで可視化され、これらの型を網羅的に `switch` しているコードの持ち主に検討してもらうことを意図しています。
 
-具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
+具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress`、`SettingsUnavailable`、`UnmatchedEntryKept`、`BlockedByRuleError`、`DuplicateAssetEntry` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
+
+`SettingsUnavailable` は、設定ファイル（`ProjectSettings/AddressTellerSettings.json`）が読み込めなかった場合に、結果リストの唯一のエントリとして返されます。`Context` は `RuleConfigureFailed`・`DuplicateAddress`・`DuplicateAssetEntry` と同様 null です（特定の1アセットに関するものではないため）。
+
+`UnmatchedEntryKept` は、`CleanupStaleEntries` が OFF のときに `ValidateAll` と `BuildPredictedSnapshot` の全呼び出し元が報告する、書き込みを止めない通知専用ステータス（`IsOk` は常に true）です。`CleanupStaleEntries` が ON なら削除されていたはずの所有グループ内エントリ——どのルールにもマッチしなくなったもの、またはパスが Addressables のエントリとして構造的に無効なもの（[適用と運用](operations.ja.md#project-settings) 参照）——を示し、設定を ON にする前にその影響範囲を確認できるようにするためのものです。`Context` は「どのルールにもマッチしなくなった」場合は常に設定されます。「パスが構造的に無効」な場合はベストエフォートで設定されます——パスが Addressables のエントリとして無効（拡張子除外・`Editor` フォルダ等）というだけで、AssetDatabase 上のアセット自体が解決できないとは限らないためです——本当に解決できない場合のみ null になります（`RuleConfigureFailed` や `DuplicateAddress` と同様）。このステータスは `ApplyAll` 自体（`AddressTellerPostprocessor` によるインポートごとの差分適用を含む）からは一切生成されません——上記の `ValidateAll` と `BuildPredictedSnapshot` からのみ現れます。
+
+`BlockedByRuleError`（`IsOk=false`、`IsBlocking=true`）は、あるアセットに対して単独の勝者アドレス候補が確定した（同点なし）にもかかわらず、勝者以下の `Order` を持つアドレス産出ルールがそのアセットの評価中に例外を送出した場合に報告されます——詳細は上記 [ルール記述の挙動: 例外と勝者の優先度](#9-ルール記述の挙動) を参照してください。これは通常、勝者とは別の、勝者と同等以上に優先されるルールですが、勝者となったルールそのものである場合もあります（`AddressSelector` は成功して勝者候補を出したものの、同じルールチェーン上の後続の `LabelSelector` が例外を送出したケース）。`Context` は他のアセット単位のステータスと同様に設定されます。`ApplyAll`・`ValidateAll`・`BuildPredictedSnapshot` はいずれも同じ評価処理を共有するため、どの経路からも同じように生成されます。例外を送出したルールの `RuleError` が必ず同じ `IReadOnlyList<ValidationResult>` の中で合わせて報告されます——`RuleError` が原因（ルールが例外を投げた事実）、`BlockedByRuleError` が結果（そのためこのアセットへの書き込みが見送られたこと）であり、どちらか一方が他方の代わりになることはありません。Explain ウィンドウは単一の結果リストの代わりに同じ内容を UI 上で表示します——例外を送出したルールはそのアセットの `[Error]` 行として現れ、そのアセットの結論行は「Blocked by rule error」になります。
+
+`DuplicateAssetEntry`（`IsOk=false`、`IsBlocking=true`）は、同一アセット（GUID）が2つ以上の Addressables グループに同時にエントリを持つ場合に報告されます。Addressables 自身はこの状態を重複除去しません（重複除去はグループ単位の内部処理の中だけで完結する）ため、一度この状態になると、たとえば2つのブランチが別々のグループへ同じアセットを追加した状態を VCS のマージが合成してしまった場合など、そのまま残り続けます。`ApplyAll`・`ValidateAll`・`BuildPredictedSnapshot` はこれをそのランで*いずれかの*アセットを評価・書き込みする前に検出し、`DuplicateAssetEntry` のエントリ（重複しているアセットごとに1件）だけを返します——そのランではどのルールも評価されず、何も書き込まれません。`RemoveEntriesForDeletedAssets` は `ValidationResult` を返せないため、同じ内容をエラーとしてログに出し、そのランでは何も削除しない点だけが異なります。`Context` は `RuleConfigureFailed`・`DuplicateAddress`・`SettingsUnavailable` と同様 null です——検出はどのアセット単位の評価よりも前に走るためで、メッセージには GUID とその時点で存在するグループ／アドレスの一覧が含まれます。Explain ウィンドウは読み取り専用の per-asset 診断ツールであり、この状態で止まりません。公開 `AddressTellerSnapshotService.Diff` も、渡されたどちらのスナップショットでこの状態に遭遇しても例外を出しません——重複した GUID についてはそのスナップショット自身のエントリ順で先に現れた方を採用し、残りは無視します。`ValidationResult` を一切返さない入口——`Undo Last Apply`・`Save Snapshot`・`Apply All`/`Apply with Validate` が実行前に取る自動スナップショット・`Clear All Addresses & Labels...`/`ClearCLI`・Snapshot Manager ウィンドウからの Restore——も同じ方法でこの状態を検出し、同じ理由で何も書き込まずに中止します。利用者向けの直し方は [Apply & Operations: トラブルシューティング](operations.ja.md#トラブルシューティング) を参照してください。
+
+**今後の `ValidationStatus` メンバーに対する重大度の方針**: 各ステータスは「`IsOk=false` かつ `IsBlocking=true`」（`IsOk=false` として数えられ、かつ Apply を中止させる問題）か、「`IsOk=true`」（通知であり、問題として扱われない）のどちらか一方の重大度に固定します。`DuplicateAddress` だけが唯一の例外であり、今後もこの位置づけのまま変わりません——その `IsOk` は `ValidationResult.HasWritableDuplicate` に依存し、`IsBlocking` は `IsOk` の値に関わらず常に false です（単独では書き込みを止めないため。正確な規則は `ValidationResult.IsBlocking` と `HasWritableDuplicate` のXMLドキュメントを参照）。`DuplicateAddress` より後に追加するメンバーで、2つ目の「`IsOk=false` だが `IsBlocking=false`」や「`IsOk` がステータス自身以外の何かに依存する」ケースを持ち込んではならず、上記2つの単純な重大度のどちらかを選ぶこと。
 
 これらの enum のいずれにも `[Flags]` は意図的に採用していません。`ValidationStatus` は特に組み合わせ可能に見えるかもしれませんが、`ValidationResult` は1アセットにつきちょうど1つの結果を表します。`[Flags]` にすると組み合わせに意味があるという前提を持ち込んでしまい、JSON・enum名のシリアライズのされ方も変わってしまいます（`[Flags]` の `ToString()` は組み合わせ値に対してカンマ区切りの名前を生成しうる）。これはこのパッケージがコミットしたくない、より大きな互換性の保証範囲です。
 

@@ -19,7 +19,8 @@ namespace AddressTeller.Editor.Tests
             System.Func<AssetContext, bool> where = null,
             System.Func<AssetContext, string> address = null,
             string[] labels = null,
-            bool includeFolders = false)
+            bool includeFolders = false,
+            int order = 0)
         {
             var labelSelectors = new List<System.Func<AssetContext, string>>();
             if (labels != null)
@@ -38,7 +39,26 @@ namespace AddressTeller.Editor.Tests
                 description: null,
                 ruleIndex: 0,
                 includesFolders: includeFolders,
-                order: 0
+                order: order
+            );
+        }
+
+        private static AddressRuleEntry EntryWithThrowingLabel(string group, System.Func<AssetContext, string> address, int order = 0)
+        {
+            var labelSelectors = new List<System.Func<AssetContext, string>>
+            {
+                _ => throw new System.InvalidOperationException("label boom"),
+            };
+            return new AddressRuleEntry(
+                group,
+                _ => true,
+                address,
+                labelSelectors,
+                sourceClass: null,
+                description: null,
+                ruleIndex: 0,
+                includesFolders: false,
+                order: order
             );
         }
 
@@ -152,6 +172,59 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(1, result.Errors.Count);
             StringAssert.Contains("bad address", result.Errors[0].Message);
             Assert.AreEqual(0, result.AddressCandidates.Count);
+        }
+
+        // --- RuleEvaluationError.Order / CanProduceAddress ---
+        //
+        // AddressTellerApplier.Validate の BlockedByRuleError 判定はこの2値だけを見るため、
+        // 例外の発生箇所(Predicate/AddressSelector/LabelSelector)に関わらず正しく刻印されることを固定する。
+
+        [Test]
+        public void PredicateThrows_AddressEntry_ErrorCarriesOrderAndCanProduceAddressTrue()
+        {
+            var entry = Entry("G1", where: _ => throw new System.FormatException("boom"), address: _ => "addr1", order: 3);
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), new[] { entry });
+
+            Assert.AreEqual(1, result.Errors.Count);
+            Assert.AreEqual(3, result.Errors[0].Order);
+            Assert.IsTrue(result.Errors[0].CanProduceAddress);
+        }
+
+        [Test]
+        public void PredicateThrows_LabelOnlyEntry_ErrorCanProduceAddressFalse()
+        {
+            var entry = Entry("G1", where: _ => throw new System.FormatException("boom"), labels: new[] { "tag" }, order: 3);
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), new[] { entry });
+
+            Assert.AreEqual(1, result.Errors.Count);
+            Assert.AreEqual(3, result.Errors[0].Order);
+            Assert.IsFalse(result.Errors[0].CanProduceAddress);
+        }
+
+        [Test]
+        public void AddressSelectorThrows_ErrorCarriesOrderAndCanProduceAddressTrue()
+        {
+            var entry = Entry("G1", address: _ => throw new System.InvalidOperationException("bad address"), order: 5);
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), new[] { entry });
+
+            Assert.AreEqual(1, result.Errors.Count);
+            Assert.AreEqual(5, result.Errors[0].Order);
+            Assert.IsTrue(result.Errors[0].CanProduceAddress);
+        }
+
+        [Test]
+        public void LabelSelectorThrows_AfterAddressProduced_CandidateAndErrorBothRecorded()
+        {
+            // AddressSelector は成功して候補を積んだ後、LabelSelector が例外を投げるケース。
+            // 同じエントリが AddressCandidates と Errors の両方に現れる（RuleEvaluator.Evaluate の仕様）。
+            var entry = EntryWithThrowingLabel("G1", address: _ => "addr1", order: 2);
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), new[] { entry });
+
+            Assert.AreEqual(1, result.AddressCandidates.Count);
+            Assert.AreEqual("addr1", result.AddressCandidates[0].Address);
+            Assert.AreEqual(1, result.Errors.Count);
+            Assert.AreEqual(2, result.Errors[0].Order);
+            Assert.IsTrue(result.Errors[0].CanProduceAddress);
         }
 
         [Test]

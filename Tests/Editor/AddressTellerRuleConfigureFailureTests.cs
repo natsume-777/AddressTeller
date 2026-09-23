@@ -62,6 +62,37 @@ namespace AddressTeller.Editor.Tests
             }
         }
 
+        /// <summary>
+        /// Group() にスラッシュを含むグループ名を渡し、Configure() 自体が ArgumentException を送出するルール。
+        /// Addressables がグループ作成・改名時に '/' '\' を '-' に置き換えるため、置換前の名前では
+        /// 一生マッチしないことをビルダー側で早期に拒否する仕様の再現。
+        /// </summary>
+        private sealed class GroupNameWithSlashRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("Parent/Child")
+                    .Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
+        /// <summary>
+        /// 同じ Configure() 内で、有効な Group("StubGroup") を先に宣言した後、'/' を含む名前で
+        /// Group() を呼んで例外を送出するルール。Configure() が例外を投げた時点で、そのクラスの
+        /// builder.Entries は一切読み取られないため、先に宣言していた有効な Group("StubGroup") も
+        /// 巻き添えで失われることを検証するためのもの。
+        /// </summary>
+        private sealed class ValidGroupThenGroupNameWithSlashRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("StubGroup")
+                    .Where(ctx => ctx.Path.StartsWith(TestRootFolder + "/", System.StringComparison.Ordinal))
+                    .Address(ctx => ctx.FileNameWithoutExtension);
+                rules.Group("Parent/Child").Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
         private AddressableAssetSettings _settings;
         private bool _originalCleanupSetting;
 
@@ -155,6 +186,39 @@ namespace AddressTeller.Editor.Tests
             var entry = _settings.FindAssetEntry(GuidOf(StubAssetPath));
             Assert.IsNotNull(entry, "他のルールの Configure() 失敗を理由に、無関係なルールが担当していたエントリを削除してはいけない。");
             Assert.AreEqual("StubAsset", entry.address);
+        }
+
+        [Test]
+        public void ApplyAll_GroupNameContainsSlash_ReportsRuleConfigureFailedAndOtherRuleStillApplies()
+        {
+            LogAssert.Expect(LogType.Error, new Regex(Regex.Escape("GroupNameWithSlashRule.Configure() threw")));
+
+            var issues = AddressTellerService.ApplyAll(new[] { StubAssetPath }, _settings, NullProgressReporter.Instance,
+                new AddressRuleBase[] { new GroupNameWithSlashRule(), new WorkingRule() });
+
+            Assert.IsTrue(issues.Any(i => i.Status == ValidationStatus.RuleConfigureFailed),
+                "'/' を含むグループ名を渡した Configure() の例外は RuleConfigureFailed として issues に反映されるべき。");
+
+            var entry = _settings.FindAssetEntry(GuidOf(StubAssetPath));
+            Assert.IsNotNull(entry, "壊れていないルール(WorkingRule)は引き続き正常に適用されるべき。");
+            Assert.AreEqual("StubAsset", entry.address);
+        }
+
+        [Test]
+        public void ApplyAll_ValidGroupCallFollowedBySlashGroupCall_BothCallsAreSkipped()
+        {
+            // BrokenRule/GroupNameWithSlashRule と異なり、このルールクラスは Configure() 内で
+            // 先に有効な Group("StubGroup") を宣言している。それでも Configure() 全体が例外で
+            // 中断されるため、その有効な宣言も巻き添えで失われ、StubAssetPath には何も書き込まれない
+            // （writing-rules.md「Exception inside Configure()」参照）。
+            LogAssert.Expect(LogType.Error, new Regex(Regex.Escape("ValidGroupThenGroupNameWithSlashRule.Configure() threw")));
+
+            var issues = AddressTellerService.ApplyAll(new[] { StubAssetPath }, _settings, NullProgressReporter.Instance,
+                new AddressRuleBase[] { new ValidGroupThenGroupNameWithSlashRule() });
+
+            Assert.IsTrue(issues.Any(i => i.Status == ValidationStatus.RuleConfigureFailed));
+            Assert.IsNull(_settings.FindAssetEntry(GuidOf(StubAssetPath)),
+                "同じ Configure() 内で後から例外が投げられた場合、先に宣言した有効な Group() 呼び出しも失われるべき。");
         }
 
         [Test]

@@ -77,7 +77,7 @@ From `Documentation~/operations.md`.
 | 0 | No drift, no issues |
 | 1 | Drift detected (changes present, no Validation errors) |
 | 2 | Validation errors present |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, or a settings load failure) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, a settings load failure, or an unexpected exception) |
 
 `ApplyAllCLI` / `ApplyWithValidateCLI` (writes on success; exit code does not depend on whether there was drift):
 
@@ -85,7 +85,7 @@ From `Documentation~/operations.md`.
 |---|---|
 | 0 | Applied successfully, regardless of whether there was drift |
 | 2 | Validation errors present |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, or a settings load failure) |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, a settings load failure, or an unexpected exception) |
 
 These two methods never return 1: a completed Apply is not a failure just because it changed something. Use `CheckCLI` to detect drift without applying.
 
@@ -94,8 +94,11 @@ These two methods never return 1: a completed Apply is not a failure just becaus
 | Exit code | Meaning |
 |---|---|
 | 0 | Clear completed |
-| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `ownedGroups` untrustworthy for `scope=managed`, snapshot save failure, or a settings load failure) |
+| 2 | The same asset has an entry in two or more Addressables groups at once (`ValidationStatus.DuplicateAssetEntry`); aborted before saving the pre-clear snapshot |
+| 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, a rule configuration error that makes `ownedGroups` untrustworthy for `scope=managed`, snapshot save failure, a settings load failure, or an unexpected exception) |
 | 4 | Rejected because `-addressTellerConfirmClear` was not specified |
+
+Every `-executeMethod` entry point above (including `CheckCLI`) catches any exception that reaches it without being handled by one of the branches listed in its own table, logs it, and exits with code 3 rather than letting the Editor process exit with an unhandled-exception code that would be indistinguishable from drift (exit code 1). In practice this should be rare: known failure modes (like the same asset having an entry in two or more Addressables groups at once — `ValidationStatus.DuplicateAssetEntry`, see [Enums](#enums)) are detected and reported as ordinary results before any exception would be thrown.
 
 Adding a **new** exit code value (for either CLI family) is treated as a **major** change, not minor, even though CI scripts that only check specific known codes wouldn't necessarily break. This is because CI scripts commonly branch with an equality check per known code and treat "anything else" as an unexpected failure category (e.g. `case 0/1/2/3: ... ; default: fail the build`); introducing a new code changes what "anything else" catches even if no existing branch's meaning changes.
 
@@ -115,6 +118,7 @@ Drift[]
     Labels[]                                        (System.String)
 Issues[]
   Path, Status, Message                             (System.String)
+  Blocking, Ok                                      (System.Boolean)
 BundleDistribution                                  (always present; see note below)
   Bundles[]
     GroupName, Mode, SplitKey                        (System.String)
@@ -132,6 +136,8 @@ SchemaVersion                                         (System.Int32)
 
 - `ChangeType`: fixed strings `"Added"`, `"Removed"`, `"Changed"`.
 - `Status`: the name of a `ValidationStatus` member (e.g. `"ConflictingAddress"`). See [Enums](#enums) for how this list can grow.
+- `Blocking` (inside `Issues[]`): mirrors `ValidationResult.IsBlocking` for the issue the entry was built from — true when the issue should abort a write (Apply), false for a report-only notice (for example a `DuplicateAddress` entry that does not block Apply). This reflects Apply's own blocking criteria regardless of which entry point produced the report; `CheckCLI`'s exit code uses a different, broader criterion (`Ok` alone) since it has no write to abort — see [Enums](#enums) for the fixed relationship between `Ok` and `Blocking` per status.
+- `Ok` (inside `Issues[]`): mirrors `ValidationResult.IsOk` for the issue the entry was built from — false when the issue is a problem; true for a status that is never a problem, and also true for a `DuplicateAddress` notice that involves no writable duplicate (it is `DuplicateAddress` *with* a writable duplicate — `HasWritableDuplicate` true — that has `Ok` false and `Blocking` false at the same time). Together with `Blocking`, this tells a consumer whether a given issue is counted toward exit code 2 by `CheckCLI` (which uses `!Ok`) or by the Apply CLIs (which use `Blocking` — see its own bullet above for the dry-run caveat that applies there). Neither field by itself reproduces the actual exit code: `CheckCLI`'s exit 1 also depends on `Drift[]`, and the real exit code for any run is `Summary.ExitCode`.
 - `Mode` (inside `Bundles[]`): the name of a `BundleModeKind` member (`PackTogether`, `PackSeparately`, `PackTogetherByLabel`, `Unknown`).
 - `SplitKey` (inside `Bundles[]`): for `PackTogether`, the fixed string `"all"`; for `Unknown`, the fixed string `"(unknown)"` (`BundleDistributionCalculator.UnknownSplitKey`); for `PackTogetherByLabel`, either the fixed string `"(no labels)"` (`BundleDistributionCalculator.NoLabelsSplitKey`) when the bundle's assets have no labels, or the asset's labels sorted (Ordinal) and joined with `|`; for `PackSeparately`, the asset identifier (not part of this fixed vocabulary).
 - `Bundles[]` order: sorted by `GroupName` (Ordinal), then by `Mode`'s underlying numeric value (not a string comparison), then by `SplitKey` (Ordinal). Assigning a new `BundleModeKind` member a numeric value that falls between two existing members' values changes this ordering — see [Enums](#enums).
@@ -181,8 +187,8 @@ Persisted at `ProjectSettings/AddressTellerSettings.json` (`Editor/Application/A
 
 | Key | Type | Default |
 |---|---|---|
-| `_cleanupStaleEntries` | `bool` | `true` |
-| `_postprocessEnabled` | `bool` | `true` |
+| `_cleanupStaleEntries` | `bool` | `false` |
+| `_postprocessEnabled` | `bool` | `false` |
 | `_snapshotFolder` | `string` | `"AddressTellerSnapshots"` |
 | `_autoSnapshotBeforeApplyAll` | `bool` | `true` |
 | `_autoSnapshotRetention` | `int` | `10` |
@@ -221,6 +227,7 @@ The following aspects of how `AddressRuleBase` subclasses are collected and eval
 - **Collection**: rule classes are found via reflection across all loaded assemblies (excluding assemblies that reference `nunit.framework`), requiring a non-abstract type with a public parameterless constructor. Open generic types are not filtered out separately — they pass the constructor check but `Activator.CreateInstance` throws for them at instantiation time, so they end up handled the same as a rule class whose constructor throws: skipped and logged as a warning rather than aborting collection.
 - **Order**: rules are evaluated in ascending `Order`; ties in evaluation order are broken deterministically by the rule class's full type name (Ordinal). `Order` also doubles as the priority used to resolve address conflicts (see **Conflicts** below) — lower values win. Duplicate `Order` values across classes produce a warning, since two rules sharing an `Order` conflict if they ever both produce an address for the same asset.
 - **Conflicts**: when two or more matching rules call `Address()` for the same asset, the candidate with the lowest `Order` wins and its address is written; the higher-`Order` candidates are simply not used. It is a conflict (`ValidationStatus.ConflictingAddress`) — and neither the address nor any labels are written for that asset (the whole write for that asset is skipped, not just the address) — only when two or more of the *lowest-`Order`* candidates tie.
+- **Exceptions and winner priority**: after a single winning candidate is chosen (no tie), if an address-producing rule (`AddressSelector != null`) at an `Order` equal to or lower than the winner's threw an exception while evaluating that asset, nothing is written for that asset — not the winner's address, not any labels from any matching rule — and `ValidationStatus.BlockedByRuleError` is reported alongside the `RuleError` for the throwing rule. A strictly lower-priority (higher-`Order`) rule's exception does not affect the winner's write. A label-only rule's exception (`AddressSelector == null`) never triggers `BlockedByRuleError`, regardless of its `Order`, since it never competes for the winning candidate. See [Writing Rules: Evaluation Rules and Behavior](writing-rules.md#evaluation-rules-and-behavior) for the full explanation.
 - **Label accumulation**: `Label()` calls from every matching rule accumulate on an asset, regardless of which group the asset's existing entry belongs to (label writes are not gated by group ownership); labels are never implicitly removed by a rule that stops matching (see `CleanupStaleEntries` for the one path that does remove labels, by deleting the whole entry).
 - **`Where()` / `Address()` / `IncludeFolders()` single-call constraint**: calling any of these a second time on the same rule chain throws `InvalidOperationException`.
 - **`GroupDefault()` resolution**: resolved from `AddressableAssetSettings.DefaultGroup` at evaluation time (not baked in at `Configure()` time), so it follows DefaultGroup renames automatically.
@@ -235,7 +242,22 @@ Adding a new, off-by-default opt-in setting that changes evaluation behavior onl
 
 **Why appending a member doesn't break compilation but can break behavior at runtime**: a `switch` statement without a `default` arm compiles and runs fine against a new enum value it doesn't recognize — it just silently does nothing (or falls through, depending on the surrounding code), which is usually the wrong behavior for a status the caller has never seen. This is why appending is minor rather than patch: it is meant to be visible in a changelog and considered by anyone who switches exhaustively over these types, even though it cannot fail a build.
 
-Concretely, `ValidationStatus` currently has: `Ok`, `Skipped`, `LabelsOnly`, `ConflictingAddress`, `GroupNotFound`, `InvalidAddress`, `RuleError`, `GroupWillBeCreated`, `GroupCreationFailed`, `DefaultGroupUnavailable`, `RuleConfigureFailed`, `EntryRejectedByAddressables`, `DuplicateAddress`. This is the enum most likely to keep growing (it is the package's general-purpose "what happened for this asset" result type), so a `switch` over it is the most important place to have a `default` arm.
+Concretely, `ValidationStatus` currently has: `Ok`, `Skipped`, `LabelsOnly`, `ConflictingAddress`, `GroupNotFound`, `InvalidAddress`, `RuleError`, `GroupWillBeCreated`, `GroupCreationFailed`, `DefaultGroupUnavailable`, `RuleConfigureFailed`, `EntryRejectedByAddressables`, `DuplicateAddress`, `SettingsUnavailable`, `UnmatchedEntryKept`, `BlockedByRuleError`, `DuplicateAssetEntry`. This is the enum most likely to keep growing (it is the package's general-purpose "what happened for this asset" result type), so a `switch` over it is the most important place to have a `default` arm.
+
+`SettingsUnavailable` is returned as the sole entry of the result list when the settings file (`ProjectSettings/AddressTellerSettings.json`) could not be loaded — `Context` is null, the same as `RuleConfigureFailed`, `DuplicateAddress`, and `DuplicateAssetEntry`, since it is not about one specific asset.
+
+`UnmatchedEntryKept` is a non-blocking notice (`IsOk` is always true) reported by `ValidateAll` and every caller of `BuildPredictedSnapshot` when `CleanupStaleEntries` is off: it flags an owned-group entry that would have been removed if `CleanupStaleEntries` were on — either because no rule matches its asset anymore, or because its path is structurally invalid for an Addressables entry (see [Apply & Operations](operations.md#project-settings)) — so you can see exactly what turning the setting on would change before you opt in. `Context` is always set for the "no longer matched" case. For the "structurally invalid path" case it is set on a best-effort basis — a path being invalid as an Addressables entry (e.g. an excluded extension or an `Editor` folder) does not usually mean the underlying asset itself cannot be resolved — and is null only when it genuinely cannot be resolved, the same as `RuleConfigureFailed` and `DuplicateAddress`. This status is never produced by `ApplyAll` itself (including the incremental apply `AddressTellerPostprocessor` performs on every asset import) — it only comes from `ValidateAll` and `BuildPredictedSnapshot`, listed above.
+
+`BlockedByRuleError` (`IsOk=false`, `IsBlocking=true`) is reported when a single winning address candidate was chosen for an asset (no tie), but an address-producing rule at an `Order` equal to or lower than the winner's threw while being evaluated for that same asset — see [Rule Authoring Behavior: Exceptions and winner priority](#9-rule-authoring-behavior) above. This is usually a different, higher-or-equal-priority rule than the winner, but the throwing rule can also be the winning rule itself (its `AddressSelector` succeeded but a later `LabelSelector` on the same rule chain threw). `Context` is set, the same as any other asset-specific status. It is produced by `ApplyAll`, `ValidateAll`, and `BuildPredictedSnapshot` alike, since all three share the same underlying evaluation. A `RuleError` entry for the throwing rule is always reported alongside it in the same returned `IReadOnlyList<ValidationResult>` — `RuleError` is the cause (a rule threw), `BlockedByRuleError` is the effect (this asset's write was withheld because of it); they are never a substitute for one another. The Explain window shows the same information in UI form instead of a shared result list: the throwing rule appears as its own `[Error]` row for that asset, and the asset's conclusion line reads "Blocked by rule error".
+
+`DuplicateAssetEntry` (`IsOk=false`, `IsBlocking=true`) is reported when the same asset (GUID) has an entry in two or more Addressables groups at once — a state Addressables itself does not deduplicate (its own duplicate-removal logic only operates within a single group), so it can persist once created, for example after a VCS merge combines two branches that each added the same asset to a different group. `ApplyAll`, `ValidateAll`, and `BuildPredictedSnapshot` detect this before evaluating or writing anything for *any* asset that run, and return only `DuplicateAssetEntry` entries (one per duplicated asset) — no rule is evaluated, and nothing is written, that run. `RemoveEntriesForDeletedAssets` does the same but, since it does not return `ValidationResult`s, logs the same information as an error and removes nothing that run instead. `Context` is null, the same as `RuleConfigureFailed`, `DuplicateAddress`, and `SettingsUnavailable`, since detection runs before any per-asset evaluation — the message identifies the asset by GUID and lists each group/address it currently sits in. The Explain window is a read-only, per-asset diagnostic tool and does not stop on this status. The public `AddressTellerSnapshotService.Diff` also does not throw when it encounters this state in either snapshot it is given — it picks the first entry for the duplicated GUID (in that snapshot's own entry order) and ignores the rest.
+Entry points that do not return `ValidationResult`s at all — `Undo Last Apply`, `Save Snapshot`, the
+automatic snapshot `Apply All`/`Apply with Validate` take, `Clear All Addresses & Labels...`/`ClearCLI`,
+and Snapshot Restore from the Snapshot Manager window — detect this state the same way and abort without
+writing anything, for the same reason; see [Apply & Operations:
+Troubleshooting](operations.md#troubleshooting) for the user-facing fix.
+
+**Severity policy for future `ValidationStatus` members**: each status has exactly one fixed severity — either "`IsOk=false` and `IsBlocking=true`" (a problem that both counts as `IsOk=false` and aborts Apply) or "`IsOk=true`" (a notice, never a problem). `DuplicateAddress` is the sole exception, and it stays the sole exception: its `IsOk` depends on `ValidationResult.HasWritableDuplicate`, and `IsBlocking` is always false for it regardless of `IsOk`, since it never blocks a write by itself (see `ValidationResult.IsBlocking`'s XML doc and `HasWritableDuplicate`'s XML doc for the exact rule). New members added after `DuplicateAddress` must not introduce a second "`IsOk=false` but `IsBlocking=false`" or "`IsOk` depends on something other than the status itself" case — pick one of the two straightforward severities instead.
 
 `[Flags]` is deliberately not used for any of these enums, even though some (`ValidationStatus` in particular) might look combinable. A `ValidationResult` represents exactly one outcome for one asset; using `[Flags]` would imply combinations are meaningful and would also change the JSON/enum-name serialization story (a `[Flags]` `ToString()` can produce comma-joined names for combined values), which is a larger compatibility surface this package does not want to commit to.
 

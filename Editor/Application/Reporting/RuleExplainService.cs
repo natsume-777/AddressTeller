@@ -21,12 +21,20 @@ namespace AddressTeller.Editor
         /// <summary>Apply/Validate と同一ロジックによる結論。除外時は null。</summary>
         public ValidationResult Validation { get; }
 
-        internal AssetExplanation(string assetPath, bool isExcluded, RuleExplanation explanation, ValidationResult validation)
+        /// <summary>
+        /// <see cref="AddressTellerApplier.Validate"/> が確定させた勝者候補。<see cref="Validation"/> の
+        /// Status が Ok/GroupWillBeCreated のときのみ意味を持つ（それ以外は既定値のまま）。
+        /// AddressTellerExplainWindow が採用アドレス／(adopted) 表示を、独自に勝者を選び直さずここから読む。
+        /// </summary>
+        internal AddressCandidate Winner { get; }
+
+        internal AssetExplanation(string assetPath, bool isExcluded, RuleExplanation explanation, ValidationResult validation, AddressCandidate winner = default)
         {
             AssetPath = assetPath;
             IsExcluded = isExcluded;
             Explanation = explanation;
             Validation = validation;
+            Winner = winner;
         }
     }
 
@@ -99,9 +107,9 @@ namespace AddressTeller.Editor
                 }
 
                 var explanation = RuleEvaluator.Explain(ctx, setup.Entries);
-                var validation = AddressTellerApplier.Validate(ctx, explanation.Resolution, setup.ExistingGroupNames, setup.AutoCreateMissingGroups);
+                var validation = AddressTellerApplier.Validate(ctx, explanation.Resolution, setup.ExistingGroupNames, setup.AutoCreateMissingGroups, out var winner);
 
-                results.Add(new AssetExplanation(path, isExcluded: false, explanation, validation));
+                results.Add(new AssetExplanation(path, isExcluded: false, explanation, validation, winner));
             }
 
             return results;

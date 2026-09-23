@@ -674,6 +674,41 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Diff_DuplicateGuidInBefore_DoesNotThrow_UsesFirstEntry()
+        {
+            // 同一 guid のエントリが2件（複数グループにまたがって存在する状態を模す）あっても
+            // ArgumentException を出さず、Entries 内で先に現れた方を採用する（Diff の XML doc 参照）。
+            var before = new AddressTellerSnapshot();
+            before.Entries.Add(Entry("guid-dup", "First", "GroupA"));
+            before.Entries.Add(Entry("guid-dup", "Second", "GroupB"));
+
+            var after = new AddressTellerSnapshot();
+            after.Entries.Add(Entry("guid-dup", "First", "GroupA"));
+
+            SnapshotDiff diff = default;
+            Assert.DoesNotThrow(() => diff = AddressTellerSnapshotService.Diff(before, after));
+
+            Assert.IsTrue(diff.IsEmpty, "before の先頭エントリ（First/GroupA）と after が一致するため差分なし。");
+        }
+
+        [Test]
+        public void Diff_DuplicateGuidInAfter_DoesNotThrow_UsesFirstEntry()
+        {
+            var before = new AddressTellerSnapshot();
+            before.Entries.Add(Entry("guid-dup", "Old", "GroupA"));
+
+            var after = new AddressTellerSnapshot();
+            after.Entries.Add(Entry("guid-dup", "New", "GroupA"));
+            after.Entries.Add(Entry("guid-dup", "Ignored", "GroupB"));
+
+            SnapshotDiff diff = default;
+            Assert.DoesNotThrow(() => diff = AddressTellerSnapshotService.Diff(before, after));
+
+            Assert.AreEqual(1, diff.Changed.Count);
+            Assert.AreEqual("New", diff.Changed[0].After.Address);
+        }
+
+        [Test]
         public void Diff_NullBefore_ThrowsArgumentNullException()
         {
             Assert.Throws<ArgumentNullException>(() =>

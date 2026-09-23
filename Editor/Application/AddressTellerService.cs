@@ -31,6 +31,30 @@ namespace AddressTeller.Editor
         private static bool s_isApplying;
 
         /// <summary>
+        /// ルール収集（<see cref="RuleCollector.CollectEnabledRules"/>）は <see cref="AddressTellerSettingsAsset.Current"/>
+        /// の無効化ルール一覧を読むため、設定ファイルが読み込めない状態で呼ぶと、直前まで残っていた古い
+        /// メモリ上の値で収集してしまう恐れがある（このメソッドを経由する各ラッパーオーバーロードは、
+        /// 呼び出し先の中核オーバーロードが改めてゲートするとはいえ、ルール収集自体はその前に起きるため）。
+        /// ゲートに成功した場合のみ収集し、失敗時は空リストを返す——どのみち中核オーバーロードが同じ
+        /// ゲートで失敗して <see cref="ValidationStatus.SettingsUnavailable"/> を返すため、ここで集めたルールは
+        /// 使われない。
+        /// </summary>
+        private static IReadOnlyList<AddressRuleBase> CollectEnabledRulesIfSettingsLoaded()
+            => AddressTellerSettingsAsset.EnsureLoaded().Success
+                ? RuleCollector.CollectEnabledRules()
+                : Array.Empty<AddressRuleBase>();
+
+        /// <summary>
+        /// <see cref="CollectEnabledRulesIfSettingsLoaded"/> と同じ理由で、無効化されたルールも含めた
+        /// 全ルール収集（<see cref="RuleCollector.CollectRules"/>）をゲート後に限定する版。
+        /// <see cref="RemoveEntriesForDeletedAssets(IEnumerable{string}, AddressableAssetSettings)"/> 専用。
+        /// </summary>
+        private static IReadOnlyList<AddressRuleBase> CollectRulesIfSettingsLoaded()
+            => AddressTellerSettingsAsset.EnsureLoaded().Success
+                ? RuleCollector.CollectRules()
+                : Array.Empty<AddressRuleBase>();
+
+        /// <summary>
         /// Applies all collected rules to every asset in the project and returns the results that had a
         /// problem (conflicts, missing groups, rule exceptions, etc.).
         /// If settings is null, the project's default settings are used. Returns an empty list if
@@ -40,7 +64,9 @@ namespace AddressTeller.Editor
         /// The return value may include <see cref="ValidationStatus.GroupWillBeCreated"/> entries
         /// (IsOk=true; informational notices about a group that AutoCreateMissingGroups will create or
         /// has created). When treating the result as a "problem" (e.g. deciding whether to abort Apply),
-        /// filter with <c>!result.IsOk</c>.
+        /// filter with <c>!result.IsOk</c>. If the same asset has an entry in two or more Addressables
+        /// groups at once, only <see cref="ValidationStatus.DuplicateAssetEntry"/> entries (one per
+        /// duplicated asset) are returned and nothing is written that run — see that status.
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(AddressableAssetSettings settings = null)
         {
@@ -96,7 +122,7 @@ namespace AddressTeller.Editor
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress)
         {
-            return ApplyAll(paths, settings, progress, RuleCollector.CollectEnabledRules());
+            return ApplyAll(paths, settings, progress, CollectEnabledRulesIfSettingsLoaded());
         }
 
         /// <summary>
@@ -111,12 +137,32 @@ namespace AddressTeller.Editor
             s_isApplying = true;
             try
             {
+                // 呼び出し元（メニュー・CLI・Postprocessor）は既に入口でログ付きのゲート
+                // （AddressTellerSettings.EnsureLoaded）を通しているため、通常はここで失敗しない。
+                // ただしこのメソッドは公開 API であり、利用者が独自のエディタ拡張から直接呼ぶ経路も
+                // ゲートせずに既定値のまま動かしてはいけないため、ここでもログを出さないゲート
+                // （AddressTellerSettingsAsset.EnsureLoaded）を通す。ログは呼び出し元の責務のまま。
+                var gate = AddressTellerSettingsAsset.EnsureLoaded();
+                if (!gate.Success)
+                    return new ValidationResult[] { new ValidationResult(null, ValidationStatus.SettingsUnavailable, gate.Error) };
+
                 settings ??= AddressableAssetSettingsDefaultObject.Settings;
                 if (settings == null) return Array.Empty<ValidationResult>();
 
                 progress ??= NullProgressReporter.Instance;
                 rules ??= Array.Empty<AddressRuleBase>();
                 paths ??= Array.Empty<string>();
+
+                // 同一 guid が2つ以上のグループにまたがって存在する状態では、どちらのエントリを対象に
+                // 書き込むべきかが定義できない（settings.FindAssetEntry は先勝ちで片方を無言で選び、
+                // もう片方は記録に残らないまま消える）。このランでは掃除も含めて何も書き込まず、重複の
+                // 報告だけを返す（RuleEvaluationPipeline.BuildPredictedRunState と同じ判定）。BuildSetup
+                // （Configure() の実行、GroupDefault() 使用時の DefaultGroup 自動作成を含む）より前に置く
+                // ——重複を理由にこのランを丸ごと中止する以上、ルール構成の評価や DefaultGroup の作成のような
+                // 副作用を先に発生させるべきではなく、RuleConfigureFailed の報告も重複の報告に埋もれさせない。
+                var duplicateAssetEntries = DuplicateAssetEntryDetector.Detect(settings);
+                if (duplicateAssetEntries.Count > 0)
+                    return duplicateAssetEntries;
 
                 var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
                 // OwnedGroups（CleanupStaleEntriesの対象判定）は有効化されているルールが Address() を
@@ -202,7 +248,7 @@ namespace AddressTeller.Editor
         {
             // ルールの On/Off 設定に関わらず、削除追従の所有権判定（ownedGroups）は全ルールを対象にする。
             // 無効化されたルールが過去に作ったエントリも、設定の有無に関係なく一貫して掃除対象として認識する必要があるため。
-            return RemoveEntriesForDeletedAssets(deletedGuids, settings, RuleCollector.CollectRules());
+            return RemoveEntriesForDeletedAssets(deletedGuids, settings, CollectRulesIfSettingsLoaded());
         }
 
         /// <summary>
@@ -214,10 +260,34 @@ namespace AddressTeller.Editor
         /// <returns>The entries that were actually removed (empty list if none were removed).</returns>
         public static IReadOnlyList<ClearedEntry> RemoveEntriesForDeletedAssets(IEnumerable<string> deletedGuids, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
         {
+            // 削除系 API は ValidationResult を返さない（戻り値は削除済みエントリ一覧）ため、他の中核
+            // オーバーロードのように SettingsUnavailable を返して報告することができない。破壊的操作
+            // （エントリ削除）を既定値のまま進めるわけにもいかないため、ここだけは例外的にログを出して
+            // 何もせず戻る。Postprocessor 経由の呼び出しは、この呼び出しより前にログ付きゲート
+            // （AddressTellerSettings.EnsureLoaded）を既に通しているため、通常この経路には到達しない。
+            var gate = AddressTellerSettingsAsset.EnsureLoaded();
+            if (!gate.Success)
+            {
+                Debug.LogError($"[AddressTeller] {gate.Error}");
+                return Array.Empty<ClearedEntry>();
+            }
+
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null) return Array.Empty<ClearedEntry>();
             rules ??= Array.Empty<AddressRuleBase>();
             deletedGuids ??= Array.Empty<string>();
+
+            // ApplyAll と同じ理由（どちらのエントリを対象にすべきか定義できない）で、同一 guid が2つ以上の
+            // グループにまたがって存在する状態ではこの実行全体で何もせず戻る。削除系 API は ValidationResult を
+            // 返せないため、内容はログで報告する（gate 失敗時と同じ扱い）。ApplyAll と同様、BuildSetup
+            // （Configure() の実行、DefaultGroup 自動作成を含む）より前に置く。
+            var duplicateAssetEntries = DuplicateAssetEntryDetector.Detect(settings);
+            if (duplicateAssetEntries.Count > 0)
+            {
+                foreach (var duplicate in duplicateAssetEntries)
+                    Debug.LogError($"[AddressTeller] {duplicate.Message}");
+                return Array.Empty<ClearedEntry>();
+            }
 
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
 
@@ -251,11 +321,17 @@ namespace AddressTeller.Editor
         /// blocked — DuplicateAddress is never a reason to abort an apply (see
         /// <see cref="ValidationResult.IsOk"/> and <see cref="ValidationResult.HasWritableDuplicate"/> for
         /// the exact rule). When deciding whether to abort based on this result (e.g. before an Apply),
-        /// filter with <c>!result.IsOk &amp;&amp; result.Status != ValidationStatus.DuplicateAddress</c>,
-        /// not <c>!result.IsOk</c> alone. Note also that a <see cref="ValidationStatus.RuleError"/> entry
-        /// for one rule does not by itself mean nothing would be written for that asset: if the failing
-        /// rule was the highest-priority (lowest-Order) match, a lower-priority rule's address is still
-        /// resolved for the same asset (and would still be written by a subsequent Apply) when one exists.
+        /// filter with <see cref="ValidationResult.IsBlocking"/>, not <c>!result.IsOk</c> alone. Note also
+        /// that a <see cref="ValidationStatus.RuleError"/> entry for one address-producing rule does not by
+        /// itself mean nothing would be written for that asset: if the winning candidate has strictly
+        /// higher priority (a lower <c>Order</c>) than the rule that threw, its address is still written —
+        /// the failing rule could never have outranked it anyway. But if the failing rule's <c>Order</c>
+        /// was equal to or lower than (i.e. as high or higher priority as) the winning candidate's, nothing
+        /// is written for that asset at all — see <see cref="ValidationStatus.BlockedByRuleError"/>, which
+        /// is reported alongside the <see cref="ValidationStatus.RuleError"/> in that case (the latter is
+        /// the cause, the former is the effect on this asset's write). If the same asset has an entry in two
+        /// or more Addressables groups at once (<see cref="ValidationStatus.DuplicateAssetEntry"/>), only
+        /// entries of that status are returned (one per duplicated asset) — no rule was evaluated that run.
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings = null)
         {
@@ -269,7 +345,7 @@ namespace AddressTeller.Editor
         /// </summary>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings, IProgressReporter progress)
         {
-            return ValidateAll(settings, progress, RuleCollector.CollectEnabledRules());
+            return ValidateAll(settings, progress, CollectEnabledRulesIfSettingsLoaded());
         }
 
         /// <summary>
@@ -280,6 +356,13 @@ namespace AddressTeller.Editor
         /// </summary>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules)
         {
+            // ApplyAll と同じ理由（メニュー・CLI・Postprocessor は既に入口でゲート済み。このメソッドは
+            // 公開 API であり、利用者が直接呼ぶ経路もゲートせず既定値のまま動かしてはいけない）で、
+            // ログを出さないゲートを通す。ログは呼び出し元の責務のまま。
+            var gate = AddressTellerSettingsAsset.EnsureLoaded();
+            if (!gate.Success)
+                return new ValidationResult[] { new ValidationResult(null, ValidationStatus.SettingsUnavailable, gate.Error) };
+
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null) return Array.Empty<ValidationResult>();
 

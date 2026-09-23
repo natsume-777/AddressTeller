@@ -323,5 +323,32 @@ namespace AddressTeller.Editor.Tests
 
             Assert.IsFalse(result.Diff.Removed.Any(e => e.Guid == guid));
         }
+
+        [Test]
+        public void BuildPredictedSnapshot_CleanupOff_StructurallyInvalidPathEntryReportsUnmatchedEntryKept()
+        {
+            AddressTellerSettings.CleanupStaleEntries = false;
+            var invalidAssetPath = StubFolder + "/InvalidCleanupOffNotice.preset";
+            CreateInvalidExtensionAsset(invalidAssetPath);
+            var guid = Guid(invalidAssetPath);
+            _settings.CreateOrMoveEntry(guid, _managedGroup).SetAddress("StaleAddress");
+            var rules = new AddressRuleBase[] { new ManagedGroupRule() };
+
+            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(_settings, System.Array.Empty<string>(), rules);
+
+            var notice = result.Issues.SingleOrDefault(i =>
+                i.Status == ValidationStatus.UnmatchedEntryKept && i.Message.Contains(guid));
+            Assert.IsNotNull(notice,
+                "CleanupStaleEntries=false でも、削除されるはずだった無効パスエントリは UnmatchedEntryKept 通知として報告されるべき。");
+            Assert.IsTrue(notice.IsOk, "UnmatchedEntryKept は書き込み・削除を伴わない通知であり IsOk=true のはず。");
+            Assert.IsFalse(notice.IsBlocking);
+            // パスが Addressables のエントリとして無効（拡張子除外）というだけで、AssetDatabase 上の
+            // アセットとしては普通に解決できるため、JSON/JUnit レポートの Path 列を空にしないよう
+            // Context をベストエフォートで埋める（BuildContext できる場合のみ）。
+            Assert.IsNotNull(notice.Context,
+                "拡張子除外による無効パスは AssetDatabase 上では解決できるはずなので、Context はベストエフォートで設定されるべき。");
+            Assert.AreEqual(guid, notice.Context.Guid);
+            Assert.AreEqual(invalidAssetPath, notice.Context.Path);
+        }
     }
 }

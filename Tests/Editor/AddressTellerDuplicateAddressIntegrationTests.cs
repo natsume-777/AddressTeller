@@ -200,7 +200,7 @@ namespace AddressTeller.Editor.Tests
 
             // asset B（StaleAssetPath）は StubFolder の外にあるため ConstantAddressRule にマッチしない
             // （Skipped）。所有グループ（StubGroup）に "SharedAddress" のエントリを手動登録しておく。
-            // CleanupStaleEntries（既定 ON）により、この実行で削除される予定のはず。
+            // このテストクラスは SetUp で CleanupStaleEntries を ON にしているため、この実行で削除される予定のはず。
             CreatePrefab(StaleAssetPath);
             var staleGuid = AssetDatabase.AssetPathToGUID(StaleAssetPath);
             _settings.CreateOrMoveEntry(staleGuid, _stubGroup).SetAddress("SharedAddress");

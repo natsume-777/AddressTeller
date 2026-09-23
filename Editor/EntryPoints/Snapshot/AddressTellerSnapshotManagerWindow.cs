@@ -31,6 +31,16 @@ namespace AddressTeller.Editor
         // UI 要素への参照（Refresh 時に更新するため保持）
         private ListView _listView;
         private HelpBox _compareModeHelpBox;
+        private HelpBox _settingsErrorHelpBox;
+
+        /// <summary>
+        /// 直近の Refresh でゲートが失敗した場合のエラー文。null なら成功（または未実行）。
+        /// OnEnable 経由の初回 Refresh は CreateGUI より先に走り、その時点では _settingsErrorHelpBox が
+        /// まだ null で表示に反映できないため、ここに理由を保持しておき、CreateGUI が
+        /// _settingsErrorHelpBox を生成する時点でこれを読んで初期表示に反映する。
+        /// </summary>
+        private string _lastSettingsGateError;
+
         private Button _restoreAdditiveBtn;
         private Button _restoreExactBtn;
         private Button _compareWithCurrentBtn;
@@ -64,7 +74,10 @@ namespace AddressTeller.Editor
             // ---- Toolbar ----
             var toolbar = new Toolbar();
 
-            var refreshBtn = new ToolbarButton(Refresh) { text = "Refresh" };
+            // 明示的な Refresh 操作なので毎回ログする（Always）。OnEnable・検索・トグル変更は
+            // 既定の OncePerDistinctFailure に任せる（HelpBox で状態は分かるため、これらの暗黙的な
+            // 再列挙のたびに Console を埋める必要はない）。
+            var refreshBtn = new ToolbarButton(() => Refresh(SettingsGateLogPolicy.Always)) { text = "Refresh" };
             toolbar.Add(refreshBtn);
 
             var showAutoToggle = new ToolbarToggle { text = "Show auto snapshots", value = _showAuto };
@@ -94,6 +107,13 @@ namespace AddressTeller.Editor
             _compareModeHelpBox.AddToClassList("at-compare-hint");
             _compareModeHelpBox.style.display = DisplayStyle.None;
             root.Add(_compareModeHelpBox);
+
+            // 設定ファイルの読み込みに失敗した場合の案内。初期は非表示だが、OnEnable 経由の初回 Refresh が
+            // CreateGUI より先に走って既に失敗を記録していた場合は、ここでその内容を反映する
+            // （_lastSettingsGateError のコメント参照）。
+            _settingsErrorHelpBox = new HelpBox(_lastSettingsGateError ?? string.Empty, HelpBoxMessageType.Error);
+            _settingsErrorHelpBox.style.display = _lastSettingsGateError != null ? DisplayStyle.Flex : DisplayStyle.None;
+            root.Add(_settingsErrorHelpBox);
 
             // ---- ListView ----
             _listView = new ListView
@@ -155,9 +175,30 @@ namespace AddressTeller.Editor
             UpdateActionButtons();
         }
 
-        /// <summary>SnapshotFolder を再列挙し、現在のフィルタ条件で一覧をキャッシュし直す。</summary>
-        private void Refresh()
+        /// <summary>
+        /// SnapshotFolder を再列挙し、現在のフィルタ条件で一覧をキャッシュし直す。先頭で設定ファイルの
+        /// 読み込みをゲートし、失敗していれば一覧を空にして HelpBox でエラーを示す
+        /// （古い設定・既定値のまま一覧を組み立てて誤った SnapshotFolder を見せないため）。
+        /// <paramref name="logPolicy"/> の既定は OncePerDistinctFailure——OnEnable・検索キーワード変更・
+        /// 「Show auto snapshots」トグルなど、利用者が明示的に選んだわけではない暗黙的な再列挙のたびに
+        /// Console へ Error を連発させないため（HelpBox で状態は分かる）。Refresh ボタン（明示操作）のみ
+        /// Always を渡す。
+        /// </summary>
+        private void Refresh(SettingsGateLogPolicy logPolicy = SettingsGateLogPolicy.OncePerDistinctFailure)
         {
+            var gate = AddressTellerSettings.EnsureLoaded(logPolicy);
+            if (!gate.Success)
+            {
+                _items = new List<SnapshotFileInfo>();
+                _selectedPath = null;
+                ShowSettingsError(gate.Error);
+                RebuildList();
+                UpdateActionButtons();
+                return;
+            }
+
+            HideSettingsError();
+
             var folder = AddressTellerSettings.GetSnapshotFolderAbsolutePath();
             var collected = SnapshotFileCatalog.Collect(folder, _showAuto);
             var filtered = SnapshotFileCatalog.Filter(collected, _searchKeyword);
@@ -168,6 +209,28 @@ namespace AddressTeller.Editor
 
             RebuildList();
             UpdateActionButtons();
+        }
+
+        /// <summary>
+        /// 設定ファイルの読み込み失敗を記録し、HelpBox が既に存在すれば表示する。CreateGUI 前（OnEnable
+        /// 経由の初回 Refresh）では _settingsErrorHelpBox がまだ null のため、その場合は
+        /// _lastSettingsGateError への記録のみ行う——CreateGUI が HelpBox 生成時にこれを読んで反映する
+        /// （_lastSettingsGateError のコメント参照）。
+        /// </summary>
+        private void ShowSettingsError(string error)
+        {
+            _lastSettingsGateError = error;
+            if (_settingsErrorHelpBox == null) return;
+            _settingsErrorHelpBox.text = error;
+            _settingsErrorHelpBox.style.display = DisplayStyle.Flex;
+        }
+
+        /// <summary>設定ファイルの読み込みエラー表示を消す。</summary>
+        private void HideSettingsError()
+        {
+            _lastSettingsGateError = null;
+            if (_settingsErrorHelpBox == null) return;
+            _settingsErrorHelpBox.style.display = DisplayStyle.None;
         }
 
         /// <summary>_items の内容を ListView に反映する。</summary>
@@ -281,6 +344,17 @@ namespace AddressTeller.Editor
 
             var settings = GetSettingsOrLogError();
             if (settings == null) return;
+
+            // 同一 guid が2つ以上のグループにまたがって存在する状態のまま Restore まで進めると、
+            // settings.FindAssetEntry の先勝ちで片方だけに作用してしまう。ダイアログより前に検出して中止する。
+            if (DuplicateAssetEntryDetector.LogAndReturnTrueIfDuplicates(settings, "Restore Snapshot"))
+            {
+                EditorUtility.DisplayDialog(
+                    "Restore Snapshot",
+                    "Aborted: the same asset has an entry in two or more Addressables groups at once. See the Console for details.",
+                    "OK");
+                return;
+            }
 
             var message = mode == SnapshotRestoreMode.Exact
                 ? $"Restore state from '{item.FileName}'.\n\n" +

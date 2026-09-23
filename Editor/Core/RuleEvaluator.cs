@@ -44,7 +44,7 @@ namespace AddressTeller
                 catch (Exception ex)
                 {
                     var source = AddressRuleEntry.DescribeSource(entry.SourceClass, entry.Description, entry.RuleIndex);
-                    errors.Add(new RuleEvaluationError(source, ex.Message));
+                    errors.Add(new RuleEvaluationError(source, ex.Message, entry.Order, entry.AddressSelector != null));
                 }
             }
 
@@ -112,7 +112,7 @@ namespace AddressTeller
                 }
                 catch (Exception ex)
                 {
-                    errors.Add(new RuleEvaluationError(ruleSource, ex.Message));
+                    errors.Add(new RuleEvaluationError(ruleSource, ex.Message, entry.Order, entry.AddressSelector != null));
                     details.Add(new RuleEvaluationDetail(
                         ruleSource, entry.GroupName, entry.Description,
                         RuleMatchOutcome.Errored, null, null, ex.Message, entry.Order));

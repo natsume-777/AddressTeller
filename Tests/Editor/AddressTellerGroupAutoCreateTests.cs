@@ -194,6 +194,24 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Apply_AutoCreateOn_BlockedByRuleError_DoesNotCreateGroup()
+        {
+            // GroupWillBeCreated になるはずだった状況でも、より優先度の高いルールが例外を出していれば
+            // グループそのものを作らずにブロックする（Validate と同じ判定を Apply でも一貫させる）。
+            var ctx = RealCtx(StubFolder + "/StubBlocked.prefab");
+            var resolution = new AddressResolution(
+                new[] { new AddressCandidate("NewGroup", "addr", order: 5) },
+                new HashSet<string>(),
+                new[] { new RuleEvaluationError("HighPriorityRule", "boom", order: 0, canProduceAddress: true) });
+
+            var result = AddressTellerApplier.Apply(ctx, resolution, _settings, ExistingGroupNames(), autoCreateMissingGroups: true);
+
+            Assert.AreEqual(ValidationStatus.BlockedByRuleError, result.Status);
+            Assert.IsNull(_settings.FindGroup("NewGroup"));
+            Assert.IsNull(_settings.FindAssetEntry(ctx.Guid));
+        }
+
+        [Test]
         public void Apply_AutoCreateOn_ExistingGroup_BehavesAsNormalApply()
         {
             // settings.CreateOrMoveEntry に実際に到達する（エントリを新規作成する）ため、
@@ -274,7 +292,7 @@ namespace AddressTeller.Editor.Tests
         //
         // GroupWillBeCreated は IsOk=true（情報提供）、GroupNotFound は IsOk=false（実際の問題）であることを
         // 確認する。実際の中止判定（AddressTellerApplyFlow.Run / AddressTellerMenu.ApplyWithValidateCLI が
-        // 共有する判定）そのものは、DuplicateAddress の除外を含めて下の HasBlockingIssue_* が検証する
+        // 共有する判定）そのものは、DuplicateAddress の除外を含めて下の IsBlocking_* が検証する
         // （このブロックは中止判定のロジックを再実装しない。実装を変えてもテストが追従しない事態を避けるため）。
 
         [Test]
@@ -318,28 +336,29 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(issues.Any(i => !i.IsOk), "IsOk=false の要素が1件でも含まれれば中止判定は true になるべき。");
         }
 
-        // --- AddressTellerApplyFlow.HasBlockingIssue に対する判定 ---
+        // --- ValidationResult.IsBlocking に対する判定（AddressTellerApplyFlow.Run /
+        //     AddressTellerMenu.ApplyWithValidateCLI が共有する中止判定の基準） ---
         //
         // DuplicateAddress は書き込みを止めない報告専用ステータスであり、IsOk=false（HasWritableDuplicate=true）
         // であっても Apply/Validate 自体を中止する理由にしてはならない（design-decisions.md 参照）。
-        // ここでは AddressTellerApplyFlow.Run / AddressTellerMenu.ApplyWithValidateCLI が共有する
-        // HasBlockingIssue そのものを直接検証する（上の ValidateIssues_* が古い `issues.Any(i => !i.IsOk)` を
-        // 再実装していたことで、実装を変えてもテストが追従しない問題があったため、実物の判定関数を使う）。
+        // ここでは ValidationResult.IsBlocking そのものを直接検証する（上の ValidateIssues_* が古い
+        // `issues.Any(i => !i.IsOk)` を再実装していたことで、実装を変えてもテストが追従しない問題が
+        // あったため、実物の公開プロパティを使う）。
 
         [Test]
-        public void HasBlockingIssue_OnlyManagedDuplicateAddress_ReturnsFalse()
+        public void IsBlocking_OnlyManagedDuplicateAddress_ReturnsFalse()
         {
             var duplicate = new ValidationResult(null, ValidationStatus.DuplicateAddress, "dup", hasWritableDuplicate: true);
             Assert.IsFalse(duplicate.IsOk, "前提条件: HasWritableDuplicate=true は IsOk=false のはず。");
 
             var issues = new List<ValidationResult> { duplicate };
 
-            Assert.IsFalse(AddressTellerApplyFlow.HasBlockingIssue(issues),
+            Assert.IsFalse(issues.Any(i => i.IsBlocking),
                 "DuplicateAddress は IsOk=false であっても、書き込みを止めない報告専用ステータスのため中止理由にしてはならない。");
         }
 
         [Test]
-        public void HasBlockingIssue_DuplicateAddressMixedWithRealError_ReturnsTrue()
+        public void IsBlocking_DuplicateAddressMixedWithRealError_ReturnsTrue()
         {
             var duplicate = new ValidationResult(null, ValidationStatus.DuplicateAddress, "dup", hasWritableDuplicate: true);
             var notFound = AddressTellerApplier.Validate(
@@ -347,19 +366,19 @@ namespace AddressTeller.Editor.Tests
 
             var issues = new List<ValidationResult> { duplicate, notFound };
 
-            Assert.IsTrue(AddressTellerApplyFlow.HasBlockingIssue(issues),
+            Assert.IsTrue(issues.Any(i => i.IsBlocking),
                 "DuplicateAddress とは無関係な実際の問題（GroupNotFound）が1件でもあれば中止すべき。");
         }
 
         [Test]
-        public void HasBlockingIssue_OnlyUnmanagedDuplicateAddress_ReturnsFalse()
+        public void IsBlocking_OnlyUnmanagedDuplicateAddress_ReturnsFalse()
         {
             var duplicate = new ValidationResult(null, ValidationStatus.DuplicateAddress, "dup", hasWritableDuplicate: false);
             Assert.IsTrue(duplicate.IsOk, "前提条件: HasWritableDuplicate=false は IsOk=true のはず。");
 
             var issues = new List<ValidationResult> { duplicate };
 
-            Assert.IsFalse(AddressTellerApplyFlow.HasBlockingIssue(issues));
+            Assert.IsFalse(issues.Any(i => i.IsBlocking));
         }
 
         // --- AddressTellerApplyFlow.HasNoChanges に対する判定 ---
@@ -384,6 +403,16 @@ namespace AddressTeller.Editor.Tests
 
             Assert.IsTrue(AddressTellerApplyFlow.HasNoChanges(dryRun),
                 "AddressTeller に直しようが無い通知専用の issue だけなら「変化なし」として扱うべき。");
+        }
+
+        [Test]
+        public void HasNoChanges_EmptyDiffUnmatchedEntryKeptOnlyIssue_ReturnsTrue()
+        {
+            var notice = new ValidationResult(Ctx("guid-1"), ValidationStatus.UnmatchedEntryKept, "kept");
+            var dryRun = new DryRunResult(new SnapshotDiff(), new List<ValidationResult> { notice });
+
+            Assert.IsTrue(AddressTellerApplyFlow.HasNoChanges(dryRun),
+                "UnmatchedEntryKept は IsOk=true の通知専用ステータスであり、これだけなら「変化なし」として扱うべき。");
         }
 
         [Test]

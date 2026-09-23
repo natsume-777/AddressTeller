@@ -135,7 +135,8 @@ namespace AddressTeller.Editor.Tests
 
             Assert.IsTrue(result);
             Assert.AreEqual(AddressTellerSettings.DefaultPostprocessOrder, AddressTellerSettings.PostprocessOrder);
-            Assert.IsTrue(AddressTellerSettings.CleanupStaleEntries);
+            Assert.IsFalse(AddressTellerSettings.CleanupStaleEntries);
+            Assert.IsFalse(AddressTellerSettings.PostprocessEnabled);
 
             LogAssert.NoUnexpectedReceived();
         }
@@ -238,6 +239,39 @@ namespace AddressTeller.Editor.Tests
             Assert.DoesNotThrow(() => AddressTellerSettings.IsRuleEnabled("Some.Rule"));
         }
 
+        // --- _snapshotFolder の空文字・空白のみの正規化（読み込み時） ---
+
+        [Test]
+        public void EnsureLoaded_JsonWithEmptySnapshotFolder_NormalizesToDefault_WithWarning_AndDoesNotRewriteFile()
+        {
+            var json = $"{{\"_marker\": \"{AddressTellerSettingsAsset.MarkerValue}\", \"_snapshotFolder\": \"\"}}";
+            File.WriteAllText(_tempPath, json);
+            var beforeText = File.ReadAllText(_tempPath);
+
+            LogAssert.Expect(LogType.Warning, new Regex("SnapshotFolder"));
+            Assert.IsTrue(AddressTellerSettings.EnsureLoaded());
+
+            Assert.AreEqual(AddressTellerSettings.DefaultSnapshotFolder, AddressTellerSettings.SnapshotFolder);
+            Assert.AreEqual(beforeText, File.ReadAllText(_tempPath),
+                "読み込み時の正規化はメモリ上だけに適用され、ファイルへは書き戻さないはず。");
+
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void EnsureLoaded_JsonWithWhitespaceOnlySnapshotFolder_NormalizesToDefault()
+        {
+            var json = $"{{\"_marker\": \"{AddressTellerSettingsAsset.MarkerValue}\", \"_snapshotFolder\": \"   \"}}";
+            File.WriteAllText(_tempPath, json);
+
+            LogAssert.Expect(LogType.Warning, new Regex("SnapshotFolder"));
+            Assert.IsTrue(AddressTellerSettings.EnsureLoaded());
+
+            Assert.AreEqual(AddressTellerSettings.DefaultSnapshotFolder, AddressTellerSettings.SnapshotFolder);
+
+            LogAssert.NoUnexpectedReceived();
+        }
+
         // --- POCO のフィールド数のゴールデン ---
 
         [Test]
@@ -249,6 +283,176 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(9, fieldCount,
                 "設定フィールド数(8個 + マーカー1個)を増減したら、Documentation~/operations.md の設定一覧も同時に更新すること。");
+        }
+
+        // --- ログ段: SettingsGateLogPolicy.OncePerDistinctFailure ---
+        // Postprocessor（1 import ごとに毎回呼ばれる）向けの抑制ポリシー。読み込み段（EnsureLoaded の
+        // 戻り値）自体は Always と同じであることは既存テストで担保済みのため、ここではログ抑制のみを検証する。
+
+        [Test]
+        public void EnsureLoaded_OncePerDistinctFailure_SameFailure_LogsOnlyOnce()
+        {
+            AddressTellerSettings.ResetOncePerDistinctFailureLogForTests();
+            try
+            {
+                File.WriteAllText(_tempPath, "{}"); // マーカーなし
+
+                LogAssert.Expect(LogType.Error, new Regex("does not look like an AddressTeller settings file"));
+                Assert.IsFalse(AddressTellerSettings.EnsureLoaded(SettingsGateLogPolicy.OncePerDistinctFailure));
+
+                // ファイル（更新日時・サイズ・エラー文）は変わっていないため、2回目は抑制されるべき。
+                Assert.IsFalse(AddressTellerSettings.EnsureLoaded(SettingsGateLogPolicy.OncePerDistinctFailure));
+
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                AddressTellerSettings.ResetOncePerDistinctFailureLogForTests();
+            }
+        }
+
+        [Test]
+        public void EnsureLoaded_OncePerDistinctFailure_FileChangesButStillFails_LogsAgain()
+        {
+            AddressTellerSettings.ResetOncePerDistinctFailureLogForTests();
+            try
+            {
+                File.WriteAllText(_tempPath, "{}"); // マーカーなし
+
+                LogAssert.Expect(LogType.Error, new Regex("does not look like an AddressTeller settings file"));
+                Assert.IsFalse(AddressTellerSettings.EnsureLoaded(SettingsGateLogPolicy.OncePerDistinctFailure));
+
+                // 依然マーカーなしで失敗するが、サイズが変わる＝別の失敗として扱われ再度ログされるべき。
+                File.WriteAllText(_tempPath, "{ }");
+
+                LogAssert.Expect(LogType.Error, new Regex("does not look like an AddressTeller settings file"));
+                Assert.IsFalse(AddressTellerSettings.EnsureLoaded(SettingsGateLogPolicy.OncePerDistinctFailure));
+
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                AddressTellerSettings.ResetOncePerDistinctFailureLogForTests();
+            }
+        }
+
+        [Test]
+        public void EnsureLoaded_OncePerDistinctFailure_AfterSuccessThenFailsAgain_LogsAgain()
+        {
+            AddressTellerSettings.ResetOncePerDistinctFailureLogForTests();
+            try
+            {
+                File.WriteAllText(_tempPath, "{}"); // マーカーなし
+
+                LogAssert.Expect(LogType.Error, new Regex("does not look like an AddressTeller settings file"));
+                Assert.IsFalse(AddressTellerSettings.EnsureLoaded(SettingsGateLogPolicy.OncePerDistinctFailure));
+
+                // ファイルを正しい内容へ直す（成功）。成功のたびに重複排除キーが捨てられるべき。
+                File.WriteAllText(_tempPath, $"{{\"_marker\": \"{AddressTellerSettingsAsset.MarkerValue}\"}}");
+                Assert.IsTrue(AddressTellerSettings.EnsureLoaded(SettingsGateLogPolicy.OncePerDistinctFailure));
+
+                // 再び同じ内容（"{}"）で壊す。直前に成功しているため、たとえ失敗の内容が最初と同じでも
+                // 再度ログされるべき（「直っていない間だけ抑制する」ためのポリシーであり、直った後に
+                // 再発した失敗まで永久に抑制してはならない）。
+                File.WriteAllText(_tempPath, "{}");
+                LogAssert.Expect(LogType.Error, new Regex("does not look like an AddressTeller settings file"));
+                Assert.IsFalse(AddressTellerSettings.EnsureLoaded(SettingsGateLogPolicy.OncePerDistinctFailure));
+
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                AddressTellerSettings.ResetOncePerDistinctFailureLogForTests();
+            }
+        }
+
+        // --- 新規ゲート箇所: Save Snapshot / ExecuteApply ---
+
+        [Test]
+        public void SnapshotMenu_SaveSnapshot_SettingsFileUnreadable_DoesNotWriteSnapshotFile()
+        {
+            var tempSnapshotFolder = Path.Combine(Path.GetTempPath(), $"AddressTellerSettingsPersistenceTests_Snapshot_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempSnapshotFolder);
+            // 安全網: 万一ゲートが効かなくても、実プロジェクトの SnapshotFolder には書き込ませない
+            // （AddressTellerSnapshotMenuTests と同じ考え方）。この呼び出し自体は正しい設定ファイルを書くため、
+            // 直後にファイルを壊しても "SnapshotFolder が読めない" 経路の検証には影響しない。
+            AddressTellerSettings.SnapshotFolder = tempSnapshotFolder;
+
+            try
+            {
+                File.WriteAllText(_tempPath, "{}"); // マーカーなし
+
+                LogAssert.Expect(LogType.Error, new Regex("does not look like an AddressTeller settings file"));
+                AddressTellerSnapshotMenu.SaveSnapshot();
+
+                // ゲートで中止していれば、AddressableAssetSettings の探索・スナップショット書き込みは一切走らない。
+                LogAssert.NoUnexpectedReceived();
+                Assert.AreEqual(0, Directory.GetFiles(tempSnapshotFolder, "*", SearchOption.AllDirectories).Length,
+                    "ゲートで中止していれば、SnapshotFolder には何も書き込まれないはず。");
+            }
+            finally
+            {
+                // AddressTellerSettings.SnapshotFolder をここで元へ戻す試みはしない——setter は
+                // ゲート失敗中に例外を投げるため、このファイルが "{}" のまま（マーカーなし）残っている間に
+                // この行を実行すると例外が飛び、Directory.Delete 以降の後始末が飛んでしまう。設定ファイル
+                // 自体は TearDown が _tempPath ごと削除するため、ここで明示的に戻す必要はない。
+                Directory.Delete(tempSnapshotFolder, true);
+            }
+        }
+
+        [Test]
+        public void ApplyFlow_ExecuteApply_SettingsFileUnreadable_DoesNotEvaluateOrWrite()
+        {
+            var originalNotifyApplyAborted = AddressTellerApplyFlow.s_notifyApplyAborted;
+            var tempSnapshotFolder = Path.Combine(Path.GetTempPath(), $"AddressTellerSettingsPersistenceTests_ExecuteApplySnapshot_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempSnapshotFolder);
+            // 安全網: このテストはゲートで中止される経路を検証するものだが、万一ゲートが将来効かなくなっても
+            // 実プロジェクトの SnapshotFolder には書き込ませない（AddressTellerSnapshotMenuTests と同じ考え方）。
+            AddressTellerSettings.SnapshotFolder = tempSnapshotFolder;
+
+            var settings = AddressTellerTestSettingsFactory.CreateInMemory(
+                "Assets/_AddressTellerSettingsPersistenceTestsExecuteApplyConfig",
+                "AddressTellerSettingsPersistenceExecuteApplyTestSettings");
+            try
+            {
+                File.WriteAllText(_tempPath, "{}"); // マーカーなし
+
+                string notifiedTitle = null;
+                string notifiedMessage = null;
+                AddressTellerApplyFlow.s_notifyApplyAborted = (title, message) =>
+                {
+                    notifiedTitle = title;
+                    notifiedMessage = message;
+                };
+
+                LogAssert.Expect(LogType.Error, new Regex("does not look like an AddressTeller settings file"));
+
+                // Run() のゲートを経由しない経路（結果ウィンドウの「Apply with this content」ボタンから
+                // 遅延実行されるコールバックに相当）を直接検証する。rules は空リストを明示的に渡し、
+                // 万一ゲートが効かなくてもリフレクションによるルール収集（プロジェクト内の実ルール）が
+                // 走らないようにする。
+                AddressTellerApplyFlow.ExecuteApply(settings, Array.Empty<string>(), Array.Empty<AddressRuleBase>());
+
+                // ゲートで中止していれば、ApplyAll 完了ログ等は一切出ない。
+                LogAssert.NoUnexpectedReceived();
+
+                Assert.AreEqual("AddressTeller - Apply All", notifiedTitle,
+                    "s_notifyApplyAborted 経由でも中止をユーザーに通知するべき（Console の Error だけでは、" +
+                    "結果ウィンドウの Apply ボタン経由の場合にウィンドウが閉じたことと区別できない）。");
+                Assert.IsNotNull(notifiedMessage);
+                StringAssert.Contains("settings file could not be loaded", notifiedMessage);
+            }
+            finally
+            {
+                AddressTellerApplyFlow.s_notifyApplyAborted = originalNotifyApplyAborted;
+                // AddressTellerSettings.SnapshotFolder をここで元へ戻す試みはしない（上のテストの finally
+                // コメント参照——setter はゲート失敗中に例外を投げるため、ここで呼ぶと後始末を飛ばす）。
+                Directory.Delete(tempSnapshotFolder, true);
+
+                foreach (var group in settings.groups.Where(g => g != null).ToList())
+                    UnityEngine.Object.DestroyImmediate(group, true);
+                UnityEngine.Object.DestroyImmediate(settings, true);
+            }
         }
     }
 }

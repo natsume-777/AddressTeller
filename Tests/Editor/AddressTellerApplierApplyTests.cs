@@ -132,7 +132,7 @@ namespace AddressTeller.Editor.Tests
             AddressTellerSettings.CleanupStaleEntries = true;
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
-            var resolution = EmptyResolution(new RuleEvaluationError("MyRule", "boom"));
+            var resolution = EmptyResolution(new RuleEvaluationError("MyRule", "boom", order: 0, canProduceAddress: true));
 
             var result = AddressTellerApplier.Apply(Ctx("guid-managed"), resolution, _settings, ExistingGroupNames(), managedGroups);
 
@@ -175,6 +175,12 @@ namespace AddressTeller.Editor.Tests
             var entry = _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             entry.SetAddress("ExistingAddress");
             entry.SetLabel("existingLabel", true);
+            // guid が実アセットへ解決できないため、CreateOrMoveEntry は内部で readOnly=true のエントリを
+            // 作ってしまう（AddressTellerApplierApplyTests.CreateRealPrefabAndGetGuid 付近のコメント参照）。
+            // このテストは ReadOnly ガードとは無関係な既存挙動を検証したいので、ここで明示的に外し、
+            // 前提が崩れていないことを固定する。
+            entry.ReadOnly = false;
+            Assert.IsFalse(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly ではない。");
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
             var result = AddressTellerApplier.Apply(Ctx("guid-managed"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
@@ -187,6 +193,31 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void LabelsOnly_WithRuleErrorAndNoCandidate_LabelsStillWritten_NotBlockedByRuleError()
+        {
+            // 別の(優先度の高い)アドレス産出ルールが例外を出し候補を1件も残さなかった結果、勝者が確定せず
+            // LabelsOnly になるケース。BlockedByRuleError は「勝者が確定した上でブロックする」ステータスなので、
+            // 勝者自体が存在しないこの場合は対象外——ラベルのみルールのラベルは通常どおり書き込まれる。
+            AddressTellerSettings.CleanupStaleEntries = true;
+            var entry = _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            entry.SetAddress("ExistingAddress");
+            entry.ReadOnly = false;
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+            var resolution = new AddressResolution(
+                System.Array.Empty<AddressCandidate>(),
+                new HashSet<string> { "newLabel" },
+                new[] { new RuleEvaluationError("FailingAddressRule", "boom", order: 0, canProduceAddress: true) });
+
+            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), resolution, _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
+            var updated = _settings.FindAssetEntry("guid-managed");
+            Assert.IsNotNull(updated);
+            Assert.AreEqual("ExistingAddress", updated.address);
+            CollectionAssert.Contains(updated.labels, "newLabel");
+        }
+
+        [Test]
         public void LabelsOnly_ExistingEntryInUnownedGroup_LabelsAdded()
         {
             // ラベル加算は削除と異なり所有権を問わない。AddressTeller が Address() を宣言していない
@@ -194,6 +225,10 @@ namespace AddressTeller.Editor.Tests
             var entry = _settings.CreateOrMoveEntry("guid-other", _otherGroup);
             entry.SetAddress("ExistingAddress");
             entry.SetLabel("existingLabel", true);
+            // guid が実アセットへ解決できないため readOnly=true で作られてしまう。ReadOnly ガードとは
+            // 無関係な既存挙動を検証したいので明示的に外し、前提を固定する（上のテストと同じ理由）。
+            entry.ReadOnly = false;
+            Assert.IsFalse(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly ではない。");
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
             var result = AddressTellerApplier.Apply(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
@@ -213,6 +248,9 @@ namespace AddressTeller.Editor.Tests
             var entry = _settings.CreateOrMoveEntry("guid-other", _otherGroup);
             entry.SetAddress("ExistingAddress");
             entry.SetLabel("existingLabel", true);
+            // guid が実アセットへ解決できないため readOnly=true で作られてしまう。上と同じ理由で外す。
+            entry.ReadOnly = false;
+            Assert.IsFalse(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly ではない。");
 
             var result = AddressTellerApplier.Apply(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), new HashSet<string>());
 
@@ -220,6 +258,54 @@ namespace AddressTeller.Editor.Tests
             var updated = _settings.FindAssetEntry("guid-other");
             Assert.IsNotNull(updated);
             CollectionAssert.AreEquivalent(new[] { "existingLabel", "newLabel" }, updated.labels);
+        }
+
+        [Test]
+        public void LabelsOnly_ExistingEntryIsReadOnly_LabelsNotAdded()
+        {
+            var entry = _settings.CreateOrMoveEntry("guid-other", _otherGroup);
+            entry.SetAddress("ExistingAddress");
+            entry.SetLabel("existingLabel", true);
+            entry.ReadOnly = true;
+            Assert.IsTrue(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly。");
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            var result = AddressTellerApplier.Apply(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+
+            Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
+            var updated = _settings.FindAssetEntry("guid-other");
+            Assert.IsNotNull(updated);
+            CollectionAssert.AreEquivalent(new[] { "existingLabel" }, updated.labels);
+        }
+
+        [Test]
+        public void LabelsOnly_ExistingEntryInReadOnlyGroup_LabelsNotAdded()
+        {
+            var readOnlyGroup = _settings.CreateGroup("ReadOnlyGroup", false, true, false, null);
+            try
+            {
+                var entry = _settings.CreateOrMoveEntry("guid-readonly-group", readOnlyGroup);
+                entry.SetAddress("ExistingAddress");
+                entry.SetLabel("existingLabel", true);
+                // guid が実アセットへ解決できないため、エントリ自体も readOnly=true で作られてしまう。
+                // このテストは「エントリは非 ReadOnly、グループだけ ReadOnly」というケースを検証したいので、
+                // エントリ側だけ明示的に外し、両方の前提を固定する。
+                entry.ReadOnly = false;
+                Assert.IsFalse(entry.ReadOnly, "このテストの前提: 既存エントリ自体は ReadOnly ではない。");
+                Assert.IsTrue(readOnlyGroup.ReadOnly, "このテストの前提: グループは ReadOnly。");
+                var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+                var result = AddressTellerApplier.Apply(Ctx("guid-readonly-group"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+
+                Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
+                var updated = _settings.FindAssetEntry("guid-readonly-group");
+                Assert.IsNotNull(updated);
+                CollectionAssert.AreEquivalent(new[] { "existingLabel" }, updated.labels);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(readOnlyGroup, true);
+            }
         }
 
         [Test]
@@ -438,6 +524,65 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(ValidationStatus.EntryRejectedByAddressables, result.Status);
             Assert.IsNull(_settings.FindAssetEntry("guid-unresolvable"),
                 "The read-only placeholder entry Addressables created should have been removed, not left behind.");
+        }
+
+        // --- BlockedByRuleError: 優先度の高いアドレス産出ルールの例外は、書き込みを一切行わない ---
+
+        [Test]
+        public void Apply_BlockedByRuleError_NewAsset_WritesNoEntry()
+        {
+            var resolution = new AddressResolution(
+                new[] { new AddressCandidate(_otherGroup.Name, "specificAddr", order: 5) },
+                new HashSet<string> { "someLabel" },
+                new[] { new RuleEvaluationError("HighPriorityRule", "boom", order: 0, canProduceAddress: true) });
+
+            var result = AddressTellerApplier.Apply(Ctx("guid-blocked"), resolution, _settings, ExistingGroupNames());
+
+            Assert.AreEqual(ValidationStatus.BlockedByRuleError, result.Status);
+            Assert.IsNull(_settings.FindAssetEntry("guid-blocked"));
+        }
+
+        [Test]
+        public void Apply_BlockedByRuleError_ExistingEntry_LeavesAddressGroupAndLabelsUnchanged()
+        {
+            // 既存エントリ（別ランで正常に書かれたもの）が、今回のブロックで一切変更されないことを確認する。
+            _settings.CreateOrMoveEntry("guid-blocked-existing", _managedGroup);
+            var existingEntry = _settings.FindAssetEntry("guid-blocked-existing");
+            existingEntry.SetAddress("oldAddress");
+            existingEntry.SetLabel("oldLabel", true);
+
+            var resolution = new AddressResolution(
+                new[] { new AddressCandidate(_otherGroup.Name, "newAddr", order: 5) },
+                new HashSet<string> { "newLabel" },
+                new[] { new RuleEvaluationError("HighPriorityRule", "boom", order: 0, canProduceAddress: true) });
+
+            var result = AddressTellerApplier.Apply(Ctx("guid-blocked-existing"), resolution, _settings, ExistingGroupNames());
+
+            Assert.AreEqual(ValidationStatus.BlockedByRuleError, result.Status);
+            var entryAfter = _settings.FindAssetEntry("guid-blocked-existing");
+            Assert.AreEqual("oldAddress", entryAfter.address);
+            Assert.AreEqual(_managedGroup.Name, entryAfter.parentGroup.Name);
+            CollectionAssert.AreEquivalent(new[] { "oldLabel" }, entryAfter.labels);
+        }
+
+        [Test]
+        public void ValidatePredictApply_AgreeOnBlockedByRuleError()
+        {
+            var resolution = new AddressResolution(
+                new[] { new AddressCandidate(_otherGroup.Name, "specificAddr", order: 5) },
+                new HashSet<string>(),
+                new[] { new RuleEvaluationError("HighPriorityRule", "boom", order: 0, canProduceAddress: true) });
+            var existingGroupNames = ExistingGroupNames();
+
+            var validateResult = AddressTellerApplier.Validate(Ctx("guid-blocked-sym"), resolution, existingGroupNames);
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-blocked-sym"), resolution, _settings, existingGroupNames, new HashSet<string>());
+            var applyResult = AddressTellerApplier.Apply(Ctx("guid-blocked-sym"), resolution, _settings, existingGroupNames);
+
+            Assert.AreEqual(ValidationStatus.BlockedByRuleError, validateResult.Status);
+            Assert.AreEqual(ValidationStatus.BlockedByRuleError, prediction.Validation.Status);
+            Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
+            Assert.AreEqual(ValidationStatus.BlockedByRuleError, applyResult.Status);
+            Assert.IsNull(_settings.FindAssetEntry("guid-blocked-sym"));
         }
     }
 }

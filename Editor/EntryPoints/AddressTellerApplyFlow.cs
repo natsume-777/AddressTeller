@@ -28,28 +28,6 @@ namespace AddressTeller.Editor
             EditorUtility.DisplayDialog(title, message, "OK");
 
         /// <summary>
-        /// 1件の <see cref="ValidationResult"/> が Apply を中止すべき「書き込みを見送るべき」問題かどうかを判定する。
-        /// <see cref="ValidationStatus.DuplicateAddress"/> は書き込みを止めない報告専用ステータスであり
-        /// （HasWritableDuplicate=true でも実際にはそのアセットへの書き込みは行われる）、IsOk=false が他の
-        /// ステータスで通常意味する「書き込みが見送られた」とは異なる。そのため IsOk=false であってもこの
-        /// 判定からは除外し、「重複が1件あるだけでプロジェクト全体の Apply が止まる」ことを防ぐ
-        /// （design-decisions.md 参照）。
-        /// <see cref="HasBlockingIssue"/>（一覧向け）と <see cref="AddressTellerReportBuilder.DetermineApplyExitCode"/>
-        /// の exit code 判定、JUnit 出力の failure 判定（<see cref="AddressTellerMenu"/> 経由）が同じ基準を
-        /// 参照できるよう、ここに1つだけ持つ。
-        /// </summary>
-        internal static bool IsBlocking(ValidationResult issue) =>
-            !issue.IsOk && issue.Status != ValidationStatus.DuplicateAddress;
-
-        /// <summary>
-        /// Apply 自体を中止すべき「書き込みを見送るべき」問題が <paramref name="issues"/> に1件でもあるかを判定する。
-        /// 判定基準は <see cref="IsBlocking"/> を参照。
-        /// <see cref="AddressTellerMenu.ApplyWithValidateCLI"/> と共有する。
-        /// </summary>
-        internal static bool HasBlockingIssue(IReadOnlyList<ValidationResult> issues) =>
-            issues.Any(IsBlocking);
-
-        /// <summary>
         /// dry-run の結果が「変化なし」（＝ダイアログを出さずに早期リターンしてよい）かどうかを判定する。
         /// 差分が空で、かつ書き込みを見送るべき問題（IsOk=false）が1件も無ければ true。DuplicateAddress の
         /// うち管理外同士のもの（HasWritableDuplicate=false、IsOk=true）のような通知専用の issue だけが
@@ -72,12 +50,13 @@ namespace AddressTeller.Editor
                 var validateIssues = AddressTellerService.ValidateAll(settings);
 
                 // validateIssues には GroupWillBeCreated（IsOk=true、AutoCreateMissingGroups による作成予定の提示）や
-                // DuplicateAddress（報告専用、HasBlockingIssue の対象外）が含まれる場合がある。
-                if (HasBlockingIssue(validateIssues))
+                // DuplicateAddress（報告専用。ValidationResult.IsBlocking=false のため中止判定の対象外）が
+                // 含まれる場合がある。
+                if (validateIssues.Any(i => i.IsBlocking))
                 {
                     AddressTellerIssueLogger.LogAll(validateIssues);
 
-                    Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => !i.IsOk && i.Status != ValidationStatus.DuplicateAddress)} issue(s).");
+                    Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => i.IsBlocking)} issue(s).");
                     AddressTellerResultWindow.Show(validateIssues, title);
                     return;
                 }
@@ -160,9 +139,42 @@ namespace AddressTeller.Editor
         /// <summary>
         /// ExecuteApply の実処理。title は中止ダイアログ（<see cref="s_notifyApplyAborted"/>）に渡すタイトル、
         /// rules が null の場合はリフレクションによるルール収集（本来の Run() 経由の挙動）を使う。
+        /// 先頭で設定ファイルの読み込みをゲートする——Run() 側のゲートを通らず結果ウィンドウの
+        /// 「Apply with this content」ボタンから直接ここへ来る経路（<see cref="Run"/> のダイアログ
+        /// 「詳細を見る」から遅延実行されるコールバック。ボタン自体はクリック直後にウィンドウを閉じてから
+        /// コールバックを呼ぶため、Console の Error だけでは「ウィンドウが閉じた＝適用された」と
+        /// 見分けが付かない）もあるため、Run() のゲートだけでは覆いきれない。
         /// </summary>
         internal static void ExecuteApply(AddressableAssetSettings settings, IReadOnlyList<string> paths, string title, IReadOnlyList<AddressRuleBase> rules)
         {
+            var settingsGate = AddressTellerSettings.EnsureLoaded();
+            if (!settingsGate.Success)
+            {
+                // EnsureLoaded 自体が Console に Error を出しているが、上のコメントの通り Console だけでは
+                // 中止したことに気付けない経路があるため、自動スナップショット失敗時と同様に
+                // s_notifyApplyAborted でも明示する。
+                s_notifyApplyAborted(
+                    title,
+                    "Apply was aborted because AddressTeller's settings file could not be loaded.\n\n" +
+                    "See the previous error in the Console for details.\n\n" +
+                    "Fix or delete the settings file, then try again.");
+                return;
+            }
+
+            // 同一 guid が2つ以上のグループにまたがって存在する状態のまま自動スナップショットを保存すると、
+            // 重複 guid 入りの読み込み不能なファイル（AddressTellerSnapshotService.LoadFromFile が拒否する）を
+            // 作ってしまう。ApplyAll 自体もこの状態を検出して何も書かないが、それより前の自動スナップショット
+            // 保存を止めるため、ここでも検出する。
+            if (DuplicateAssetEntryDetector.LogAndReturnTrueIfDuplicates(settings, "Apply"))
+            {
+                s_notifyApplyAborted(
+                    title,
+                    "Apply was aborted because the same asset has an entry in two or more Addressables groups at once.\n\n" +
+                    "See the previous error(s) in the Console for details.\n\n" +
+                    "Fix the duplicate entries, then try again.");
+                return;
+            }
+
             if (AddressTellerSettings.AutoSnapshotBeforeApplyAll)
             {
                 var snapshotPath = AddressTellerAutoSnapshotService.CaptureAndSave(settings);

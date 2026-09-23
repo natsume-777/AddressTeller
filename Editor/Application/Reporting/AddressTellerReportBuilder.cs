@@ -78,6 +78,8 @@ namespace AddressTeller.Editor
                     Path = issue.Context?.Path ?? string.Empty,
                     Status = issue.Status.ToString(),
                     Message = issue.Message,
+                    Blocking = issue.IsBlocking,
+                    Ok = issue.IsOk,
                 });
             }
 
@@ -155,7 +157,7 @@ namespace AddressTeller.Editor
         /// （<see cref="DetermineExitCode(DryRunResult)"/>）で問題として数えられるかどうか。CheckCLI は
         /// 読み取り専用で <see cref="ValidationStatus.DuplicateAddress"/> のような書き込み専用の例外を
         /// 設けないため、単純に <see cref="ValidationResult.IsOk"/> の否定で判定する
-        /// （Apply 系の基準は <see cref="AddressTellerApplyFlow.IsBlocking"/> を参照——DuplicateAddress の
+        /// （Apply 系の基準は <see cref="ValidationResult.IsBlocking"/> を参照——DuplicateAddress の
         /// 扱いが異なる）。
         /// </summary>
         internal static bool IsCheckCliFailing(ValidationResult issue) => !issue.IsOk;
@@ -170,13 +172,13 @@ namespace AddressTeller.Editor
             issues.Where(IsCheckCliFailing).Select(i => i.Status.ToString()).Distinct().ToList();
 
         /// <summary>
-        /// <paramref name="issues"/> から、<see cref="AddressTellerApplyFlow.IsBlocking"/> を満たす
+        /// <paramref name="issues"/> から、<see cref="ValidationResult.IsBlocking"/> を満たす
         /// （＝Apply 系の exit code 判定に反映される）Status 名の集合を作る。
         /// <see cref="AddressTellerMenu.ApplyAllCLI"/> / <see cref="AddressTellerMenu.ApplyWithValidateCLI"/>
         /// が JUnit 出力の failure 対象を絞り込むために使う。
         /// </summary>
         internal static IReadOnlyList<string> BuildApplyFailingStatusNames(IReadOnlyList<ValidationResult> issues) =>
-            issues.Where(AddressTellerApplyFlow.IsBlocking).Select(i => i.Status.ToString()).Distinct().ToList();
+            issues.Where(i => i.IsBlocking).Select(i => i.Status.ToString()).Distinct().ToList();
 
         /// <summary>
         /// <see cref="AddressTellerMenu.CheckCLI"/> 向けの exit code 判定。
@@ -198,13 +200,11 @@ namespace AddressTeller.Editor
         /// <summary>
         /// <see cref="AddressTellerMenu.ApplyAllCLI"/> / <see cref="AddressTellerMenu.ApplyWithValidateCLI"/>
         /// 向けの exit code 判定。実行後に得られた issues（<paramref name="executionIssues"/>）に
-        /// 「書き込みを見送るべき問題」（<see cref="AddressTellerApplyFlow.HasBlockingIssue"/>）が
+        /// 「書き込みを見送るべき問題」（<see cref="ValidationResult.IsBlocking"/>）が
         /// 含まれれば 2、なければ 0 を返す。単純に <c>!issue.IsOk</c> では判定しない——
         /// <see cref="ValidationStatus.DuplicateAddress"/> は <see cref="ValidationResult.HasWritableDuplicate"/>
         /// が true でも IsOk=false（Error 扱い）になりうるが、書き込みを止めない報告専用ステータスであるため
-        /// exit code には反映しない。この「DuplicateAddress は例外」という判定基準を
-        /// <see cref="AddressTellerApplyFlow.HasBlockingIssue"/> と別々に持つと、どちらか一方だけが
-        /// 将来の変更に追従せず食い違う恐れがあるため、判定そのものをそちらに委譲し1箇所に集約する。
+        /// exit code には反映しない（<see cref="ValidationResult.IsBlocking"/> のXMLドキュメント参照）。
         /// <see cref="DetermineExitCode(DryRunResult)"/>（CheckCLI 用）と異なり、dry-run の差分の有無は
         /// 見ない——Apply は実際に変更を書き込んで完了しているため、差分があったこと自体を失敗として
         /// 扱う（exit code 1 を返す）と、`set -e` の下で正常な適用が毎回失敗になってしまう。
@@ -212,7 +212,7 @@ namespace AddressTeller.Editor
         /// </summary>
         public static int DetermineApplyExitCode(IReadOnlyList<ValidationResult> executionIssues)
         {
-            return AddressTellerApplyFlow.HasBlockingIssue(executionIssues) ? 2 : 0;
+            return executionIssues.Any(i => i.IsBlocking) ? 2 : 0;
         }
 
         private static AddressTellerReportEntry ToReportEntry(SnapshotEntry entry) => new()

@@ -65,7 +65,7 @@ This layer only calls the public surface of Application and carries no domain lo
 
 ### Tests/Editor
 
-NUnit EditMode tests (`AddressTeller.Editor.Tests`). References both `AddressTeller.Core` and `AddressTeller.Editor` directly and uses `InternalsVisibleTo` (declared on each of those assemblies) to test their `internal` types. The `Tests` folder is treated as a UPM test assembly and is not included in the distribution.
+NUnit EditMode tests (`AddressTeller.Editor.Tests`). References both `AddressTeller.Core` and `AddressTeller.Editor` directly and uses `InternalsVisibleTo` (declared on each of those assemblies) to test their `internal` types. Unlike `Documentation~`/`Samples~`, the `Tests` folder has no `~` suffix, so it is downloaded too when installed from a git URL. The test assembly itself is Editor-only and carries `UNITY_INCLUDE_TESTS` in its asmdef `defineConstraints`; it is not meant to compile in a consuming project's build except when running tests.
 
 ### Samples~
 

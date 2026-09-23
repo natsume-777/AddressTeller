@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
+using UnityEditor.AddressableAssets.Settings;
 using UnityEngine;
 
 namespace AddressTeller.Editor
@@ -14,12 +15,32 @@ namespace AddressTeller.Editor
         [MenuItem("Tools/AddressTeller/Snapshot/Save Snapshot")]
         public static void SaveSnapshot()
         {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
                 Debug.LogError("[AddressTeller] AddressableAssetSettings not found. Please initialize Addressables.");
                 return;
             }
+
+            SaveSnapshot(settings);
+        }
+
+        /// <summary>
+        /// <see cref="SaveSnapshot()"/> のコア処理。settings を注入可能にしたオーバーロード（internal）。
+        /// テストから、本番の <see cref="AddressableAssetSettingsDefaultObject.Settings"/> に一切触れずに
+        /// 重複 guid 検出による中止経路を検証できるようにする（<see cref="AddressTellerMenu.ClearAll(AddressableAssetSettings, System.Collections.Generic.IReadOnlyList{AddressRuleBase})"/>
+        /// と同じ意図）。
+        /// </summary>
+        internal static void SaveSnapshot(AddressableAssetSettings settings)
+        {
+            // 同一 guid が2つ以上のグループにまたがって存在する状態のまま保存すると、Entries に同じ guid が
+            // 複数件入ったファイルができる。AddressTellerSnapshotService.LoadFromFile は重複 guid を
+            // 明示的に拒否するため、そのファイルは以後 Restore にも Undo Last Apply にも使えない
+            // （「読めないファイルを作らない」ため、保存自体をここで止める）。
+            if (DuplicateAssetEntryDetector.LogAndReturnTrueIfDuplicates(settings, "Save Snapshot"))
+                return;
 
             var snapshot = AddressTellerSnapshotService.Capture(settings);
 
@@ -96,6 +117,24 @@ namespace AddressTeller.Editor
                 Debug.LogError("[AddressTeller] AddressableAssetSettings not found. Please initialize Addressables.");
                 return;
             }
+
+            UndoLastApply(settings);
+        }
+
+        /// <summary>
+        /// <see cref="UndoLastApply()"/> のコア処理。settings を注入可能にしたオーバーロード（internal）。
+        /// テストから、本番の <see cref="AddressableAssetSettingsDefaultObject.Settings"/> に一切触れずに
+        /// 重複 guid 検出による中止経路を検証できるようにする（<see cref="SaveSnapshot(AddressableAssetSettings)"/>
+        /// と同じ意図）。
+        /// </summary>
+        internal static void UndoLastApply(AddressableAssetSettings settings)
+        {
+            // 同一 guid が2つ以上のグループにまたがって存在する状態のまま Diff/RestoreExactWithRemoval まで
+            // 進めると、settings.FindAssetEntry の先勝ちで片方だけに作用してしまう（Diff 自体は重複耐性化済みだが、
+            // それは「例外を出さない」だけで、この状態のまま復元してよいという意味ではない）。ダイアログより前に
+            // 検出して中止する。
+            if (DuplicateAssetEntryDetector.LogAndReturnTrueIfDuplicates(settings, "Undo Last Apply"))
+                return;
 
             var path = AddressTellerAutoSnapshotService.FindLatestAuto();
             if (string.IsNullOrEmpty(path))

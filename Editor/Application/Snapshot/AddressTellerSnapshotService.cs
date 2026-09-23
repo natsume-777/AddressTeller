@@ -320,7 +320,20 @@ namespace AddressTeller.Editor
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="settings"/> or <paramref name="paths"/> is null.</exception>
         public static DryRunResult BuildPredictedSnapshot(AddressableAssetSettings settings, IEnumerable<string> paths)
-            => BuildPredictedSnapshot(settings, paths, RuleCollector.CollectEnabledRules());
+            => BuildPredictedSnapshot(settings, paths, CollectEnabledRulesIfSettingsLoaded());
+
+        /// <summary>
+        /// ルール収集（<see cref="RuleCollector.CollectEnabledRules"/>）は <see cref="AddressTellerSettingsAsset.Current"/>
+        /// の無効化ルール一覧を読むため、設定ファイルが読み込めない状態で呼ぶと、直前まで残っていた古い
+        /// メモリ上の値で収集してしまう恐れがある。ゲートに成功した場合のみ収集し、失敗時は空リストを返す
+        /// ——どのみち3引数オーバーロードが同じゲートで失敗して <see cref="ValidationStatus.SettingsUnavailable"/>
+        /// を返すため、ここで集めたルールは使われない（<see cref="AddressTellerService"/> の同名ヘルパーと
+        /// 同じ考え方）。
+        /// </summary>
+        private static IReadOnlyList<AddressRuleBase> CollectEnabledRulesIfSettingsLoaded()
+            => AddressTellerSettingsAsset.EnsureLoaded().Success
+                ? RuleCollector.CollectEnabledRules()
+                : Array.Empty<AddressRuleBase>();
 
         /// <summary>
         /// Overload that explicitly specifies the rule list. Used for dry-run computation in tests or a
@@ -331,6 +344,17 @@ namespace AddressTeller.Editor
         {
             if (settings == null) throw new ArgumentNullException(nameof(settings));
             if (paths == null) throw new ArgumentNullException(nameof(paths));
+
+            // メニュー・CLI・スナップショット系入口は既に入口でログ付きゲート（AddressTellerSettings.EnsureLoaded）
+            // を通しているため、通常はここで失敗しない。このメソッドは公開 API であり、利用者が独自の
+            // エディタ拡張から直接呼ぶ経路もゲートせず既定値のまま動かしてはいけないため、ここでも
+            // ログを出さないゲート（AddressTellerSettingsAsset.EnsureLoaded）を通す。ログは呼び出し元の責務のまま。
+            var gate = AddressTellerSettingsAsset.EnsureLoaded();
+            if (!gate.Success)
+            {
+                var failureIssues = new List<ValidationResult> { new ValidationResult(null, ValidationStatus.SettingsUnavailable, gate.Error) };
+                return new DryRunResult(new SnapshotDiff(), failureIssues, after: new AddressTellerSnapshot());
+            }
 
             // 重複 Order の警告は RuleCollector.CollectRules() のキャッシュ構築時（ドメインリロードごとに1回）に
             // 出力済みのため、dry-run では出さない（二重ログ防止）。
@@ -366,6 +390,14 @@ namespace AddressTeller.Editor
         /// Compares two snapshots per-GUID and returns the added/removed/changed diff.
         /// Throws <see cref="ArgumentNullException"/> if <paramref name="before"/>/<paramref name="after"/>
         /// is null (since this is a public API entry point that consumers call explicitly).
+        /// If either snapshot has more than one entry for the same GUID (the same asset had an entry in two
+        /// or more Addressables groups at once when it was captured), this does not throw: it keeps only the
+        /// first entry for that GUID (in the snapshot's own <see cref="AddressTellerSnapshot.Entries"/> order)
+        /// and ignores the rest. AddressTeller's own entry points (<c>ValidateAll</c>/<c>ApplyAll</c>/
+        /// <c>BuildPredictedSnapshot</c>) instead detect this state up front as
+        /// <see cref="ValidationStatus.DuplicateAssetEntry"/> and refuse to evaluate or write anything that
+        /// run, so in practice this fallback only matters for a caller that hands this method two arbitrary
+        /// snapshots directly (for example, comparing two snapshot files saved from different points in time).
         /// </summary>
         public static SnapshotDiff Diff(AddressTellerSnapshot before, AddressTellerSnapshot after)
         {
@@ -373,13 +405,11 @@ namespace AddressTeller.Editor
             if (after == null) throw new ArgumentNullException(nameof(after));
 
             var diff = new SnapshotDiff();
-            var beforeMap = before.Entries.ToDictionary(e => e.Guid);
-            var afterGuids = new HashSet<string>();
+            var beforeMap = FirstEntryByGuid(before.Entries);
+            var afterMap = FirstEntryByGuid(after.Entries);
 
-            foreach (var entry in after.Entries)
+            foreach (var entry in afterMap.Values)
             {
-                afterGuids.Add(entry.Guid);
-
                 if (!beforeMap.TryGetValue(entry.Guid, out var prev))
                 {
                     diff.AddAdded(entry);
@@ -392,11 +422,26 @@ namespace AddressTeller.Editor
                     diff.AddChanged(prev, entry);
             }
 
-            foreach (var entry in before.Entries)
-                if (!afterGuids.Contains(entry.Guid))
+            foreach (var entry in beforeMap.Values)
+                if (!afterMap.ContainsKey(entry.Guid))
                     diff.AddRemoved(entry);
 
             return diff;
+        }
+
+        /// <summary>
+        /// guid ごとに最初の1件だけを残した Dictionary を組み立てる。<see cref="Diff"/> の XML doc 参照——
+        /// 同一 guid のエントリが複数あっても例外を出さないための対処で、通常は起こらない状態
+        /// （AddressTeller 自身の入口は ValidationStatus.DuplicateAssetEntry として事前に検出し止める）に対する
+        /// 最終防衛ライン。
+        /// </summary>
+        private static Dictionary<string, SnapshotEntry> FirstEntryByGuid(List<SnapshotEntry> entries)
+        {
+            var map = new Dictionary<string, SnapshotEntry>(entries.Count, StringComparer.Ordinal);
+            foreach (var entry in entries)
+                if (!map.ContainsKey(entry.Guid))
+                    map[entry.Guid] = entry;
+            return map;
         }
     }
 

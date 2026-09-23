@@ -48,8 +48,21 @@ namespace AddressTeller.Editor.Tests
             }
         }
 
+        /// <summary>どのアセットにもマッチしないが、"StubGroup" を所有グループにするルール。
+        /// StubGroup に事前登録した孤児エントリを CleanupStaleEntries=false のまま UnmatchedEntryKept にするために使う。</summary>
+        private sealed class NoMatchOwnsStubGroupRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("StubGroup")
+                    .Where(ctx => false)
+                    .Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
         private AddressableAssetSettings _settings;
         private bool _originalAutoCreate;
+        private bool _originalCleanup;
         private Action<IReadOnlyList<ValidationResult>, string> _originalShowResultWindow;
 
         [SetUp]
@@ -58,6 +71,8 @@ namespace AddressTeller.Editor.Tests
             // GroupNotFound（IsOk=false）を発生させるテストのため、他テストの残留設定に左右されないよう明示的に OFF にする。
             _originalAutoCreate = AddressTellerSettings.AutoCreateMissingGroups;
             AddressTellerSettings.AutoCreateMissingGroups = false;
+            _originalCleanup = AddressTellerSettings.CleanupStaleEntries;
+            AddressTellerSettings.CleanupStaleEntries = false;
 
             _originalShowResultWindow = AddressTellerMenu.s_showResultWindow;
 
@@ -84,6 +99,7 @@ namespace AddressTeller.Editor.Tests
         public void TearDown()
         {
             AddressTellerSettings.AutoCreateMissingGroups = _originalAutoCreate;
+            AddressTellerSettings.CleanupStaleEntries = _originalCleanup;
             AddressTellerMenu.s_showResultWindow = _originalShowResultWindow;
 
             AssetDatabase.DeleteAsset(TestRootFolder);
@@ -148,6 +164,33 @@ namespace AddressTeller.Editor.Tests
 
             // GroupWillBeCreated のみ（errorCount == 0）の場合、フォーカスを奪う結果ウィンドウは開かない。
             Assert.IsFalse(wasShown, "IsOk=false の issue が無い場合、結果ウィンドウ表示は呼ばれてはいけない。");
+        }
+
+        [Test]
+        public void Validate_OnlyUnmatchedEntryKeptNotices_LogsAsInfoAndShowsResultWindow()
+        {
+            // UnmatchedEntryKept は errorCount には数えられない（IsOk=true）が、
+            // コンソールのサマリ1行だけでは中身が見えないため、これが1件以上あるだけでも
+            // 結果ウィンドウを開けなければ README クイックスタート手順3の「OFF の間に何が消えるか
+            // 確認できる」が成立しない。
+            var stubGroup = _settings.CreateGroup("StubGroup", false, false, false, null);
+            var staleGuid = AssetDatabase.AssetPathToGUID(StubAssetPath);
+            _settings.CreateOrMoveEntry(staleGuid, stubGroup).SetAddress("StaleAddress");
+
+            var rules = new AddressRuleBase[] { new NoMatchOwnsStubGroupRule() };
+
+            IReadOnlyList<ValidationResult> shownIssues = null;
+            AddressTellerMenu.s_showResultWindow = (issues, title) => shownIssues = issues;
+
+            LogAssert.Expect(LogType.Log, new Regex("UnmatchedEntryKept: 1 entry"));
+            LogAssert.Expect(LogType.Log, new Regex(Regex.Escape("[AddressTeller] Validate completed: 1 notice(s) (no issues), including 1 entry")));
+
+            AddressTellerMenu.Validate(_settings, rules);
+
+            Assert.IsNotNull(shownIssues,
+                "UnmatchedEntryKept 通知が1件以上ある場合、errorCount が0でも結果ウィンドウ表示が呼ばれるべき。");
+            Assert.AreEqual(1, shownIssues.Count);
+            Assert.AreEqual(ValidationStatus.UnmatchedEntryKept, shownIssues[0].Status);
         }
 
         [Test]

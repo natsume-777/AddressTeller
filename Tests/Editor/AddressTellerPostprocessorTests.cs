@@ -101,6 +101,66 @@ namespace AddressTeller.Editor.Tests
             Assert.IsFalse(AddressTellerPostprocessor.ShouldSkip(null, changed));
         }
 
+        // --- ShouldLogDuplicateAssetEntries ---
+
+        [TearDown]
+        public void TearDown()
+        {
+            // static な記憶をテスト間で持ち越さない。
+            AddressTellerPostprocessor.s_lastLoggedDuplicateSignature = null;
+        }
+
+        private static ValidationResult DuplicateEntry(string message) =>
+            new(null, ValidationStatus.DuplicateAssetEntry, message);
+
+        [Test]
+        public void ShouldLogDuplicateAssetEntries_Empty_ReturnsFalse()
+        {
+            AddressTellerPostprocessor.s_lastLoggedDuplicateSignature = "leftover-from-previous-import";
+
+            var shouldLog = AddressTellerPostprocessor.ShouldLogDuplicateAssetEntries(new List<ValidationResult>());
+
+            Assert.IsFalse(shouldLog);
+            Assert.IsNull(AddressTellerPostprocessor.s_lastLoggedDuplicateSignature,
+                "重複が解消されたら、次に同じ内容の重複が再発したときに改めてログできるよう記憶をリセットするべき。");
+        }
+
+        [Test]
+        public void ShouldLogDuplicateAssetEntries_FirstOccurrence_ReturnsTrue()
+        {
+            var duplicates = new List<ValidationResult> { DuplicateEntry("guid-a duplicate") };
+
+            var shouldLog = AddressTellerPostprocessor.ShouldLogDuplicateAssetEntries(duplicates);
+
+            Assert.IsTrue(shouldLog);
+        }
+
+        [Test]
+        public void ShouldLogDuplicateAssetEntries_SameContentAsLastLog_ReturnsFalse()
+        {
+            var duplicates = new List<ValidationResult> { DuplicateEntry("guid-a duplicate") };
+            AddressTellerPostprocessor.ShouldLogDuplicateAssetEntries(duplicates); // 1回目（ログする想定）
+
+            // 同じ内容（同じ Message 集合）でもう一度 import が走った状態を模す（削除を伴う import で
+            // ApplyAll/RemoveEntriesForDeletedAssets の両方が同じ状態を検出するケースにも相当する）。
+            var shouldLogAgain = AddressTellerPostprocessor.ShouldLogDuplicateAssetEntries(
+                new List<ValidationResult> { DuplicateEntry("guid-a duplicate") });
+
+            Assert.IsFalse(shouldLogAgain, "内容が変わらない間は再ログしないべき。");
+        }
+
+        [Test]
+        public void ShouldLogDuplicateAssetEntries_ContentChanged_ReturnsTrueAgain()
+        {
+            AddressTellerPostprocessor.ShouldLogDuplicateAssetEntries(
+                new List<ValidationResult> { DuplicateEntry("guid-a duplicate") });
+
+            var shouldLog = AddressTellerPostprocessor.ShouldLogDuplicateAssetEntries(
+                new List<ValidationResult> { DuplicateEntry("guid-b duplicate") });
+
+            Assert.IsTrue(shouldLog, "重複の内容（対象 guid 等）が変われば、改めてログするべき。");
+        }
+
         // --- ResolveDeletedGuids ---
 
         [Test]

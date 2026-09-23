@@ -28,12 +28,14 @@ namespace AddressTeller
     public interface IAddressRuleBuilder
     {
         /// <summary>
-        /// Adds a rule scoped to the Addressables group named <paramref name="groupName"/>. Avoid a name
-        /// containing <c>/</c> or <c>\</c> — Addressables itself replaces those characters with <c>-</c>
-        /// when a group is actually created or renamed, so a rule referencing the un-replaced name would
-        /// never match the group Addressables ends up with.
+        /// Adds a rule scoped to the Addressables group named <paramref name="groupName"/>.
         /// </summary>
-        /// <exception cref="ArgumentException"><paramref name="groupName"/> is null or empty.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="groupName"/> is null or empty, or contains <c>/</c> or <c>\</c>. Those two
+        /// characters are rejected because Addressables itself replaces them with <c>-</c> when a group
+        /// is actually created or renamed, so a rule referencing the un-replaced name would never match
+        /// the group Addressables ends up with.
+        /// </exception>
         IAddressRuleGroupBuilder Group(string groupName);
 
         /// <summary>

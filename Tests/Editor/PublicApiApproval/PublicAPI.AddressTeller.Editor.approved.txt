@@ -58,7 +58,9 @@ sealed class AddressTeller.Editor.AddressTellerReportEntry
 
 sealed class AddressTeller.Editor.AddressTellerReportIssue
   Constructor ()
+  Field System.Boolean Blocking
   Field System.String Message
+  Field System.Boolean Ok
   Field System.String Path
   Field System.String Status
 
@@ -227,14 +229,17 @@ sealed class AddressTeller.Editor.ValidationResult
   Property System.Collections.Generic.IReadOnlyList<AddressTeller.AddressCandidate> ConflictingCandidates { get; }
   Property AddressTeller.AssetContext Context { get; }
   Property System.Boolean HasWritableDuplicate { get; }
+  Property System.Boolean IsBlocking { get; }
   Property System.Boolean IsOk { get; }
   Property System.String Message { get; }
   Property AddressTeller.Editor.ValidationStatus Status { get; }
 
 enum AddressTeller.Editor.ValidationStatus
+  EnumMember BlockedByRuleError = 15
   EnumMember ConflictingAddress = 3
   EnumMember DefaultGroupUnavailable = 9
   EnumMember DuplicateAddress = 12
+  EnumMember DuplicateAssetEntry = 16
   EnumMember EntryRejectedByAddressables = 11
   EnumMember GroupCreationFailed = 8
   EnumMember GroupNotFound = 4
@@ -244,5 +249,7 @@ enum AddressTeller.Editor.ValidationStatus
   EnumMember Ok = 0
   EnumMember RuleConfigureFailed = 10
   EnumMember RuleError = 6
+  EnumMember SettingsUnavailable = 13
   EnumMember Skipped = 1
+  EnumMember UnmatchedEntryKept = 14
 

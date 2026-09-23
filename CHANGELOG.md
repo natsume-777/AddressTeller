@@ -8,6 +8,197 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-24
+
+### Added
+
+- `ValidationResult.IsBlocking`: a new public property exposing whether a single validation result should
+  abort a write. Defined as `!IsOk && Status != ValidationStatus.DuplicateAddress` — this is now the
+  single source of truth for that judgment; internal logic that needs it (Apply with Validate's abort
+  check, the Apply-side CLI exit code, JUnit failure classification) reads this property instead of
+  re-deriving the same condition in multiple places. Apply All (without a preceding Validate pass) never
+  reads it, since it has no dry-run issues to abort on. `CheckCLI`'s exit code is unaffected: it
+  intentionally keeps using `!IsOk` alone, since it has no write to abort.
+- JSON report: `Issues[]` entries now include `Blocking` (mirroring `ValidationResult.IsBlocking`) and
+  `Ok` (mirroring `ValidationResult.IsOk`) boolean fields for the issue each entry was built from —
+  together they let a consumer tell whether a given issue is counted toward exit code 2 by `CheckCLI`
+  (which uses `!Ok`) or by the Apply CLIs (which use `Blocking`, with the dry-run caveat noted on
+  `Blocking`'s own doc). Neither field reproduces the actual exit code by itself: `CheckCLI`'s exit 1 also
+  depends on `Drift[]`, and the real exit code for any run is `Summary.ExitCode`. `SchemaVersion` stays `1`
+  (additive keys).
+- `ValidationStatus.SettingsUnavailable`: a new status returned when the settings file cannot be loaded.
+  `AddressTellerService.ApplyAll`/`ValidateAll` and `AddressTellerSnapshotService.BuildPredictedSnapshot`
+  now gate on the settings file at their core overload and, on failure, return this status as the sole
+  entry in the result instead of silently running with default values. `AddressTellerService.RemoveEntriesForDeletedAssets`
+  does not return `ValidationResult`s, so on the same failure it logs an error and returns an empty list
+  instead. All of these gates are silent otherwise — logging remains the responsibility of the entry point
+  that calls them (menus, CLI, the Postprocessor), which were already gating before this change.
+- Project Settings: a "Back Up Broken File (.bak) and Recreate with Defaults" button now appears whenever
+  the settings file cannot be loaded. After a confirmation dialog (it resets every setting to its default,
+  including "Auto-apply on import" and "Remove unmatched entries"), it backs up the broken file — under a
+  timestamped name, so recovering more than once does not overwrite an earlier backup — and writes a
+  fresh, valid file at default values. If the file turns out to already be readable by the time the button
+  is clicked (fixed by something else in the meantime), it is left untouched and no backup is made. All
+  setting fields are disabled while the file is unreadable, since every setter now throws in that state
+  (see Fixed below) rather than accepting input it cannot save.
+- `ApplyAllCLI`/`ApplyWithValidateCLI`/`CheckCLI`/`ClearCLI` now log a one-line Info message when no
+  settings file exists yet (`No settings file; using defaults.`), so a CI run relying on defaults has a
+  visible confirmation of that instead of silence. Project Settings shows the same information inline.
+  The automatic Apply on import (Postprocessor) intentionally does not log this, to avoid a line on every
+  import in projects that run on defaults on purpose.
+- `ValidationStatus.UnmatchedEntryKept`: a new non-blocking notice status (`IsOk` is always true) reported
+  by `ValidateAll` and every caller of `BuildPredictedSnapshot` (`Validate`, `Apply with Validate`,
+  `CheckCLI`, the Preview windows) while `CleanupStaleEntries` is off. It flags an owned-group entry that
+  would have been removed if `CleanupStaleEntries` were on — either no longer matched by any rule, or with
+  a structurally invalid path — so the effect of turning the setting on is visible before you opt in. The
+  Console logs a single count line instead of one line per entry; the full list is always available in the
+  Result Window and in a JSON/JUnit report. The incremental apply from `AddressTellerPostprocessor` does
+  not report this status.
+- `ValidationStatus.BlockedByRuleError`: a new blocking status (`IsOk=false`, `IsBlocking=true`) reported
+  when a single winning address candidate was chosen for an asset (no tie) but an address-producing rule at
+  an `Order` equal to or lower than (i.e. as high or higher priority as) the winner's threw while being
+  evaluated for that asset. This is usually a different, higher-or-equal-priority rule than the winner, but
+  it can also be the winning rule itself (its `AddressSelector` succeeded but a later `LabelSelector` on the
+  same rule chain threw). Nothing is written for that asset — neither the winning address nor any labels
+  from any matching rule. `ApplyAll`, `ValidateAll`, and `BuildPredictedSnapshot` all report it identically,
+  since they share the same underlying evaluation. A `RuleError` entry for the throwing rule is always
+  reported alongside it in the same result list — the `RuleError` is the cause, `BlockedByRuleError` is the
+  effect on that asset's write. The Explain window shows the same information in UI form: the throwing rule
+  appears as its own `[Error]` row, and the asset's conclusion reads "Blocked by rule error". The Explain
+  window's `[Match]` row for the address candidate that would have won now says so explicitly instead of
+  showing `(adopted)` when the write was actually blocked; for a status this row can't attribute to a rule
+  exception either way (`GroupNotFound`, `InvalidAddress`, `DefaultGroupUnavailable`, etc.) it shows a neutral
+  "not written" note instead, rather than implying a rule exception was the cause. The Console logs a single
+  count line for `BlockedByRuleError` (as `LogError`, since it is a problem) instead of one line per asset,
+  the same pattern already used for `UnmatchedEntryKept` — one rule exception can block many assets at once.
+  The `ValidationResult.Message` for this status names only the blocking rule(s) and their `Order`, not the
+  exception text itself, since that text is already carried by the paired `RuleError` entry.
+
+- `ValidationStatus.DuplicateAssetEntry`: a new blocking status (`IsOk=false`, `IsBlocking=true`) reported
+  when the same asset (GUID) has an entry in two or more Addressables groups at once — a state Addressables
+  itself does not deduplicate across groups, so it can persist once it exists (for example after a VCS
+  merge combines two branches that each added the same asset to a different group). `ApplyAll`,
+  `ValidateAll`, and `BuildPredictedSnapshot` now detect this before evaluating or writing anything for any
+  asset that run, and return only `DuplicateAssetEntry` entries (one per duplicated asset, naming the
+  groups/addresses involved) instead of evaluating rules against a state that has no well-defined single
+  entry per asset. `RemoveEntriesForDeletedAssets` does the same but, since it cannot return
+  `ValidationResult`s, logs the same information as an error and removes nothing that run instead. The
+  Explain window is unaffected and keeps working per-asset as usual.
+
+### Changed
+
+- **BREAKING**: Every settings property setter (and `SetRuleEnabled`) now throws
+  `InvalidOperationException` if the settings file cannot currently be loaded, instead of silently
+  overwriting it with default or stale values. This is a side effect of routing every setter through a
+  single write path (`AddressTellerSettingsAsset.Mutate`) — see Fixed below for what that path actually
+  changes about saving.
+- **BREAKING**: `CleanupStaleEntries` ("Remove unmatched entries") and `PostprocessEnabled` ("Auto-apply on
+  import") now both default to `false`, instead of `true`. To keep the previous behavior, turn both on in
+  `Project Settings > AddressTeller`. See [Quick Start](README.md#quick-start) for the recommended order to
+  turn them on when adopting AddressTeller from scratch.
+- **BREAKING**: `IAddressRuleBuilder.Group(groupName)` now throws `ArgumentException` if `groupName`
+  contains `/` or `\`, instead of silently accepting a name Addressables would never actually produce.
+  Addressables replaces those characters with `-` when it creates or renames a group, so a rule
+  referencing the un-replaced name could never match — with **Auto-create missing groups** on, this used
+  to create a fresh, unintentionally duplicated group on every run instead of ever matching. Rules that
+  already reference a name without `/` or `\` are unaffected.
+- **BREAKING**: When an address-producing rule throws while evaluating an asset, and its `Order` is equal
+  to or lower than the actual winner's, `Apply`/`ApplyAll` no longer silently writes that lower-priority
+  winner's address for that asset — it now writes nothing and reports `ValidationStatus.BlockedByRuleError`
+  alongside the `RuleError`. Previously, only the throwing rule was reported and the lower-priority
+  candidate's address was written as if the higher-priority rule had never matched. A winner with strictly
+  higher priority (a lower `Order`) than the rule that threw is never blocked by this — the rule that threw
+  could never have outranked it anyway — and a label-only rule's exception (no `Address()` call) never
+  blocks a write this way, regardless of its `Order`.
+- **BREAKING**: `ClearCLI` now exits with a new code, 2, when the same asset has an entry in two or more
+  Addressables groups at once (`ValidationStatus.DuplicateAssetEntry`), before saving the pre-clear
+  snapshot or removing anything. See [Compatibility Policy: Exit
+  Codes](Documentation~/compatibility.md#4-exit-codes).
+
+### Fixed
+
+- Every settings property setter (and `SetRuleEnabled`) now writes through a single path
+  (`AddressTellerSettingsAsset.Mutate`) that reloads the file first if it changed on disk since it was
+  last read (e.g. after a `git pull`), applies the change to a copy, and only replaces the in-memory value
+  once the write to disk has actually succeeded. Previously a setter could overwrite a file that had
+  changed on disk with a stale in-memory copy, and a failed write left the in-memory value changed while
+  the file on disk stayed unchanged — a growing gap between what the settings API reports and what is
+  actually saved. The no-op check this path uses (skip writing when a setter is assigned the value it
+  already has) compares values before either side has the settings-file marker filled in, so assigning a
+  property its already-default value while no settings file exists yet still does not create one.
+- Project Settings: a setter call that fails to write to disk (rather than being rejected outright by the
+  load gate) no longer leaves the changed control showing a value that was never actually saved — the same
+  revert-and-log handling that already covered the gate-failure case now also covers write failures.
+- The automatic Apply on import (Postprocessor) no longer logs the same settings-file error on every
+  single import while the settings file stays broken — it now logs once and stays quiet until the file
+  changes (or the error itself changes). Every other entry point (menus, CLI) still logs on every run, as
+  before.
+- Save Snapshot, the Snapshot Manager window's Refresh, and Apply from the result window's "Apply with
+  this content" button (the path that bypasses the Apply All / Apply with Validate dialog) now also stop
+  if the settings file cannot be loaded, instead of silently proceeding with default values. The Snapshot
+  Manager window shows an inline error and clears its list in that case; the Apply path also shows a
+  dialog explaining the abort, since closing that window on click could otherwise be mistaken for a
+  successful apply.
+- Label-only rules (`AnyGroup()`, or a `Group()` rule with no `Address()`) no longer write labels to an
+  entry, or its group, that is read-only. `AddressableAssetSettings.SetLabel` does not itself check for
+  this, so previously a label-only rule could add a label to a read-only entry. AddressTeller now treats
+  a read-only entry or group as owned by something else and leaves it alone, the same way it already does
+  for an asset with no entry at all — Apply and Predict both skip silently in this case (no report). This
+  applies only to label-only rules; an address rule (`Group()` with `Address()`) still moves an entry via
+  `CreateOrMoveEntry`, which clears `ReadOnly` as an existing, unchanged side effect (unaffected by this
+  change).
+- `SnapshotFolder` set to an empty or whitespace-only value no longer resolves to the project root.
+  Assigning such a value through the setter (including the Project Settings "Snapshot folder" field, which
+  goes through the same setter) now normalizes it to the default (`AddressTellerSnapshots`) before saving.
+  If a settings file already on disk somehow contains an empty or whitespace-only `_snapshotFolder`, loading
+  it normalizes the in-memory value the same way and logs a warning once, without rewriting the file.
+- `ValidateAll`, `BuildPredictedSnapshot`, and the public `AddressTellerSnapshotService.Diff` no longer throw
+  `ArgumentException` when the same asset (GUID) has an entry in two or more Addressables groups at once
+  (see `ValidationStatus.DuplicateAssetEntry` above) — previously this state crashed evaluation with an
+  unhandled exception instead of being reported, and `ApplyAll` silently moved whichever entry
+  `AddressableAssetSettings.FindAssetEntry` happened to pick, discarding the other one without any record.
+- Every `-executeMethod` CLI entry point (`CheckCLI`, `ApplyAllCLI`, `ApplyWithValidateCLI`, `ClearCLI`) now
+  catches any exception that reaches it without being handled by one of its own documented branches, logs
+  it, and exits with code 3 (environment error), instead of letting the Editor process exit with an
+  unhandled-exception code that was indistinguishable from drift (exit code 1). See [Compatibility Policy:
+  Exit Codes](Documentation~/compatibility.md#4-exit-codes).
+- `Undo Last Apply` and Snapshot Restore (from the Snapshot Manager window) now also detect and abort on
+  the same duplicate-asset-entry state described above, instead of proceeding into `Diff`/`Restore`, which
+  would have acted on whichever of the duplicate entries `AddressableAssetSettings.FindAssetEntry` happened
+  to find first.
+- `Save Snapshot`, and the automatic snapshot `Apply All`/`Apply with Validate` take before running, now
+  abort instead of writing a snapshot file that contains the same GUID twice — such a file could never be
+  loaded back (`AddressTellerSnapshotService.LoadFromFile` explicitly rejects a duplicate GUID), so it was
+  a snapshot that existed only to occupy a slot in rotation.
+- `AddressTellerClearService.Clear` now removes each entry directly from the group it was found in
+  (`AddressableAssetGroup.RemoveAssetEntry(entry)`) instead of by GUID
+  (`AddressableAssetSettings.RemoveAssetEntry(guid)`, which resolves to whichever group is found first) —
+  this only mattered when the same GUID had an entry in both a group being cleared and a group outside the
+  clear's scope, where the GUID-based removal could remove the out-of-scope group's entry instead of the
+  in-scope one. `Clear All Addresses & Labels...` and `ClearCLI` also now detect the duplicate-asset-entry
+  state up front and abort before saving the pre-clear snapshot, for the same reason as Save Snapshot above.
+- `AddressTellerPostprocessor` no longer logs the same duplicate-asset-entry state on every single import
+  while it remains unresolved — it now logs once and stays quiet until the state changes (or is resolved),
+  the same `OncePerDistinctFailure`-style policy already used for a broken settings file. It also no longer
+  logs the same duplicates twice on an import that both changes and deletes assets (previously `ApplyAll`
+  and `RemoveEntriesForDeletedAssets` each detected and logged the same state independently).
+- `BundleDistributionSummarizer.Build` no longer throws when the snapshot it is given has more than one
+  entry for the same GUID — it keeps the first entry for that GUID, the same fallback used by the public
+  `AddressTellerSnapshotService.Diff`.
+
+### Documentation
+
+- Reworded "Auto-apply on import" in [Apply & Operations](Documentation~/operations.md) to state the
+  actual default (off) up front instead of only mentioning that it can be disabled. Added the `ClearCLI`
+  exit code 2 row (duplicate asset entry) and the unexpected-exception case to every CLI exit code table,
+  matching [Compatibility Policy](Documentation~/compatibility.md). Added a note to the README about
+  where rule classes must live: an assembly whose asmdef references `nunit.framework` is silently excluded
+  from rule collection. Corrected the claim that the `Tests` folder is excluded from the distribution — it
+  has no `~` suffix, so it is downloaded like the rest of the package on a git-URL install, but its asmdef
+  requires `UNITY_INCLUDE_TESTS` to compile. Added guidance on whether to commit the snapshot folder to
+  version control, and a note in Troubleshooting to record an entry's labels and address before removing a
+  duplicate Addressables entry.
+
 ---
 
 ## [0.6.1] - 2026-09-23

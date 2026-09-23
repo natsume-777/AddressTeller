@@ -157,6 +157,21 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void DuplicateAssetEntryOnly_ExitCodeIsTwo()
+        {
+            // ValidationStatus.DuplicateAssetEntry は IsOk=false かつ IsBlocking=true（他の通常のブロック系
+            // ステータスと同じ）であり、CheckCLI 用の exit code 判定でも Validation エラーとして扱われるべき
+            // （AddressTellerMenu.CheckCLI が実際にこの exit code に到達する経路は、重複検出時に
+            // BuildPredictedSnapshot が DuplicateAssetEntry のみを issues として返すこと——
+            // RuleEvaluationPipelineDuplicateAssetEntryTests で別途確認済み）。
+            var diff = new SnapshotDiff();
+            var issues = new List<ValidationResult> { new(null, ValidationStatus.DuplicateAssetEntry, "duplicate entry") };
+            var result = new DryRunResult(diff, issues);
+
+            Assert.AreEqual(2, AddressTellerReportBuilder.DetermineExitCode(result));
+        }
+
+        [Test]
         public void RemovedOnly_ExitCodeIsOne()
         {
             var removedGuid = CreatePrefab(TestRootFolder + "/RemovedOnly.prefab");
@@ -235,6 +250,21 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void DetermineApplyExitCode_DuplicateAssetEntryOnly_ReturnsTwo()
+        {
+            // 重複検出で何も書き込まれなかったランは、ApplyAllCLI/ApplyWithValidateCLI にとっても
+            // Validation エラー（exit 2）として扱われるべき（AddressTellerService.ApplyAll がこの状態を
+            // 返す結果はそのまま executionIssues に渡る——AddressTellerServiceDuplicateAssetEntryTests で
+            // 別途、ApplyAll 自体が実際にこのステータスのみを返すことを確認済み）。
+            var executionIssues = new List<ValidationResult>
+            {
+                new(null, ValidationStatus.DuplicateAssetEntry, "duplicate entry"),
+            };
+
+            Assert.AreEqual(2, AddressTellerReportBuilder.DetermineApplyExitCode(executionIssues));
+        }
+
+        [Test]
         public void DetermineApplyExitCode_AllOk_ReturnsZero()
         {
             var executionIssues = new List<ValidationResult>
@@ -262,7 +292,7 @@ namespace AddressTeller.Editor.Tests
         public void DetermineApplyExitCode_DuplicateAddressWritable_StillDoesNotEscalateToTwo()
         {
             // HasWritableDuplicate=true は IsOk=false（Error 扱い）だが、DuplicateAddress は
-            // AddressTellerApplyFlow.HasBlockingIssue が明示的に除外する「書き込みを止めない報告専用」
+            // ValidationResult.IsBlocking が明示的に除外する「書き込みを止めない報告専用」
             // ステータスであるため、IsOk=false であっても適用系の exit code は 2 に昇格しない。
             var executionIssues = new List<ValidationResult>
             {
@@ -270,6 +300,71 @@ namespace AddressTeller.Editor.Tests
             };
 
             Assert.AreEqual(0, AddressTellerReportBuilder.DetermineApplyExitCode(executionIssues));
+        }
+
+        [Test]
+        public void DetermineExitCode_UnmatchedEntryKeptOnly_NoDiff_ReturnsZero()
+        {
+            // UnmatchedEntryKept は IsOk=true の通知専用ステータス。差分が無ければ CheckCLI の exit code は
+            // drift・issue のどちらの理由でも上がってはならない。
+            var diff = new SnapshotDiff();
+            var issues = new List<ValidationResult>
+            {
+                new(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.UnmatchedEntryKept, "kept"),
+            };
+            var result = new DryRunResult(diff, issues);
+
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineExitCode(result));
+        }
+
+        [Test]
+        public void DetermineApplyExitCode_UnmatchedEntryKeptOnly_ReturnsZero()
+        {
+            var executionIssues = new List<ValidationResult>
+            {
+                new(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.UnmatchedEntryKept, "kept"),
+            };
+
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineApplyExitCode(executionIssues));
+        }
+
+        [Test]
+        public void Build_IssueBlockingAndOkFields_MirrorValidationResult()
+        {
+            var diff = new SnapshotDiff();
+            var issues = new List<ValidationResult>
+            {
+                new(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.ConflictingAddress, "conflict"),
+                new(null, ValidationStatus.DuplicateAddress, "duplicate", hasWritableDuplicate: true),
+            };
+            var result = new DryRunResult(diff, issues);
+
+            var report = AddressTellerReportBuilder.Build(result);
+
+            var conflicting = report.Issues.Find(i => i.Status == nameof(ValidationStatus.ConflictingAddress));
+            var duplicate = report.Issues.Find(i => i.Status == nameof(ValidationStatus.DuplicateAddress));
+
+            Assert.IsTrue(conflicting.Blocking, "ConflictingAddress は Apply を中止させる問題。");
+            Assert.IsFalse(conflicting.Ok, "ConflictingAddress は IsOk=false のはず。");
+            Assert.IsFalse(duplicate.Blocking, "DuplicateAddress は IsOk=false であっても Apply を中止させない。");
+            Assert.IsFalse(duplicate.Ok, "書き込み対象を含む重複（HasWritableDuplicate=true）は IsOk=false のはず。");
+        }
+
+        [Test]
+        public void Build_UnmatchedEntryKeptIssue_BlockingFalseOkTrue()
+        {
+            var diff = new SnapshotDiff();
+            var issues = new List<ValidationResult>
+            {
+                new(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.UnmatchedEntryKept, "kept"),
+            };
+            var result = new DryRunResult(diff, issues);
+
+            var report = AddressTellerReportBuilder.Build(result);
+
+            var kept = report.Issues.Find(i => i.Status == nameof(ValidationStatus.UnmatchedEntryKept));
+            Assert.IsFalse(kept.Blocking, "UnmatchedEntryKept は書き込み・削除を伴わない通知であり Apply を中止させない。");
+            Assert.IsTrue(kept.Ok, "UnmatchedEntryKept は常に IsOk=true のはず。");
         }
 
         [Test]
@@ -298,6 +393,8 @@ namespace AddressTeller.Editor.Tests
             Assert.IsFalse(string.IsNullOrEmpty(json));
             StringAssert.Contains("JsonTarget", json);
             StringAssert.Contains("RuleError", json);
+            StringAssert.Contains("\"Blocking\"", json);
+            StringAssert.Contains("\"Ok\"", json);
 
             var restored = AddressTellerReport.FromJson(json);
             Assert.AreEqual(report.Summary.ExitCode, restored.Summary.ExitCode);

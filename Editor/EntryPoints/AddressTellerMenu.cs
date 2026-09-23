@@ -76,6 +76,40 @@ namespace AddressTeller.Editor
             EditorUtility.DisplayDialog("AddressTeller - Clear All Addresses & Labels", message, "OK");
 
         /// <summary>
+        /// -executeMethod で起動された Editor プロセスを終了する処理。既定では EditorApplication.Exit を呼ぶが、
+        /// EditMode テストが実プロセスを終了させずに CLI 入口の分岐（特に <see cref="RunCliEntryPoint"/> の
+        /// 予期しない例外の catch）を検証できるよう差し替え可能にしている（<see cref="s_notifyClearAborted"/> /
+        /// <see cref="AddressTellerApplyFlow.s_notifyApplyAborted"/> と同じ「テスト用シーム」の考え方。
+        /// テストは差し替え後、TearDown で必ず既定値へ戻すこと）。
+        /// </summary>
+        internal static Action<int> s_exitCli = EditorApplication.Exit;
+
+        /// <summary>
+        /// -executeMethod から呼ばれる各 CLI 入口の本体（<paramref name="body"/>）を、予期しない例外の catch 込みで
+        /// 実行する。ClearCLI/ApplyAllCLI/ApplyWithValidateCLI/CheckCLI それぞれの内部分岐は、既知の失敗系
+        /// （引数解析エラー・設定読み込み失敗・グループ未検出等）について明示的な exit code（0〜4）を都度呼ぶため、
+        /// ここで catch するのはそれらを通り抜けた「本当に予期しない」例外だけ——たとえば同一 GUID が複数グループに
+        /// 存在する状態は通常 <see cref="ValidationStatus.DuplicateAssetEntry"/> として結果に現れるが、それを
+        /// 見落として書き込み側の Addressables API を直接呼ぶような未知の経路が万一残っていた場合に、
+        /// 未捕捉例外で Editor プロセスが exit code 1（drift ありと区別できない）のまま終了するのを防ぐ。
+        /// ここで catch した場合の exit code は環境エラーを表す 3 に統一する。
+        /// </summary>
+        internal static void RunCliEntryPoint(string entryPointName, Action body)
+        {
+            try
+            {
+                body();
+            }
+            catch (Exception ex)
+            {
+                // ex.ToString() は型・メッセージ・スタックトレースをすべて含むため、ここで ex.Message を
+                // 別途繰り返さない（GetOrderedEntries の Configure() 失敗ログと同じスタイル）。
+                Debug.LogError($"[AddressTeller] {entryPointName} aborted due to an unexpected exception:\n{ex}");
+                s_exitCli(3);
+            }
+        }
+
+        /// <summary>
         /// Removes entries (address, group assignment, and labels) from groups AddressTeller owns
         /// (see design-decisions.md for the ownership definition).
         /// This is an intentional exception to the default safe-by-default policy (asset-level ownership
@@ -112,6 +146,17 @@ namespace AddressTeller.Editor
         internal static void ClearAll(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
         {
             if (settings == null) throw new ArgumentNullException(nameof(settings));
+
+            // 同一 guid が2つ以上のグループにまたがって存在する状態では、settings.RemoveAssetEntry(guid) が
+            // 先勝ちで片方だけを消しうる（AddressTellerClearService.Clear は entry 単位の削除に対処済みだが、
+            // それでも「どちらの entry を消すのが正しいか」を AddressTeller は判断できない）。スナップショット
+            // 保存より前に検出して中止する——逆順だと、重複 guid を含む読み込み不能なスナップショットが
+            // 残ってしまう（AddressTellerSnapshotService.LoadFromFile は重複 guid を拒否する）。
+            if (DuplicateAssetEntryDetector.LogAndReturnTrueIfDuplicates(settings, "Clear All"))
+            {
+                s_notifyClearAborted("Aborted: the same asset has an entry in two or more Addressables groups at once. See the Console for details.");
+                return;
+            }
 
             if (!TryResolveOwnedGroups(settings, rules, out var ownedGroups, out var abortDetail))
             {
@@ -191,29 +236,40 @@ namespace AddressTeller.Editor
         /// with exit code 3.
         /// If AddressTeller's settings file cannot be loaded (it exists but cannot be read, or is not
         /// recognized as an AddressTeller settings file), this also aborts with exit code 3, before doing
-        /// anything else.
-        /// Exit codes: 0 = completed, 3 = environment error (including rule configuration errors, snapshot
-        /// save failures, and a settings load failure), 4 = confirmation flag not specified.
+        /// anything else. If no settings file exists at all, this logs one Info line and proceeds with
+        /// default settings (a missing file is not an error).
+        /// If the same asset has an entry in two or more Addressables groups at once
+        /// (<see cref="ValidationStatus.DuplicateAssetEntry"/>), this aborts with exit code 2 before saving
+        /// the snapshot, since <c>settings.RemoveAssetEntry(guid)</c> would otherwise act on whichever entry
+        /// it happens to find first.
+        /// Exit codes: 0 = completed, 2 = a duplicate asset entry was detected, 3 = environment error
+        /// (including rule configuration errors, snapshot save failures, a settings load failure, and any
+        /// unexpected exception), 4 = confirmation flag not specified.
         /// </summary>
-        public static void ClearCLI()
+        public static void ClearCLI() => RunCliEntryPoint(nameof(ClearCLI), ClearCLICore);
+
+        private static void ClearCLICore()
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
                 Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
-            if (!AddressTellerSettings.EnsureLoaded())
+            var settingsGate = AddressTellerSettings.EnsureLoaded();
+            if (!settingsGate.Success)
             {
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
+            if (!settingsGate.FileExists)
+                Debug.Log("[AddressTeller] No settings file; using defaults.");
 
             if (!cliArgs.ConfirmClear)
             {
                 Debug.LogError($"[AddressTeller] Clear All requires -addressTellerConfirmClear to be specified (intentional rejection).");
-                EditorApplication.Exit(4);
+                s_exitCli(4);
                 return;
             }
 
@@ -221,7 +277,17 @@ namespace AddressTeller.Editor
             if (settings == null)
             {
                 Debug.LogError("[AddressTeller] AddressableAssetSettings not found.");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
+                return;
+            }
+
+            // ClearAll（対話メニュー）と同じ理由（settings.RemoveAssetEntry(guid) の先勝ち、および重複 guid
+            // 入りの読み込み不能なスナップショットを残さないため）で、スナップショット保存よりさらに前に検出する。
+            // exit code は他の環境エラー（3）とは区別し、評価不能な状態を検出した Validation 的な失敗として
+            // ApplyAllCLI/CheckCLI と同じ 2 を使う。
+            if (DuplicateAssetEntryDetector.LogAndReturnTrueIfDuplicates(settings, "Clear All"))
+            {
+                s_exitCli(2);
                 return;
             }
 
@@ -234,7 +300,7 @@ namespace AddressTeller.Editor
                 if (!TryResolveOwnedGroups(settings, RuleCollector.CollectRules(), out var resolvedOwnedGroups, out var abortDetail))
                 {
                     Debug.LogError($"[AddressTeller] Clear All aborted: {abortDetail}");
-                    EditorApplication.Exit(3);
+                    s_exitCli(3);
                     return;
                 }
                 ownedGroups = resolvedOwnedGroups;
@@ -244,7 +310,7 @@ namespace AddressTeller.Editor
             if (snapshotPath == null)
             {
                 Debug.LogError($"[AddressTeller] Clear All: {snapshotError}");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
@@ -258,7 +324,7 @@ namespace AddressTeller.Editor
             // （EditorApplication.Exit がダーティアセットをフラッシュする挙動は実測で確認済みだが、
             // Unity が文書化した契約ではなく観測された挙動にすぎないため）。
             AssetDatabase.SaveAssets();
-            EditorApplication.Exit(0);
+            s_exitCli(0);
         }
 
         /// <summary>
@@ -316,16 +382,31 @@ namespace AddressTeller.Editor
             // issues には GroupWillBeCreated（IsOk=true、グループ自動作成の通知）が含まれる場合があるため、
             // 「完了」を error として扱うべきかどうかは IsOk=false の件数で判定する。
             var errorCount = issues.Count(i => !i.IsOk);
-            if (errorCount == 0)
+            // UnmatchedEntryKept は「CleanupStaleEntries を ON にしたら何が消えるか」を確認するための通知
+            // （README クイックスタート手順3）であり、コンソールのサマリ1行だけでは中身が見えない。errorCount が
+            // 0 でもこれが1件以上あれば結果ウィンドウを開き、個別の内容を確認できるようにする。
+            var unmatchedEntryKeptCount = issues.Count(i => i.Status == ValidationStatus.UnmatchedEntryKept);
+            if (errorCount == 0 && unmatchedEntryKeptCount == 0)
             {
                 Debug.Log($"[AddressTeller] Validate completed: {issues.Count} notice(s) (no issues).");
                 return;
             }
 
-            Debug.LogError($"[AddressTeller] Validate completed: {errorCount} issue(s) found.");
+            if (errorCount == 0)
+            {
+                Debug.Log($"[AddressTeller] Validate completed: {issues.Count} notice(s) (no issues), " +
+                    $"including {unmatchedEntryKeptCount} entr{(unmatchedEntryKeptCount == 1 ? "y" : "ies")} " +
+                    "that would be removed if Remove unmatched entries were on.");
+            }
+            else
+            {
+                Debug.LogError($"[AddressTeller] Validate completed: {errorCount} issue(s) found.");
+            }
 
-            // Apply All / Apply with Validate の中止経路と対称に、IsOk=false の問題が1件以上ある場合のみ
-            // 結果ウィンドウを開く。GroupWillBeCreated 等の通知のみ（errorCount == 0）ではフォーカスを奪わない。
+            // Apply All / Apply with Validate の中止経路と対称に、IsOk=false の問題があるか、UnmatchedEntryKept
+            // 通知（中身は結果ウィンドウでしか確認できない）が1件以上ある場合に結果ウィンドウを開く。
+            // GroupWillBeCreated 等それ以外の通知のみ（errorCount == 0 かつ UnmatchedEntryKept も0件）では
+            // フォーカスを奪わない。
             s_showResultWindow(issues, "AddressTeller - Validate");
         }
 
@@ -338,43 +419,50 @@ namespace AddressTeller.Editor
         /// -addressTellerReportFormat json|junit (built from the dry-run result computed before Apply runs).
         /// If AddressTeller's settings file cannot be loaded (it exists but cannot be read, or is not
         /// recognized as an AddressTeller settings file), this aborts with exit code 3, before doing
-        /// anything else.
+        /// anything else. If no settings file exists at all, this logs one Info line and proceeds with
+        /// default settings (a missing file is not an error).
         /// Exit codes: 0 = applied successfully (regardless of whether there was drift), 2 = validation
-        /// errors found, 3 = environment error (including a settings load failure). This method never
-        /// returns 1 — drift is not treated as a failure for an apply entry point, since the apply already
-        /// completed successfully; use <see cref="CheckCLI"/> to detect drift without applying.
+        /// errors found, 3 = environment error (including a settings load failure and any unexpected
+        /// exception). This method never returns 1 — drift is not treated as a failure for an apply entry
+        /// point, since the apply already completed successfully; use <see cref="CheckCLI"/> to detect
+        /// drift without applying.
         /// A duplicate address across two different assets (<see cref="ValidationStatus.DuplicateAddress"/>)
         /// never affects this exit code either way, since it is a report-only status computed from the
         /// dry-run, not from the Apply results this exit code is based on — it is still logged to the
         /// console and included in the report file, but only <see cref="CheckCLI"/>'s exit code reacts to it.
         /// </summary>
-        public static void ApplyAllCLI()
+        public static void ApplyAllCLI() => RunCliEntryPoint(nameof(ApplyAllCLI), ApplyAllCLICore);
+
+        private static void ApplyAllCLICore()
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
                 Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
-            if (!AddressTellerSettings.EnsureLoaded())
+            var settingsGate = AddressTellerSettings.EnsureLoaded();
+            if (!settingsGate.Success)
             {
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
+            if (!settingsGate.FileExists)
+                Debug.Log("[AddressTeller] No settings file; using defaults.");
 
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
                 Debug.LogError("[AddressTeller] AddressableAssetSettings not found.");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
             if (!TryBuildCliRules(cliArgs, out var rules, out var rulesError))
             {
                 Debug.LogError($"[AddressTeller] {rulesError}");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
@@ -419,12 +507,13 @@ namespace AddressTeller.Editor
         /// found a problem, or from the dry-run result computed before Apply runs otherwise).
         /// If AddressTeller's settings file cannot be loaded (it exists but cannot be read, or is not
         /// recognized as an AddressTeller settings file), this aborts with exit code 3, before doing
-        /// anything else.
+        /// anything else. If no settings file exists at all, this logs one Info line and proceeds with
+        /// default settings (a missing file is not an error).
         /// Exit codes: 0 = applied successfully (regardless of whether there was drift), 2 = validation
         /// errors found (whether from the initial Validate pass, which aborts before Apply runs, or from
-        /// the Apply pass itself), 3 = environment error (including a settings load failure). This method
-        /// never returns 1 — drift is not treated as a failure for an apply entry point; use
-        /// <see cref="CheckCLI"/> to detect drift without applying.
+        /// the Apply pass itself), 3 = environment error (including a settings load failure and any
+        /// unexpected exception). This method never returns 1 — drift is not treated as a failure for an
+        /// apply entry point; use <see cref="CheckCLI"/> to detect drift without applying.
         /// A duplicate address across two different assets (<see cref="ValidationStatus.DuplicateAddress"/>)
         /// never aborts the initial Validate pass and never affects this exit code, even when it is reported
         /// as an error (<see cref="ValidationResult.HasWritableDuplicate"/>) — it is a report-only status, so
@@ -432,46 +521,51 @@ namespace AddressTeller.Editor
         /// the console and included in the report file either way; use <see cref="CheckCLI"/> if you need
         /// its exit code to react to a duplicate.
         /// </summary>
-        public static void ApplyWithValidateCLI()
+        public static void ApplyWithValidateCLI() => RunCliEntryPoint(nameof(ApplyWithValidateCLI), ApplyWithValidateCLICore);
+
+        private static void ApplyWithValidateCLICore()
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
                 Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
-            if (!AddressTellerSettings.EnsureLoaded())
+            var settingsGate = AddressTellerSettings.EnsureLoaded();
+            if (!settingsGate.Success)
             {
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
+            if (!settingsGate.FileExists)
+                Debug.Log("[AddressTeller] No settings file; using defaults.");
 
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
                 Debug.LogError("[AddressTeller] AddressableAssetSettings not found.");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
             if (!TryBuildCliRules(cliArgs, out var rules, out var rulesError))
             {
                 Debug.LogError($"[AddressTeller] {rulesError}");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
             var validateIssues = AddressTellerService.ValidateAll(settings, NullProgressReporter.Instance, rules);
 
             // validateIssues には GroupWillBeCreated（IsOk=true、AutoCreateMissingGroups による作成予定の提示）や
-            // DuplicateAddress（報告専用。書き込みを止めないため、HasBlockingIssue の対象外。
-            // AddressTellerApplyFlow.HasBlockingIssue 参照）が含まれる場合がある。
-            if (AddressTellerApplyFlow.HasBlockingIssue(validateIssues))
+            // DuplicateAddress（報告専用。書き込みを止めないため ValidationResult.IsBlocking=false）が
+            // 含まれる場合がある。
+            if (validateIssues.Any(i => i.IsBlocking))
             {
                 AddressTellerIssueLogger.LogAll(validateIssues);
 
-                Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => !i.IsOk && i.Status != ValidationStatus.DuplicateAddress)} issue(s).");
+                Debug.LogError($"[AddressTeller] Apply aborted: Validate found {validateIssues.Count(i => i.IsBlocking)} issue(s).");
 
                 // Apply を行わないため、現在の状態のままの dry-run をレポート化する。
                 var paths = AssetDatabase.GetAllAssetPaths();
@@ -543,7 +637,7 @@ namespace AddressTeller.Editor
                 report.Summary.ExitCode = exitCode;
 
                 // JUnit の Validation testcase は、Apply 系の exit code 判定と同じ基準（AddressTellerReportBuilder.
-                // BuildApplyFailingStatusNames、内部で AddressTellerApplyFlow.IsBlocking を使う）で failure を
+                // BuildApplyFailingStatusNames、内部で ValidationResult.IsBlocking を使う）で failure を
                 // 付ける Status だけに絞る。report は dryRun から組み立てているため、report.Issues と同じ集合
                 // である dryRun.Issues から失敗対象を求める（executionIssues から求めると、report に現れない
                 // Status を failure 対象に含めてしまいうる）。
@@ -555,13 +649,13 @@ namespace AddressTeller.Editor
                 if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value, treatDriftAsFailure: false, failingStatusNames))
                 {
                     AssetDatabase.SaveAssets();
-                    EditorApplication.Exit(3);
+                    s_exitCli(3);
                     return;
                 }
             }
 
             AssetDatabase.SaveAssets();
-            EditorApplication.Exit(exitCode);
+            s_exitCli(exitCode);
         }
 
         /// <summary>
@@ -572,37 +666,43 @@ namespace AddressTeller.Editor
         /// -addressTellerReportFormat json|junit.
         /// If AddressTeller's settings file cannot be loaded (it exists but cannot be read, or is not
         /// recognized as an AddressTeller settings file), this aborts with exit code 3, before doing
-        /// anything else.
+        /// anything else. If no settings file exists at all, this logs one Info line and proceeds with
+        /// default settings (a missing file is not an error).
         /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
-        /// error (including a settings load failure).
+        /// error (including a settings load failure and any unexpected exception).
         /// </summary>
-        public static void CheckCLI()
+        public static void CheckCLI() => RunCliEntryPoint(nameof(CheckCLI), CheckCLICore);
+
+        private static void CheckCLICore()
         {
             if (!AddressTellerCliArgs.TryParse(Environment.GetCommandLineArgs(), out var cliArgs, out var parseError))
             {
                 Debug.LogError($"[AddressTeller] Failed to parse arguments: {parseError}");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
-            if (!AddressTellerSettings.EnsureLoaded())
+            var settingsGate = AddressTellerSettings.EnsureLoaded();
+            if (!settingsGate.Success)
             {
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
+            if (!settingsGate.FileExists)
+                Debug.Log("[AddressTeller] No settings file; using defaults.");
 
             var settings = AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
                 Debug.LogError("[AddressTeller] AddressableAssetSettings not found.");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
             if (!TryBuildCliRules(cliArgs, out var rules, out var rulesError))
             {
                 Debug.LogError($"[AddressTeller] {rulesError}");
-                EditorApplication.Exit(3);
+                s_exitCli(3);
                 return;
             }
 
@@ -629,12 +729,12 @@ namespace AddressTeller.Editor
                 // JUnit の <failure> として報告する。
                 if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value, treatDriftAsFailure: true, failingStatusNames))
                 {
-                    EditorApplication.Exit(3);
+                    s_exitCli(3);
                     return;
                 }
             }
 
-            EditorApplication.Exit(AddressTellerReportBuilder.DetermineExitCode(result));
+            s_exitCli(AddressTellerReportBuilder.DetermineExitCode(result));
         }
     }
 }

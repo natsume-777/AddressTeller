@@ -72,7 +72,7 @@ namespace AddressTeller.Editor
             if (scope == ClearScope.Managed && managedGroups == null)
                 throw new ArgumentNullException(nameof(managedGroups), "managedGroups must be provided when scope is ClearScope.Managed.");
 
-            var targets = new List<(string Guid, string Address, string GroupName, IReadOnlyList<string> Labels)>();
+            var targets = new List<(AddressableAssetEntry Entry, string Guid, string Address, string GroupName, IReadOnlyList<string> Labels)>();
 
             foreach (var group in settings.groups)
             {
@@ -82,6 +82,7 @@ namespace AddressTeller.Editor
                 foreach (var entry in group.entries)
                 {
                     targets.Add((
+                        entry,
                         entry.guid,
                         entry.address,
                         group.Name,
@@ -98,7 +99,14 @@ namespace AddressTeller.Editor
             foreach (var target in ordered)
             {
                 cleared.Add(new ClearedEntry(target.Guid, target.Address, target.GroupName, target.Labels));
-                settings.RemoveAssetEntry(target.Guid);
+                // settings.RemoveAssetEntry(guid) は内部で FindAssetEntry(guid)（settings.groups を先頭から
+                // 探して最初に見つかった1件を返す）を経由するため、同一 guid が複数グループに存在する状態では
+                // 意図しない側（このループで実際に列挙した target.Entry とは限らない）を削除しうる。
+                // ここでは列挙時に確定させたエントリ自身を、それが属するグループから直接取り除くことで、
+                // どのエントリを消すかの曖昧さを排除する。呼び出し元（ClearAll/ClearCLICore）は
+                // DuplicateAssetEntryDetector で事前にこの状態自体を弾いているため通常は到達しないが、
+                // このメソッド単体（Clear）は防御的にエントリ単位で安全な削除にしておく。
+                target.Entry.parentGroup.RemoveAssetEntry(target.Entry);
             }
 
             return cleared;

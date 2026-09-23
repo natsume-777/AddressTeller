@@ -187,21 +187,61 @@ namespace AddressTeller.Editor
             progress ??= NullProgressReporter.Instance;
 
             var before = AddressTellerSnapshotService.Capture(settings);
+
+            // 同一 guid が2つ以上のグループにまたがって存在する状態では、この直後の ToDictionary（guid をキーにする）
+            // が例外を出すだけでなく、そもそもどちらのエントリを「そのアセットのエントリ」として扱うべきかが
+            // 定義できない（FindAssetEntry は先勝ちで片方を無言で選ぶ）。評価そのものを始める前に検出し、
+            // このランでは何も予測・書き込みせず重複の報告だけを返す（ValidationStatus.DuplicateAssetEntry の XML doc 参照）。
+            var duplicateAssetEntries = DuplicateAssetEntryDetector.Detect(settings);
+            if (duplicateAssetEntries.Count > 0)
+            {
+                return new PredictedRunState(
+                    new AddressTellerSnapshot(),
+                    new Dictionary<string, SnapshotEntry>(),
+                    new HashSet<string>(),
+                    new List<ValidationResult>(duplicateAssetEntries),
+                    new HashSet<string>(),
+                    false);
+            }
+
             var afterMap = before.Entries.ToDictionary(e => e.Guid);
 
             var setup = BuildSetup(settings, rules);
             var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
 
-            // ApplyAll と同じ理由・同じ条件（CleanupStaleEntries、Configure() 失敗時は停止）で、
-            // 所有グループ内の無効パスエントリの予測削除を行う。paths には依存させない
-            // （旧バージョンの残骸は paths に含まれるとは限らないため）。
-            if (!hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
+            var issues = new List<ValidationResult>(setup.ConfigureFailures);
+
+            // ApplyAll と同じ理由・同じ条件（Configure() 失敗時は停止）で、所有グループ内の無効パスエントリを
+            // 洗い出す。paths には依存させない（旧バージョンの残骸は paths に含まれるとは限らないため）。
+            if (!hasConfigureFailures)
             {
-                foreach (var invalidEntry in AddressTellerApplier.FindInvalidPathManagedEntries(settings, setup.OwnedGroups, setup.ConfigFolder))
-                    afterMap.Remove(invalidEntry.guid);
+                var invalidEntries = AddressTellerApplier.FindInvalidPathManagedEntries(settings, setup.OwnedGroups, setup.ConfigFolder);
+                if (AddressTellerSettings.CleanupStaleEntries)
+                {
+                    foreach (var invalidEntry in invalidEntries)
+                        afterMap.Remove(invalidEntry.guid);
+                }
+                else
+                {
+                    // CleanupStaleEntries が OFF なので削除は予測しないが、ON なら削除される対象だったことを
+                    // 通知する（UnmatchedEntryKept は IsOk=true の通知専用ステータス）。「パスが構造的に無効」
+                    // というのは Addressables のエントリとして無効というだけで、AssetDatabase 上のアセットと
+                    // しては大抵解決できる（拡張子・Editor フォルダ名などによる除外がほとんどのため）。
+                    // JSON/JUnit レポートの Path 列を空にしないよう、BuildContext できる場合は Context を
+                    // 埋める。GUID からパスが引けない等で構築できない場合のみ Context は null のままにする
+                    // （RuleConfigureFailed/DuplicateAddress と同じ扱い。ValidationStatus.UnmatchedEntryKept の
+                    // XML doc 参照）。
+                    foreach (var invalidEntry in invalidEntries)
+                    {
+                        var invalidContext = BuildContext(invalidEntry.AssetPath);
+                        issues.Add(new ValidationResult(
+                            invalidContext,
+                            ValidationStatus.UnmatchedEntryKept,
+                            $"Entry guid={invalidEntry.guid} in group '{invalidEntry.parentGroup?.Name}' (address='{invalidEntry.address}', path='{invalidEntry.AssetPath}') has a path that is not valid for an Addressables entry, and would be removed if Remove unmatched entries were on."));
+                    }
+                }
             }
 
-            var issues = new List<ValidationResult>(setup.ConfigureFailures);
             var groupsToCreate = new HashSet<string>();
             var writtenGuids = new HashSet<string>();
 
@@ -250,12 +290,15 @@ namespace AddressTeller.Editor
                 if (prediction.Validation.Status == ValidationStatus.Ok || prediction.Validation.Status == ValidationStatus.GroupWillBeCreated)
                     writtenGuids.Add(ctx.Guid);
 
-                // GroupWillBeCreated は IsOk=true（情報提供）だが、ValidateAll の従来契約（アセットごとの
-                // 通知を issues に含める）を保つため、ここでは !IsOk と同列に issues へ積む。
-                // BuildPredictedSnapshot 側は GroupsToCreate（グループ名の集合）で同じ情報を提供する契約のため、
-                // 呼び出し側（BuildPredictedSnapshot）で GroupWillBeCreated を Issues から除外する
-                // （AddressTellerSnapshotService.BuildPredictedSnapshot 参照）。
-                if (!prediction.Validation.IsOk || prediction.Validation.Status == ValidationStatus.GroupWillBeCreated)
+                // GroupWillBeCreated と UnmatchedEntryKept はどちらも IsOk=true（情報提供）だが、ValidateAll の
+                // 従来契約（アセットごとの通知を issues に含める）を保つため、ここでは !IsOk と同列に issues へ積む。
+                // BuildPredictedSnapshot 側は GroupsToCreate（グループ名の集合）で GroupWillBeCreated と同じ情報を
+                // 提供する契約のため、呼び出し側（BuildPredictedSnapshot）で GroupWillBeCreated だけを Issues から
+                // 除外する（AddressTellerSnapshotService.BuildPredictedSnapshot 参照）。UnmatchedEntryKept には
+                // そのような別経路が無いため、BuildPredictedSnapshot 側でも issues にそのまま残る。
+                if (!prediction.Validation.IsOk
+                    || prediction.Validation.Status == ValidationStatus.GroupWillBeCreated
+                    || prediction.Validation.Status == ValidationStatus.UnmatchedEntryKept)
                     issues.Add(prediction.Validation);
             }
 

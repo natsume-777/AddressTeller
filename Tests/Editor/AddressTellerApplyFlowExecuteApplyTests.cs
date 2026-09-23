@@ -176,6 +176,31 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void ExecuteApply_DuplicateAssetEntry_AbortsWithoutSnapshotOrWrite()
+        {
+            // 同一 guid が2つ以上のグループにまたがって存在する状態では、自動スナップショットの保存より前に
+            // 中止するべき（重複 guid 入りの読み込み不能なスナップショットを残さないため）。
+            AddressTellerSettings.AutoSnapshotBeforeApplyAll = true;
+
+            var stubGroup = _settings.FindGroup("StubGroup");
+            _settings.CreateOrMoveEntry("guid-dup", stubGroup).SetAddress("A");
+            var otherGroup = _settings.CreateGroup("OtherGroup", false, false, false, null);
+            DuplicateAssetEntryTestInjector.InjectDuplicateEntry(otherGroup, "guid-dup", "B");
+
+            string notifiedMessage = null;
+            AddressTellerApplyFlow.s_notifyApplyAborted = (_, message) => notifiedMessage = message;
+
+            LogAssert.Expect(LogType.Error, new Regex("guid-dup"));
+            LogAssert.Expect(LogType.Error, new Regex(Regex.Escape("Apply aborted:")));
+
+            AddressTellerApplyFlow.ExecuteApply(_settings, new[] { StubAssetPath }, new AddressRuleBase[] { new StubRule() });
+
+            Assert.IsNull(AddressTellerAutoSnapshotService.FindLatestAuto(), "重複検出時は自動スナップショットも保存してはいけない。");
+            Assert.IsNull(_settings.FindAssetEntry(GuidOf(StubAssetPath)), "重複検出時は無関係なアセットへの書き込みも行われてはいけない。");
+            Assert.IsNotNull(notifiedMessage, "重複検出時も s_notifyApplyAborted 経由でユーザーに通知されるべき。");
+        }
+
+        [Test]
         public void ExecuteApply_AutoSnapshotDisabled_DoesNotCaptureSnapshot()
         {
             AddressTellerSettings.AutoSnapshotBeforeApplyAll = false;

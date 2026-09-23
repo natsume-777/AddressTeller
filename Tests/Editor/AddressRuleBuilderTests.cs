@@ -109,6 +109,29 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Group_ThrowsOnNameContainingForwardSlash()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            Assert.Throws<ArgumentException>(() => builder.Group("Parent/Child"));
+        }
+
+        [Test]
+        public void Group_ThrowsOnNameContainingBackslash()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            Assert.Throws<ArgumentException>(() => builder.Group("Parent\\Child"));
+        }
+
+        [Test]
+        public void Group_AllowsNameWithoutSlashOrBackslash()
+        {
+            var builder = new AddressRuleBuilderImpl();
+            builder.Group("Parent-Child").Address("addr");
+
+            Assert.AreEqual("Parent-Child", builder.Entries[0].GroupName);
+        }
+
+        [Test]
         public void Where_CalledTwice_Throws()
         {
             var builder = new AddressRuleBuilderImpl();

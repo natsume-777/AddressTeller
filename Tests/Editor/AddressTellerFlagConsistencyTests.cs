@@ -255,6 +255,39 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void Cleanup_Off_ValidateAllAndBuildPredictedSnapshot_ReportUnmatchedEntryKeptNotice()
+        {
+            // RuleEvaluationPipeline.BuildPredictedRunState の issues 集計条件に
+            // UnmatchedEntryKept（IsOk=true）を含めないと、AddressTellerApplier.Predict が返すこの通知が
+            // ValidateAll / BuildPredictedSnapshot の Issues に一切現れず、Validate・Preview・CLI レポートに
+            // 届かない（README クイックスタート手順3の「OFF の間に何が消えるか確認できる」が成立しない）。
+            AddressTellerSettings.CleanupStaleEntries = false;
+
+            CreatePrefab(OtherAssetPath);
+            var staleGuid = GuidOf(OtherAssetPath);
+            _settings.CreateOrMoveEntry(staleGuid, _stubGroup).SetAddress("StaleAddress");
+
+            var rules = new AddressRuleBase[] { new NoMatchRule() };
+
+            var validateIssues = AddressTellerService.ValidateAll(_settings, NullProgressReporter.Instance, rules);
+            var validateNotice = validateIssues.SingleOrDefault(i => i.Context?.Guid == staleGuid);
+            Assert.IsNotNull(validateNotice, "CleanupStaleEntries=false では ValidateAll が UnmatchedEntryKept を1件報告するべき。");
+            Assert.AreEqual(ValidationStatus.UnmatchedEntryKept, validateNotice.Status);
+            Assert.IsTrue(validateNotice.IsOk);
+            Assert.IsFalse(validateNotice.IsBlocking);
+
+            var predicted = AddressTellerSnapshotService.BuildPredictedSnapshot(_settings, new[] { OtherAssetPath }, rules);
+            var predictNotice = predicted.Issues.SingleOrDefault(i => i.Context?.Guid == staleGuid);
+            Assert.IsNotNull(predictNotice, "CleanupStaleEntries=false では BuildPredictedSnapshot も UnmatchedEntryKept を1件報告するべき。");
+            Assert.AreEqual(ValidationStatus.UnmatchedEntryKept, predictNotice.Status);
+
+            // 通知のみで、エントリ自体には一切手を触れない。
+            var entry = _settings.FindAssetEntry(staleGuid);
+            Assert.IsNotNull(entry);
+            Assert.AreEqual("StaleAddress", entry.address);
+        }
+
+        [Test]
         public void Cleanup_On_StaleEntryRemoved()
         {
             AddressTellerSettings.CleanupStaleEntries = true;
