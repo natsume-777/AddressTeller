@@ -10,10 +10,17 @@ namespace AddressTeller.Editor
 {
     /// <summary>
     /// 同一アセット（GUID）が2つ以上の Addressables グループに同時にエントリを持つ状態を検出する。
-    /// Addressables 自身はグループを跨いだ重複除去を行わない（重複除去はグループ単位の内部エントリマップの
-    /// 中だけで完結する）ため、この状態は通常起こらないが、VCS のマージ等で混入しうる。この状態のまま
-    /// guid をキーにした Dictionary を組み立てようとすると例外になる（RuleEvaluationPipeline.
-    /// BuildPredictedRunState の afterMap 構築等）ため、それより前にここで検出して評価そのものを止める。
+    /// VCS のマージ等で混入しうる。Addressables 2.8.1 では、グループアセットの import 時
+    /// （AddressableAssetSettings.OnPostprocessAllAssets → AddressableAssetGroup.DedupeEnteries）に、
+    /// import されたグループ側のエントリのうち FindAssetEntry が別グループのエントリを返すものが外される
+    /// ことがある（FindAssetEntry は settings.groups の並びで先に見つかった方を返し、キャッシュもある）。
+    /// ただしこれは import されたグループに対してだけ走るため、常に解消されるわけではなく、この検出器が
+    /// 発火する時点で重複は残っている。問題の核は、既存の重複エントリのうちどれがそのアセットのエントリか
+    /// （アドレス・ラベル・手動編集を含む）が一意に決まらず、どれが生き残る/参照されるかがルールと無関係に
+    /// グループの並び順等で決まってしまうこと。
+    /// また、この状態で guid をキーにした Dictionary を組み立てようとすると例外になる
+    /// （RuleEvaluationPipeline.BuildPredictedRunState の afterMap 構築等）ため、それより前にここで検出して
+    /// 評価そのものを止める。
     /// 検出専用（書き込みは一切行わない）。
     /// </summary>
     internal static class DuplicateAssetEntryDetector
@@ -81,10 +88,10 @@ namespace AddressTeller.Editor
                 .ToList();
 
             var sb = new StringBuilder();
-            sb.Append($"Asset guid={guid} ({displayPath}) has an entry in {sorted.Count} groups at once, which Addressables does not deduplicate on its own:");
+            sb.Append($"Asset guid={guid} ({displayPath}) has an entry in {sorted.Count} groups at once, so it is ambiguous which entry is this asset's entry, and which one survives or gets looked up is decided independently of your rules (for example by the order of the groups):");
             foreach (var location in sorted)
                 sb.Append($"\n  group '{location.GroupName}' address='{location.Address}'");
-            sb.Append("\nRemove the extra entry/entries for this asset in the Addressables Groups window, then run AddressTeller again.");
+            sb.Append("\nNote each entry's address and labels first (labels not assigned by a rule will not come back on their own), then remove the entries for this asset from every group listed above in the Addressables Groups window, then add the asset back to the group it should belong to (or run AddressTeller again to let your rules recreate it). See the Troubleshooting section of Documentation~/operations.md in the AddressTeller package.");
 
             return new ValidationResult(null, ValidationStatus.DuplicateAssetEntry, sb.ToString());
         }
