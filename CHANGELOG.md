@@ -8,6 +8,8 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-03
+
 ### Fixed
 
 - `ValidationStatus.DuplicateAssetEntry` (added in 0.7.0): its error message, XML

@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-03
+
 ### Fixed
 
 - `ValidationStatus.DuplicateAssetEntry`（0.7.0 で追加）: そのエラーメッセージ、XML doc、
