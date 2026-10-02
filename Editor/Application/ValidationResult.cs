@@ -143,15 +143,15 @@ namespace AddressTeller.Editor
         /// </summary>
         BlockedByRuleError = 15,
         /// <summary>
-        /// The same asset (GUID) has an entry in two or more Addressables groups at once. Addressables itself
-        /// does not deduplicate across groups — its own duplicate-removal logic (<c>AddressableAssetGroup</c>'s
-        /// internal entry map) only operates within a single group — so this state can persist once it exists
-        /// (for example after a VCS merge combines two branches that each added the same asset to a different
-        /// group). Once it exists, evaluating this asset the normal way is not well-defined: which of the
-        /// duplicate entries is "the" entry for this asset? <c>AddressableAssetSettings.FindAssetEntry</c>
-        /// silently picks whichever group comes first in <c>AddressableAssetSettings.groups</c>, so acting on
-        /// that pick would mean editing or moving one entry while leaving the other one behind unnoticed —
-        /// exactly the kind of ambiguous state AddressTeller refuses to guess through (the same reasoning as
+        /// The same asset (GUID) has an entry in two or more Addressables groups at once (for example after a
+        /// VCS merge combines two branches that each added the same asset to a different group). It is
+        /// ambiguous which of the existing duplicate entries is "the" entry for this asset (its address, labels
+        /// and any manual edits), and which one survives or gets looked up is decided independently of the
+        /// rules (for example by group order). While this state exists, evaluating this asset the normal way
+        /// is not well-defined: <c>AddressableAssetSettings.FindAssetEntry</c> silently picks whichever group
+        /// comes first in <c>AddressableAssetSettings.groups</c>, so acting on that pick would mean editing or
+        /// moving one entry while leaving the other one behind unnoticed — exactly the kind of ambiguous
+        /// state AddressTeller refuses to guess through (the same reasoning as
         /// <see cref="ConflictingAddress"/> and <see cref="BlockedByRuleError"/>). For that reason, whenever
         /// this status is detected, the run stops before evaluating or writing anything for any asset: no
         /// rule is evaluated, and <c>ApplyAll</c>/<c>RemoveEntriesForDeletedAssets</c> write nothing.

@@ -8,6 +8,21 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+### Fixed
+
+- `ValidationStatus.DuplicateAssetEntry` (added in 0.7.0): its error message, XML
+  doc, and the documentation in `compatibility.md` and `operations.md` incorrectly
+  assumed that Addressables does not deduplicate entries across groups. The error
+  message previously told users to remove extra entries from the Addressables Groups
+  window and run AddressTeller again. However, the Groups window's deletion may remove
+  a different entry than the one right-clicked. The message now tells users to note
+  each entry's address and labels, then delete all duplicate entries from every group
+  listed, then re-add the asset or run AddressTeller again. The documentation has been
+  corrected to clarify that Addressables may drop a duplicate on import but this is
+  not guaranteed, and which entry is the asset's actual entry (address, labels, and
+  manual edits) and which one survives or is looked up is determined by factors other
+  than your rules (e.g. group order).
+
 ## [0.7.0] - 2026-09-24
 
 ### Added
