@@ -35,7 +35,7 @@ namespace AddressTeller.Editor.Tests
 
         /// <summary>
         /// BrokenRule と同じグループ("BrokenGroup")を宣言するが、Configure() 自体は正常に完了する対照用ルール。
-        /// このルールは StubAssetPath にはマッチしない条件にしてある(hasConfigureFailures 検証用に、
+        /// このルールは StubAssetPath にはマッチしない条件にしてある(suspendStaleCleanup 検証用に、
         /// StubAssetPath を「どのルールにもマッチしなくなった(Skipped)」状態にするため)。
         /// </summary>
         private sealed class OtherRuleSharingBrokenGroup : AddressRuleBase

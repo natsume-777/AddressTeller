@@ -150,7 +150,7 @@ namespace AddressTeller.Editor.Tests
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups, hasConfigureFailures: true);
+            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups, suspendStaleCleanup: true);
 
             Assert.AreEqual(ValidationStatus.Skipped, result.Status);
             Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
@@ -353,7 +353,7 @@ namespace AddressTeller.Editor.Tests
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups, hasConfigureFailures: true);
+            var result = AddressTellerApplier.RemoveEntryForDeletedAsset("guid-managed", _settings, managedGroups, suspendStaleCleanup: true);
 
             Assert.IsNull(result);
             Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));

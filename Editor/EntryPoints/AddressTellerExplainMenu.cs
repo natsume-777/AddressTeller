@@ -14,8 +14,8 @@ namespace AddressTeller.Editor
             if (!AddressTellerSettings.EnsureLoaded()) return;
 
             var paths = GetSelectedAssetPaths();
-            var explanations = RuleExplainService.Explain(paths, null, RuleCollector.CollectEnabledRules(), out var configureFailures);
-            AddressTellerExplainWindow.ShowWindow(explanations, configureFailures);
+            var explanations = RuleExplainService.Explain(paths, null, RuleCollector.CollectEnabledRules(), out var configureFailures, out var declaredFolderIssues);
+            AddressTellerExplainWindow.ShowWindow(explanations, configureFailures, declaredFolderIssues);
         }
 
         /// <summary>Unity menu validate function for <see cref="Explain"/>: enabled only when at least one asset is selected.</summary>

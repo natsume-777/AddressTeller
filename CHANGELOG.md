@@ -12,9 +12,33 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 - `AddressCandidate.Labels`: a new public read-only property holding the labels produced by the rule that
   produced that candidate (never null). They are written only if that candidate wins.
+- Rules now declare the folders their conditions depend on, and AddressTeller checks that they exist.
+  `AssetCondition.Folders` (and the optional `folders` constructor argument) and `AddressRuleEntry.DeclaredFolders`
+  hold the declaration. `Match.InFolder` declares its folder, `Match.Glob` declares the folder made of the
+  whole path segments before its first wildcard (a pattern starting with a wildcard declares nothing), and
+  `And()` / `Match.All()` take the union. A condition built from a raw lambda declares nothing and is never
+  reported. See [Writing Rules: Declared Folders](Documentation~/writing-rules.md#declared-folders).
+- `AddressRuleEntry`'s public constructor gained an optional trailing `declaredFolders` argument.
+- `Match.InFolderByGuid(guid, recursive = true)`: like `Match.InFolder`, but identifies the folder by asset GUID
+  so the rule survives the folder being moved or renamed. A GUID that does not resolve to a folder matches
+  nothing and is reported.
+- `ValidationStatus.DeclaredFolderMissing` (`IsOk=false`, `IsBlocking=true`, `Context` is null): a declared
+  folder does not exist. Reported once per folder by `ApplyAll`, `ValidateAll`, and `BuildPredictedSnapshot`.
+  While one is present, stale entry cleanup (including deleted-asset follow-up) is suspended for that run, the
+  same as when a rule's `Configure()` fails. `ValidationStatus.DeclaredFolderCaseMismatch` (`IsOk=true`): a
+  declared folder exists but differs from the declaration only in letter case; a non-blocking notice. The
+  automatic apply on import caches the check between domain reloads and re-checks a folder only when it, or a
+  folder above it, is created, deleted, moved, or renamed.
 
 ### Changed
 
+- **BREAKING**: A rule that references a folder that does not exist through `Match.InFolder` or `Match.Glob`
+  (a typo, or a folder that was moved or deleted) is now reported as `ValidationStatus.DeclaredFolderMissing`,
+  a blocking issue. Such a rule never matched anything before, so projects that carried one silently now see:
+  `CheckCLI` / `ApplyWithValidateCLI` exit with code 2 instead of 0, Apply with Validate in the menu aborts,
+  and, with `CleanupStaleEntries` on, stale entry cleanup is suspended for every run while the folder is
+  missing. Fix the folder path, or, if the dead reference is intentional, write the condition as a raw lambda
+  (`Where(ctx => ctx.IsInFolder("..."))`), which declares no folder and is never reported.
 - **BREAKING**: Labels are now written only from the winning address rule and from label-only rules
   (`AnyGroup()`, or a `Group()` rule with no `Address()`). Previously, every matching rule's labels were
   written to the asset, so a broad low-priority rule's labels were also stamped onto assets that a narrower

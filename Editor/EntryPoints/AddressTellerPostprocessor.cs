@@ -57,6 +57,15 @@ namespace AddressTeller.Editor
             string[] movedAssets,
             string[] movedFromAssets)
         {
+            // ルールが宣言したフォルダの検査結果（増分適用でキャッシュされる）と GUID 解決のキャッシュは、
+            // フォルダの作成・削除・移動・改名が変更パス（移動元を含む）に現れるたびに捨てる。
+            // 下のどの early return（再入ガード・テスト抑止・設定ゲート失敗・PostprocessEnabled OFF・
+            // ConfigFolder のみの変更・重複エントリ）よりも前に置く——ここを通らない import があると、
+            // 古い Exists のキャッシュが残り、実在しなくなったフォルダを見逃して削除停止の安全弁が効かなくなる。
+            // キャッシュが空なら changedPaths は列挙されない。
+            AssetDatabaseFolderGuidResolver.ClearCache();
+            DeclaredFolderInspector.InvalidateCache(importedAssets.Concat(deletedAssets).Concat(movedAssets).Concat(movedFromAssets));
+
             if (s_isApplying) return;
             if (SuppressForTests) return;
             // Postprocessor は1 import ごとに毎回呼ばれるため、設定ファイルが壊れたままだと Always ポリシー
@@ -100,8 +109,14 @@ namespace AddressTeller.Editor
                 // フルスキャンする ValidateAll / BuildPredictedSnapshot（Apply All・Apply with Validate・
                 // 各 CLI が経由する dry-run）側でのみ検出する。
                 var targetPaths = importedAssets.Concat(movedAssets);
-                var issues = AddressTellerService.ApplyAll(targetPaths, settings);
-                AddressTellerIssueLogger.LogAll(issues);
+                var issues = AddressTellerService.ApplyAllIncremental(targetPaths, settings);
+
+                // 宣言フォルダの検査結果（欠落・大小文字違い）は、直らない限り import のたびに同じ内容で返ってくる。
+                // 重複エントリ検出と同じく、内容が変わらない間は最初の1回だけログする（フルスキャン系の
+                // Menu・CLI は従来どおり毎回 LogAll で出す）。個別の内容は ValidateAll 等の結果側で常に得られる。
+                var declaredFolderIssues = issues.Where(IsDeclaredFolderIssue).ToList();
+                AddressTellerIssueLogger.LogAll(issues.Where(i => !IsDeclaredFolderIssue(i)).ToList());
+                LogDeclaredFolderIssuesOnce(declaredFolderIssues);
 
                 if (deletedAssets.Length > 0)
                 {
@@ -166,6 +181,55 @@ namespace AddressTeller.Editor
 
             s_lastLoggedDuplicateSignature = signature;
             return true;
+        }
+
+        /// <summary>
+        /// 直近にログした宣言フォルダ検査結果のシグネチャ。内容が変わらない限り再ログしない
+        /// （<see cref="s_lastLoggedDuplicateSignature"/> と同じ考え方）。null は「まだ一度もログしていない、
+        /// または直近の import で解消された」ことを表す。テストからリセットできるよう internal にしている。
+        /// </summary>
+        internal static string s_lastLoggedDeclaredFolderSignature;
+
+        private static bool IsDeclaredFolderIssue(ValidationResult issue)
+            => issue.Status == ValidationStatus.DeclaredFolderMissing
+                || issue.Status == ValidationStatus.DeclaredFolderCaseMismatch;
+
+        /// <summary>
+        /// <paramref name="declaredFolderIssues"/> を今回ログすべきかどうかを判定し、
+        /// <see cref="s_lastLoggedDeclaredFolderSignature"/> を更新する（<see cref="ShouldLogDuplicateAssetEntries"/> と
+        /// 同じ契約）。空リストなら記憶をリセットして false（解消後に再発したら再ログできるように）。
+        /// 空でなければ、直前にログした内容（Status と Message の連結）と一致すれば false、変化していれば記憶を更新して true。
+        /// </summary>
+        internal static bool ShouldLogDeclaredFolderIssues(IReadOnlyList<ValidationResult> declaredFolderIssues)
+        {
+            if (declaredFolderIssues.Count == 0)
+            {
+                s_lastLoggedDeclaredFolderSignature = null;
+                return false;
+            }
+
+            var signature = string.Join("", declaredFolderIssues.Select(i => $"{i.Status}:{i.Message}"));
+            if (signature == s_lastLoggedDeclaredFolderSignature) return false;
+
+            s_lastLoggedDeclaredFolderSignature = signature;
+            return true;
+        }
+
+        /// <summary>
+        /// 宣言フォルダの検査結果を、内容が変わったときだけログする。欠落があり CleanupStaleEntries が ON なら、
+        /// 増分適用の内部では出さない（<see cref="AddressTellerService.ApplyAllIncremental(IEnumerable{string}, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings)"/>）
+        /// stale 掃除停止の警告も、ここで同じ頻度で出す。
+        /// </summary>
+        private static void LogDeclaredFolderIssuesOnce(IReadOnlyList<ValidationResult> declaredFolderIssues)
+        {
+            if (!ShouldLogDeclaredFolderIssues(declaredFolderIssues)) return;
+
+            foreach (var issue in declaredFolderIssues)
+                AddressTellerIssueLogger.Log(issue);
+
+            var missingCount = declaredFolderIssues.Count(i => i.Status == ValidationStatus.DeclaredFolderMissing);
+            if (missingCount > 0 && AddressTellerSettings.CleanupStaleEntries)
+                UnityEngine.Debug.LogWarning($"[AddressTeller] Skipping stale entry cleanup for this run because {missingCount} declared folder(s) do not exist.");
         }
 
         /// <summary>

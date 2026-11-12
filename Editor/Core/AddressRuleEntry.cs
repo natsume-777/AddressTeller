@@ -46,6 +46,20 @@ namespace AddressTeller
         /// </summary>
         public bool IncludesFolders { get; }
 
+        /// <summary>
+        /// Folders this rule's condition depends on (see <see cref="AssetCondition.Folders"/>): project-relative
+        /// paths with "/" separators and no trailing "/". Empty when the rule's Where() was given a raw
+        /// lambda or no condition. For entries evaluated by AddressTeller, folders declared by GUID
+        /// (<see cref="Match.InFolderByGuid"/>) are included here as the paths they resolved to.
+        /// </summary>
+        public IReadOnlyList<string> DeclaredFolders { get; }
+
+        /// <summary>
+        /// GUID で宣言されたフォルダ。BuildSetup が解決し、解決後のパスを <see cref="DeclaredFolders"/> に加えた
+        /// エントリへ差し替える（<see cref="WithDeclaredFolders"/>）。
+        /// </summary>
+        internal IReadOnlyList<FolderGuidDeclaration> FolderGuids { get; }
+
         /// <summary>Creates an AddressRuleEntry. See the properties above for each parameter's meaning.</summary>
         public AddressRuleEntry(
             string groupName,
@@ -54,14 +68,15 @@ namespace AddressTeller
             IReadOnlyList<Func<AssetContext, string>> labelSelectors,
             string sourceClass = null,
             string description = null,
-            int ruleIndex = 0)
-            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false, order: 0)
+            int ruleIndex = 0,
+            IReadOnlyList<string> declaredFolders = null)
+            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false, order: 0, declaredFolders: declaredFolders, folderGuids: null)
         {
         }
 
         /// <summary>
         /// internal 用オーバーロード。IncludeFolders() を宣言したビルダー（AddressRuleBuilderImpl）と、
-        /// GroupDefault() のセンチネル解決時の再構築（RuleEvaluationPipeline.BuildSetup）が使う。
+        /// GroupDefault() のセンチネル解決時・GUID フォルダ解決時の再構築（RuleEvaluationPipeline.BuildSetup）が使う。
         /// </summary>
         internal AddressRuleEntry(
             string groupName,
@@ -72,8 +87,12 @@ namespace AddressTeller
             string description,
             int ruleIndex,
             bool includesFolders,
-            int order)
+            int order,
+            IReadOnlyList<string> declaredFolders = null,
+            IReadOnlyList<FolderGuidDeclaration> folderGuids = null)
         {
+            DeclaredFolders = AssetCondition.NormalizeFolders(declaredFolders);
+            FolderGuids = folderGuids ?? Array.Empty<FolderGuidDeclaration>();
             // groupName は AnyGroup() 由来のラベル専用エントリでは null を許容する。
             GroupName = groupName;
             Predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
@@ -85,6 +104,14 @@ namespace AddressTeller
             IncludesFolders = includesFolders;
             Order = order;
         }
+
+        /// <summary>グループ名だけを差し替えた複製を返す（GroupDefault() のセンチネル解決用）。</summary>
+        internal AddressRuleEntry WithGroupName(string groupName)
+            => new AddressRuleEntry(groupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, DeclaredFolders, FolderGuids);
+
+        /// <summary>宣言フォルダだけを差し替えた複製を返す（GUID で宣言されたフォルダの解決結果を反映する用）。</summary>
+        internal AddressRuleEntry WithDeclaredFolders(IReadOnlyList<string> declaredFolders)
+            => new AddressRuleEntry(GroupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, declaredFolders, FolderGuids);
 
         /// <summary>
         /// Builds an identifier string for error messages from SourceClass / Description / RuleIndex.

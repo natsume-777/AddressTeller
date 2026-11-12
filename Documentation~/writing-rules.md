@@ -83,13 +83,26 @@ rules.Group("Characters")
 ```
 
 Key methods:
-- `Match.InFolder(string path)` — matches assets under the specified folder
+- `Match.InFolder(string path)` — matches assets under the specified folder (declares the folder; see [Declared Folders](#declared-folders))
+- `Match.InFolderByGuid(string guid, bool recursive = true)` — like `InFolder`, but identifies the folder by its asset GUID, so the rule keeps working after the folder is moved or renamed
 - `Match.OfType<T>()` — matches assets of the specified type (GameObject, Sprite, etc.)
 - `Match.Glob(string pattern)` — matches by wildcard pattern against the full path (e.g., `Assets/**/*.prefab`; a bare `*.prefab` never matches anything, since `*` doesn't cross `/` and there is no asset path without one — see the XML doc on `Match.Glob` for the full syntax)
 - `Match.All()` — always true (unconditional rule)
 - `condition.And(otherCondition)` — combines conditions with AND
 
 If your rule file also uses `System.Text.RegularExpressions`, add `using Match = AddressTeller.Match;` to disambiguate the two `Match` types.
+
+### Declared Folders
+
+A condition built with `Match.InFolder`, `Match.InFolderByGuid`, or `Match.Glob` records the folders it depends on (`AssetCondition.Folders`, copied to `AddressRuleEntry.DeclaredFolders` when the condition is passed to `Where()`). `And()` and `Match.All()` take the union of their operands' folders. Whenever AddressTeller evaluates the rules (Apply, Validate, dry-run), it checks that each declared folder exists:
+
+- A folder that does not exist is reported as `ValidationStatus.DeclaredFolderMissing` (blocking), once per folder, naming the rules that declare it. A rule that depends on a missing folder can never match anything — typically a typo, or a folder that was moved or deleted. While any declared folder is missing, AddressTeller also suspends stale entry cleanup for that whole run, the same as when a rule fails to configure: with a rule silently matching nothing, an entry that merely looks unmatched must not be removed. A plain `ApplyAll` call and the automatic apply on import still evaluate and write everything else (other rules, other assets) as usual; but because the issue is blocking, Apply with Validate (the menu item and `ApplyWithValidateCLI`) aborts the whole Apply, and `CheckCLI` / `ApplyWithValidateCLI` exit with code 2.
+- A folder that exists but differs from the declaration only in letter case (for example `Assets/art` declared, `Assets/Art` on disk) is reported as `ValidationStatus.DeclaredFolderCaseMismatch`, a non-blocking notice. Folder matching ignores case, so the rule still applies; correct the declaration to the real name.
+- `Match.Glob` declares the folder made of the whole path segments before its first wildcard: `Assets/Art/*.png` declares `Assets/Art`, and `Assets/Art*/x` declares `Assets`. A pattern that starts with a wildcard (for example `**/foo`) has no fixed prefix and declares nothing, so a missing folder cannot be reported for it.
+- A condition built from a raw lambda — `Where(ctx => ctx.IsInFolder("Assets/Foo"))` — declares nothing and is never reported. Use `Match.InFolder` if you want the check.
+- `Match.InFolderByGuid` is resolved to the folder's current path each time the rules are evaluated (the lookup result is kept until the start of the next run or the next import, whichever comes first). A GUID that does not resolve to a folder is reported as `DeclaredFolderMissing`, and the condition matches nothing. The GUID is looked up each time the condition is evaluated, so `RuleInspector.Collect` in an Editor unit test sees the same result as AddressTeller's own evaluation; where no GUID lookup is available (outside the Unity Editor's AssetDatabase) the condition never matches.
+
+Between domain reloads, the automatic apply on import (`AddressTellerPostprocessor`) reuses the result of this check and re-checks a folder only when that folder, or a folder above it, was created, deleted, moved, or renamed in the import. Apply All, Validate, and the CLI entry points always check again.
 
 ### Naming Static Class
 

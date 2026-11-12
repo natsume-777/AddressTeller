@@ -16,26 +16,32 @@ namespace AddressTeller.Editor
     {
         private List<AssetExplanation> _explanations = new();
         private IReadOnlyList<ValidationResult> _configureFailures = Array.Empty<ValidationResult>();
+        private IReadOnlyList<ValidationResult> _declaredFolderIssues = Array.Empty<ValidationResult>();
 
         /// <summary>結果を渡してウィンドウを開く。既存ウィンドウがあれば再利用する。</summary>
         /// <param name="configureFailures">
         /// ルールクラスの Configure() が例外を送出した場合の失敗一覧（<see cref="RuleExplainService"/> の
         /// out 引数付き Explain オーバーロード参照）。1件以上あれば、ウィンドウ先頭に警告として提示する。
         /// </param>
-        public static void ShowWindow(IReadOnlyList<AssetExplanation> explanations, IReadOnlyList<ValidationResult> configureFailures = null)
+        /// <param name="declaredFolderIssues">
+        /// ルールが宣言したフォルダの検査結果（実在しない・大小文字違い。<see cref="RuleExplainService"/> 参照）。
+        /// フォルダが無いルールは何にもマッチしないためアセット行には現れず、1件以上あればウィンドウ先頭に提示する。
+        /// </param>
+        public static void ShowWindow(IReadOnlyList<AssetExplanation> explanations, IReadOnlyList<ValidationResult> configureFailures = null, IReadOnlyList<ValidationResult> declaredFolderIssues = null)
         {
             var window = GetWindow<AddressTellerExplainWindow>();
             window.titleContent = new GUIContent("AddressTeller - Explain");
             window.minSize = new Vector2(480, 320);
-            window.SetExplanations(explanations, configureFailures);
+            window.SetExplanations(explanations, configureFailures, declaredFolderIssues);
             window.Show();
             window.Focus();
         }
 
-        private void SetExplanations(IReadOnlyList<AssetExplanation> explanations, IReadOnlyList<ValidationResult> configureFailures)
+        private void SetExplanations(IReadOnlyList<AssetExplanation> explanations, IReadOnlyList<ValidationResult> configureFailures, IReadOnlyList<ValidationResult> declaredFolderIssues)
         {
             _explanations = explanations?.ToList() ?? new List<AssetExplanation>();
             _configureFailures = configureFailures ?? Array.Empty<ValidationResult>();
+            _declaredFolderIssues = declaredFolderIssues ?? Array.Empty<ValidationResult>();
             // データ更新時は UI を再構築する
             var root = rootVisualElement;
             root.Clear();
@@ -66,6 +72,13 @@ namespace AddressTeller.Editor
                     $"{_configureFailures.Count} rule(s) failed to configure and were skipped: "
                         + $"{string.Join("; ", _configureFailures.Select(f => f.Message))}",
                     HelpBoxMessageType.Warning));
+
+            // 宣言フォルダの欠落は、そのルールが何にもマッチしない理由になる（アセット行には現れない）。
+            // 実在しないものはブロッキングの問題なので Error、大小文字違いだけなら Warning で提示する。
+            if (_declaredFolderIssues.Count > 0)
+                root.Add(new HelpBox(
+                    string.Join("\n", _declaredFolderIssues.Select(i => $"{i.Status}: {i.Message}")),
+                    _declaredFolderIssues.Any(i => !i.IsOk) ? HelpBoxMessageType.Error : HelpBoxMessageType.Warning));
 
             if (_explanations.Count == 0)
             {

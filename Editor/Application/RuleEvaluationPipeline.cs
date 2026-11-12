@@ -46,7 +46,25 @@ namespace AddressTeller.Editor
         /// </summary>
         public IReadOnlyList<ValidationResult> ConfigureFailures { get; }
 
-        public EvaluationSetup(IReadOnlyList<AddressRuleEntry> entries, string configFolder, HashSet<string> ownedGroups, HashSet<string> existingGroupNames, bool autoCreateMissingGroups, bool defaultGroupUnavailable = false, IReadOnlyList<ValidationResult> configureFailures = null)
+        /// <summary>
+        /// ルールが宣言したフォルダの検査結果（<see cref="ValidationStatus.DeclaredFolderMissing"/> と
+        /// <see cref="ValidationStatus.DeclaredFolderCaseMismatch"/>、Context は null）。
+        /// <see cref="ConfigureFailures"/> と同様、issues リストを返す呼び出し側はこれをそのまま結果に含めること。
+        /// </summary>
+        public IReadOnlyList<ValidationResult> DeclaredFolderIssues { get; }
+
+        /// <summary>宣言フォルダが1つでも実在しない（<see cref="ValidationStatus.DeclaredFolderMissing"/> がある）。</summary>
+        public bool HasMissingDeclaredFolder { get; }
+
+        /// <summary>
+        /// このランで stale クリーンアップ（無マッチ・無効パスエントリの削除と、資産削除への追従）を止めるべきか。
+        /// Configure() の失敗（所有グループが信頼できない）か、宣言フォルダの欠落（そのルールが何にもマッチ
+        /// しないだけで、エントリが「無マッチ」に見えている可能性がある）のどちらかがあれば true。
+        /// Apply/Predict/RemoveEntryForDeletedAsset の <c>suspendStaleCleanup</c> 引数にはこの値を渡す。
+        /// </summary>
+        public bool SuspendsStaleCleanup => ConfigureFailures.Count > 0 || HasMissingDeclaredFolder;
+
+        public EvaluationSetup(IReadOnlyList<AddressRuleEntry> entries, string configFolder, HashSet<string> ownedGroups, HashSet<string> existingGroupNames, bool autoCreateMissingGroups, bool defaultGroupUnavailable = false, IReadOnlyList<ValidationResult> configureFailures = null, IReadOnlyList<ValidationResult> declaredFolderIssues = null)
         {
             Entries = entries;
             ConfigFolder = configFolder;
@@ -55,6 +73,8 @@ namespace AddressTeller.Editor
             AutoCreateMissingGroups = autoCreateMissingGroups;
             DefaultGroupUnavailable = defaultGroupUnavailable;
             ConfigureFailures = configureFailures ?? Array.Empty<ValidationResult>();
+            DeclaredFolderIssues = declaredFolderIssues ?? Array.Empty<ValidationResult>();
+            HasMissingDeclaredFolder = DeclaredFolderIssues.Any(i => i.Status == ValidationStatus.DeclaredFolderMissing);
         }
     }
 
@@ -117,8 +137,14 @@ namespace AddressTeller.Editor
         /// DefaultGroup が取得できない場合は該当エントリのグループ名をセンチネルのまま残し、
         /// <see cref="EvaluationSetup.DefaultGroupUnavailable"/> を true にする
         /// （AddressTellerApplier.Validate がセンチネルを検出して <see cref="ValidationStatus.DefaultGroupUnavailable"/> を返す）。
+        /// 同様に、ルールが宣言したフォルダ（GUID 宣言の解決を含む）もここで1回だけ検査し、結果を
+        /// <see cref="EvaluationSetup.DeclaredFolderIssues"/> に載せる。
         /// </summary>
-        public static EvaluationSetup BuildSetup(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
+        /// <param name="useDeclaredFolderCache">
+        /// true のとき、宣言フォルダの検査結果のうちキャッシュ済みのものを再利用する（増分適用用。
+        /// <see cref="DeclaredFolderInspector"/> 参照）。フルスキャン系の呼び出しは false のまま常に検査し直す。
+        /// </param>
+        public static EvaluationSetup BuildSetup(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules, bool useDeclaredFolderCache = false)
         {
             var entries = GetOrderedEntries(rules, out var configureFailures);
             // settings.ConfigFolder は Windows では "Assets\AddressableAssetsData" のようにバックスラッシュ
@@ -148,7 +174,7 @@ namespace AddressTeller.Editor
                 {
                     entries = entries
                         .Select(e => e.GroupName == AddressRuleBuilderImpl.DefaultGroupSentinel
-                            ? new AddressRuleEntry(defaultGroup.Name, e.Predicate, e.AddressSelector, e.LabelSelectors, e.SourceClass, e.Description, e.RuleIndex, e.IncludesFolders, e.Order)
+                            ? e.WithGroupName(defaultGroup.Name)
                             : e)
                         .ToArray();
                 }
@@ -159,6 +185,12 @@ namespace AddressTeller.Editor
                 }
             }
 
+            // GUID で宣言されたフォルダを現在のパスへ解決し（引けなければ DeclaredFolderMissing）、
+            // そのうえで宣言された全フォルダの実在・大小文字を検査する。
+            var declaredFolderIssues = new List<ValidationResult>();
+            entries = DeclaredFolderInspector.ResolveGuids(entries, declaredFolderIssues);
+            declaredFolderIssues.AddRange(DeclaredFolderInspector.Inspect(entries, useDeclaredFolderCache));
+
             // 削除の権限が発生するのは Address() を宣言したグループだけ（AnyGroup() 由来の GroupName=null、
             // 未解決のセンチネル、Group() だけでまだ Address() を呼んでいないエントリは除外する）。
             // ラベルの加算はこの集合を参照しないため、Group() だけ宣言した時点では削除対象にもラベル加算不可にもならない。
@@ -167,7 +199,7 @@ namespace AddressTeller.Editor
                 .Select(e => e.GroupName));
             // settings.groups の null 要素を除外する（Capture の if (group == null) continue; と対称にする）。
             var existingGroupNames = new HashSet<string>(settings.groups.Where(g => g != null).Select(g => g.Name));
-            return new EvaluationSetup(entries, configFolder, ownedGroups, existingGroupNames, AddressTellerSettings.AutoCreateMissingGroups, defaultGroupUnavailable, configureFailures);
+            return new EvaluationSetup(entries, configFolder, ownedGroups, existingGroupNames, AddressTellerSettings.AutoCreateMissingGroups, defaultGroupUnavailable, configureFailures, declaredFolderIssues);
         }
 
         /// <summary>
@@ -207,13 +239,16 @@ namespace AddressTeller.Editor
             var afterMap = before.Entries.ToDictionary(e => e.Guid);
 
             var setup = BuildSetup(settings, rules);
-            var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
+            // ApplyAll と同じく、Configure() の失敗と宣言フォルダの欠落のどちらでも stale クリーンアップを止める
+            // （以降の suspendStaleCleanup はこの両方を含む。EvaluationSetup.SuspendsStaleCleanup 参照）。
+            var suspendStaleCleanup = setup.SuspendsStaleCleanup;
 
             var issues = new List<ValidationResult>(setup.ConfigureFailures);
+            issues.AddRange(setup.DeclaredFolderIssues);
 
-            // ApplyAll と同じ理由・同じ条件（Configure() 失敗時は停止）で、所有グループ内の無効パスエントリを
-            // 洗い出す。paths には依存させない（旧バージョンの残骸は paths に含まれるとは限らないため）。
-            if (!hasConfigureFailures)
+            // ApplyAll と同じ理由・同じ条件（Configure() 失敗・宣言フォルダ欠落時は停止）で、所有グループ内の
+            // 無効パスエントリを洗い出す。paths には依存させない（旧バージョンの残骸は paths に含まれるとは限らないため）。
+            if (!suspendStaleCleanup)
             {
                 var invalidEntries = AddressTellerApplier.FindInvalidPathManagedEntries(settings, setup.OwnedGroups, setup.ConfigFolder);
                 if (AddressTellerSettings.CleanupStaleEntries)
@@ -268,7 +303,7 @@ namespace AddressTeller.Editor
                 var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
                 AddRuleErrors(ctx, resolution, issues);
 
-                var prediction = AddressTellerApplier.Predict(ctx, resolution, settings, setup.ExistingGroupNames, setup.OwnedGroups, setup.AutoCreateMissingGroups, hasConfigureFailures);
+                var prediction = AddressTellerApplier.Predict(ctx, resolution, settings, setup.ExistingGroupNames, setup.OwnedGroups, setup.AutoCreateMissingGroups, suspendStaleCleanup);
 
                 switch (prediction.Action)
                 {

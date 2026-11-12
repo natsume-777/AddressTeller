@@ -237,6 +237,8 @@ sealed class AddressTeller.Editor.ValidationResult
 enum AddressTeller.Editor.ValidationStatus
   EnumMember BlockedByRuleError = 15
   EnumMember ConflictingAddress = 3
+  EnumMember DeclaredFolderCaseMismatch = 18
+  EnumMember DeclaredFolderMissing = 17
   EnumMember DefaultGroupUnavailable = 9
   EnumMember DuplicateAddress = 12
   EnumMember DuplicateAssetEntry = 16

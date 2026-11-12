@@ -263,7 +263,7 @@ namespace AddressTeller.Editor.Tests
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var prediction = AddressTellerApplier.Predict(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups, hasConfigureFailures: true);
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups, suspendStaleCleanup: true);
 
             Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
             Assert.IsNull(prediction.RemovedFromGroup);

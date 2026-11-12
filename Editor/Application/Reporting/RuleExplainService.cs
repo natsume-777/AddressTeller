@@ -60,7 +60,7 @@ namespace AddressTeller.Editor
         /// ルール一覧をそのまま評価に使う（テスト等での利用を想定）。
         /// </summary>
         public static IReadOnlyList<AssetExplanation> Explain(IReadOnlyList<string> assetPaths, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
-            => Explain(assetPaths, settings, rules, out _);
+            => Explain(assetPaths, settings, rules, out _, out _);
 
         /// <summary>
         /// <see cref="Explain(IReadOnlyList{string}, AddressableAssetSettings, IReadOnlyList{AddressRuleBase})"/> に
@@ -70,17 +70,29 @@ namespace AddressTeller.Editor
         /// 提示できるよう、失敗一覧を別途返す。
         /// </summary>
         public static IReadOnlyList<AssetExplanation> Explain(IReadOnlyList<string> assetPaths, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules, out IReadOnlyList<ValidationResult> configureFailures)
+            => Explain(assetPaths, settings, rules, out configureFailures, out _);
+
+        /// <summary>
+        /// <see cref="Explain(IReadOnlyList{string}, AddressableAssetSettings, IReadOnlyList{AddressRuleBase}, out IReadOnlyList{ValidationResult})"/>
+        /// に <paramref name="declaredFolderIssues"/> を追加したオーバーロード。ルールが宣言したフォルダの検査結果
+        /// （<see cref="ValidationStatus.DeclaredFolderMissing"/> / <see cref="ValidationStatus.DeclaredFolderCaseMismatch"/>）を、
+        /// 呼び出し側 UI がウィンドウ先頭で提示できるよう別途返す（フォルダが無いルールは何にもマッチしないため、
+        /// アセットごとの結果には現れない）。
+        /// </summary>
+        public static IReadOnlyList<AssetExplanation> Explain(IReadOnlyList<string> assetPaths, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules, out IReadOnlyList<ValidationResult> configureFailures, out IReadOnlyList<ValidationResult> declaredFolderIssues)
         {
             settings ??= AddressableAssetSettingsDefaultObject.Settings;
             if (settings == null)
             {
                 configureFailures = Array.Empty<ValidationResult>();
+                declaredFolderIssues = Array.Empty<ValidationResult>();
                 return Array.Empty<AssetExplanation>();
             }
             rules ??= Array.Empty<AddressRuleBase>();
 
             var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
             configureFailures = setup.ConfigureFailures;
+            declaredFolderIssues = setup.DeclaredFolderIssues;
 
             var results = new List<AssetExplanation>(assetPaths.Count);
 

@@ -14,9 +14,10 @@ abstract class AddressTeller.AddressRuleBase
   Property virtual System.Int32 Order { get; }
 
 sealed class AddressTeller.AddressRuleEntry
-  Constructor (System.String groupName, System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.Func<AddressTeller.AssetContext, System.String> addressSelector, System.Collections.Generic.IReadOnlyList<System.Func<AddressTeller.AssetContext, System.String>> labelSelectors, System.String sourceClass = null, System.String description = null, System.Int32 ruleIndex = 0)
+  Constructor (System.String groupName, System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.Func<AddressTeller.AssetContext, System.String> addressSelector, System.Collections.Generic.IReadOnlyList<System.Func<AddressTeller.AssetContext, System.String>> labelSelectors, System.String sourceClass = null, System.String description = null, System.Int32 ruleIndex = 0, System.Collections.Generic.IReadOnlyList<System.String> declaredFolders = null)
   Method static System.String DescribeSource(System.String sourceClass, System.String description, System.Int32 ruleIndex)
   Property System.Func<AddressTeller.AssetContext, System.String> AddressSelector { get; }
+  Property System.Collections.Generic.IReadOnlyList<System.String> DeclaredFolders { get; }
   Property System.String Description { get; }
   Property System.String GroupName { get; }
   Property System.Boolean IncludesFolders { get; }
@@ -26,12 +27,13 @@ sealed class AddressTeller.AddressRuleEntry
   Property System.String SourceClass { get; }
 
 sealed class AddressTeller.AssetCondition
-  Constructor (System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description = null)
+  Constructor (System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description = null, System.Collections.Generic.IReadOnlyList<System.String> folders = null)
   Method AddressTeller.AssetCondition And(AddressTeller.AssetCondition other)
   Method AddressTeller.AssetCondition And(System.Func<AddressTeller.AssetContext, System.Boolean> other, System.String description = null)
   Method System.Boolean Test(AddressTeller.AssetContext ctx)
   Method static System.Func<AddressTeller.AssetContext, System.Boolean> op_Implicit(AddressTeller.AssetCondition condition)
   Property System.String Description { get; }
+  Property System.Collections.Generic.IReadOnlyList<System.String> Folders { get; }
   Property System.Func<AddressTeller.AssetContext, System.Boolean> Predicate { get; }
 
 sealed class AddressTeller.AssetContext
@@ -103,6 +105,7 @@ static class AddressTeller.Match
   Method static AddressTeller.AssetCondition All(params AddressTeller.AssetCondition[] conditions)
   Method static AddressTeller.AssetCondition Glob(System.String pattern)
   Method static AddressTeller.AssetCondition InFolder(System.String folder, System.Boolean recursive = true)
+  Method static AddressTeller.AssetCondition InFolderByGuid(System.String guid, System.Boolean recursive = true)
   Method static AddressTeller.AssetCondition OfType<T>()
 
 static class AddressTeller.Naming

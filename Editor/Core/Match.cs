@@ -13,18 +13,51 @@ namespace AddressTeller
         /// Returns a condition that checks whether the asset is under the given folder.
         /// When recursive=true (default), subfolders are included recursively. When recursive=false,
         /// only direct children of the folder match.
+        /// The folder is declared as a dependency (<see cref="AssetCondition.Folders"/>): AddressTeller
+        /// reports it when the folder does not exist, or exists only with different letter case.
         /// </summary>
         public static AssetCondition InFolder(string folder, bool recursive = true)
         {
+            var declared = new[] { folder };
             if (recursive)
             {
                 var description = $"InFolder({folder})";
-                return new AssetCondition(ctx => ctx.IsInFolder(folder), description);
+                return new AssetCondition(ctx => ctx.IsInFolder(folder), description, declared);
             }
 
-            var normalized = (folder ?? string.Empty).Replace('\\', '/').TrimEnd('/');
+            var normalized = AssetCondition.NormalizeFolder(folder);
             var descriptionNonRecursive = $"InFolder({folder}, recursive: false)";
-            return new AssetCondition(ctx => ctx.Directory.Equals(normalized, StringComparison.OrdinalIgnoreCase), descriptionNonRecursive);
+            return new AssetCondition(ctx => ctx.Directory.Equals(normalized, StringComparison.OrdinalIgnoreCase), descriptionNonRecursive, declared);
+        }
+
+        /// <summary>
+        /// Like <see cref="InFolder"/>, but identifies the folder by its asset GUID, so the condition keeps
+        /// working after the folder is moved or renamed. AddressTeller resolves the GUID to the folder's
+        /// current path when it evaluates the rule. If the GUID does not resolve to a folder in the project,
+        /// the condition matches nothing and the problem is reported (the same as a declared folder that
+        /// does not exist). The GUID is looked up each time the condition is evaluated, so the same result
+        /// is produced inside AddressTeller's evaluation and when a rule is exercised through
+        /// <c>RuleInspector.Collect</c> in the Editor. Where no GUID lookup is available (outside the Unity
+        /// Editor's AssetDatabase), the condition never matches.
+        /// </summary>
+        /// <exception cref="ArgumentException"><paramref name="guid"/> is null or empty.</exception>
+        public static AssetCondition InFolderByGuid(string guid, bool recursive = true)
+        {
+            if (string.IsNullOrEmpty(guid)) throw new ArgumentException("guid must not be empty.", nameof(guid));
+
+            var declaration = new FolderGuidDeclaration(guid);
+            var declaredGuid = guid;
+            var description = recursive ? $"InFolderByGuid({guid})" : $"InFolderByGuid({guid}, recursive: false)";
+            Func<AssetContext, bool> predicate = ctx =>
+            {
+                // 解決は評価のたびに FolderGuidResolver から引く（Editor 側の実装が結果をキャッシュする）。
+                var resolved = FolderGuidResolver.Resolve(declaredGuid);
+                if (string.IsNullOrEmpty(resolved)) return false;
+                return recursive
+                    ? ctx.IsInFolder(resolved)
+                    : ctx.Directory.Equals(resolved, StringComparison.OrdinalIgnoreCase);
+            };
+            return new AssetCondition(predicate, description, null, new[] { declaration });
         }
 
         /// <summary>Returns a condition that checks whether the asset's type is assignable to T.</summary>
@@ -43,17 +76,40 @@ namespace AddressTeller
         /// "**" only guarantees a zero-segment match (no intermediate folder) when it appears between
         /// two "/" characters (e.g. "Assets/**/*.png"). A "**" at the start or end of the pattern (e.g.
         /// "**/foo", "foo/**") requires at least one segment to match.
+        /// The folder made of the whole path segments before the first wildcard is declared as a
+        /// dependency (<see cref="AssetCondition.Folders"/>): "Assets/Art/*.png" declares "Assets/Art", and
+        /// "Assets/Art*/x" declares "Assets". A pattern that starts with a wildcard (for example "**/foo")
+        /// has no fixed prefix and declares nothing, so AddressTeller cannot report a missing folder for it.
         /// </summary>
         public static AssetCondition Glob(string pattern)
         {
             var regex = new Regex(ConvertGlobToRegex(pattern), RegexOptions.IgnoreCase | RegexOptions.Compiled);
             var description = $"Glob({pattern})";
-            return new AssetCondition(ctx => regex.IsMatch(ctx.Path), description);
+            var prefix = ExtractGlobFolderPrefix(pattern);
+            return new AssetCondition(ctx => regex.IsMatch(ctx.Path), description, prefix == null ? null : new[] { prefix });
+        }
+
+        /// <summary>
+        /// glob パターンの最初のワイルドカード（"*" / "?"）より前にある、完結したパスセグメントだけから成る
+        /// フォルダを返す。ワイルドカードの直前のセグメントは部分一致の可能性があるため含めない
+        /// （"Assets/Art*/x" は "Assets"）。固定プレフィックスが無い（先頭がワイルドカード等）場合は null。
+        /// </summary>
+        internal static string ExtractGlobFolderPrefix(string pattern)
+        {
+            if (string.IsNullOrEmpty(pattern)) return null;
+
+            var wildcard = pattern.IndexOfAny(new[] { '*', '?' });
+            var fixedPart = wildcard < 0 ? pattern : pattern.Substring(0, wildcard);
+            var lastSlash = fixedPart.LastIndexOf('/');
+            if (lastSlash <= 0) return null;
+
+            return fixedPart.Substring(0, lastSlash);
         }
 
         /// <summary>
         /// Combines all given conditions with AND. If none are given, returns a condition that always
-        /// returns true (Description is null).
+        /// returns true (Description is null). <see cref="AssetCondition.Folders"/> of the result is the
+        /// union of all given conditions' folders.
         /// </summary>
         public static AssetCondition All(params AssetCondition[] conditions)
         {

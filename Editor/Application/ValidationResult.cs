@@ -164,13 +164,40 @@ namespace AddressTeller.Editor
         /// that method.
         /// </summary>
         DuplicateAssetEntry = 16,
+        /// <summary>
+        /// A folder that a rule's condition declares it depends on (<see cref="AssetCondition.Folders"/>, set by
+        /// <c>Match.InFolder</c>, the fixed prefix of <c>Match.Glob</c>, or <c>Match.InFolderByGuid</c>) does
+        /// not exist in the project — or, for a GUID declaration, the GUID does not resolve to a folder. Such a
+        /// rule can never match anything, which usually means a typo or a folder that was moved or deleted.
+        /// This is reported once per missing folder (the message names the rules that declare it), and while
+        /// it is present AddressTeller suspends stale entry cleanup for that whole run (the same treatment as
+        /// <see cref="RuleConfigureFailed"/>): with a rule silently matching nothing, an entry that merely
+        /// looks unmatched must not be removed. A plain <c>ApplyAll</c> call, the automatic apply on import,
+        /// and other rules and assets are otherwise unaffected: they are still evaluated and written as usual.
+        /// Being blocking, however, it makes Apply with Validate (the menu item and
+        /// <c>ApplyWithValidateCLI</c>) abort the whole Apply, and <c>CheckCLI</c> / <c>ApplyWithValidateCLI</c>
+        /// exit with code 2. <see cref="ValidationResult.Context"/> is null, since this is not
+        /// about one specific asset. Raw-lambda <c>Where()</c> conditions declare no folders and are never
+        /// reported for this.
+        /// </summary>
+        DeclaredFolderMissing = 17,
+        /// <summary>
+        /// A declared folder (see <see cref="DeclaredFolderMissing"/>) exists, but its path differs from the
+        /// declaration only in letter case (for example <c>Assets/art</c> declared, <c>Assets/Art</c> on
+        /// disk). Folder matching is case-insensitive, so the rule still applies; this non-blocking notice
+        /// (<see cref="ValidationResult.IsOk"/> is always true) asks you to correct the declaration so it
+        /// matches the real name. <see cref="ValidationResult.Context"/> is null, the same as
+        /// <see cref="DeclaredFolderMissing"/>.
+        /// </summary>
+        DeclaredFolderCaseMismatch = 18,
     }
 
     /// <summary>
     /// Result of evaluating rules against a single asset, as returned by ApplyAll/Validate/Predict/Explain.
     /// <see cref="Context"/> is null when <see cref="Status"/> is <see cref="ValidationStatus.RuleConfigureFailed"/>,
-    /// <see cref="ValidationStatus.DuplicateAddress"/>, <see cref="ValidationStatus.SettingsUnavailable"/>, or
-    /// <see cref="ValidationStatus.DuplicateAssetEntry"/> — the first three are not tied to a single asset, and
+    /// <see cref="ValidationStatus.DuplicateAddress"/>, <see cref="ValidationStatus.SettingsUnavailable"/>,
+    /// <see cref="ValidationStatus.DeclaredFolderMissing"/>, <see cref="ValidationStatus.DeclaredFolderCaseMismatch"/>,
+    /// or <see cref="ValidationStatus.DuplicateAssetEntry"/> — the first five are not tied to a single asset, and
     /// the last is detected before any per-asset evaluation runs (its message identifies the asset by GUID
     /// instead). For <see cref="ValidationStatus.UnmatchedEntryKept"/> it is always
     /// set for the "no longer matched" case, and set on a best-effort basis (null only when genuinely
@@ -211,6 +238,8 @@ namespace AddressTeller.Editor
         // GroupWillBeCreated は AutoCreateMissingGroups ON 時の作成予定通知であり、Apply をブロックしない（IsOk = true）。
         // UnmatchedEntryKept は CleanupStaleEntries OFF 時、ON なら削除されるはずだったエントリが残っている
         // ことの通知であり、書き込みも削除も行わない（IsOk = true）。
+        // DeclaredFolderCaseMismatch は宣言フォルダが大小文字だけ違う（マッチは大小文字無視なので動く）ことの
+        // 通知であり、書き込みも削除も止めない（IsOk = true）。
         // DuplicateAddress は書き込みを止めない報告専用ステータスだが、重複の当事者に「このランで
         // AddressTeller 自身が書くアドレス」が含まれるかどうかで重大度を分ける。含まれれば利用者のルールで
         // 直せる問題なので Error（IsOk = false）、含まれなければ AddressTeller に直す手立てが無い既存の状態
@@ -219,7 +248,8 @@ namespace AddressTeller.Editor
         /// True when <see cref="Status"/> is <see cref="ValidationStatus.Ok"/>,
         /// <see cref="ValidationStatus.Skipped"/>, <see cref="ValidationStatus.LabelsOnly"/>,
         /// <see cref="ValidationStatus.GroupWillBeCreated"/>, or
-        /// <see cref="ValidationStatus.UnmatchedEntryKept"/> — i.e. this result does not represent a
+        /// <see cref="ValidationStatus.UnmatchedEntryKept"/>, or
+        /// <see cref="ValidationStatus.DeclaredFolderCaseMismatch"/> — i.e. this result does not represent a
         /// problem. Also true for <see cref="ValidationStatus.DuplicateAddress"/> when
         /// <see cref="HasWritableDuplicate"/> is false (AddressTeller cannot resolve it itself, so it is
         /// reported as a notice rather than a blocking problem).
@@ -227,6 +257,7 @@ namespace AddressTeller.Editor
         public bool IsOk => Status == ValidationStatus.Ok || Status == ValidationStatus.Skipped
             || Status == ValidationStatus.LabelsOnly || Status == ValidationStatus.GroupWillBeCreated
             || Status == ValidationStatus.UnmatchedEntryKept
+            || Status == ValidationStatus.DeclaredFolderCaseMismatch
             || (Status == ValidationStatus.DuplicateAddress && !HasWritableDuplicate);
 
         /// <summary>

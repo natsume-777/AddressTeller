@@ -12,9 +12,32 @@
 
 - `AddressCandidate.Labels`: その候補を出したルールが同時に出したラベルを持つ、公開の読み取り専用
   プロパティ（null にならない）。その候補が勝ったときだけ書き込まれる。
+- ルールが、条件の依存するフォルダを宣言し、AddressTeller がその実在を検査するようになった。宣言は
+  `AssetCondition.Folders`（およびコンストラクタの省略可能な `folders` 引数）と
+  `AddressRuleEntry.DeclaredFolders` が保持する。`Match.InFolder` はそのフォルダを宣言し、`Match.Glob` は
+  最初のワイルドカードより前の、完結したパスセグメントだけから成るフォルダを宣言する（先頭がワイルドカード
+  のパターンは何も宣言しない）。`And()` / `Match.All()` は和集合になる。生ラムダの条件は何も宣言せず、
+  報告の対象にならない。[ルールの書き方: 宣言フォルダ](Documentation~/writing-rules.ja.md#宣言フォルダ)を参照。
+- `AddressRuleEntry` の公開コンストラクタに、省略可能な末尾引数 `declaredFolders` を追加した。
+- `Match.InFolderByGuid(guid, recursive = true)`: `Match.InFolder` と同じだが、フォルダをアセット GUID で
+  指定するため、フォルダを移動・改名してもルールが壊れない。フォルダに引けない GUID は何にもマッチせず、
+  報告される。
+- `ValidationStatus.DeclaredFolderMissing`（`IsOk=false`、`IsBlocking=true`、`Context` は null）: 宣言された
+  フォルダが実在しない。`ApplyAll`・`ValidateAll`・`BuildPredictedSnapshot` がフォルダごとに1件報告する。
+  これがある間は、ルールの `Configure()` が失敗したときと同じく、そのランの stale エントリ掃除（資産削除への
+  追従を含む）が止まる。`ValidationStatus.DeclaredFolderCaseMismatch`（`IsOk=true`）: 宣言フォルダが実在するが
+  宣言と大小文字だけ異なる、ブロッキングでない通知。import 時の自動適用は、この検査結果をドメインリロードまで
+  キャッシュし、そのフォルダ自身か上位のフォルダが作成・削除・移動・改名されたときだけ検査し直す。
 
 ### Changed
 
+- **BREAKING**: `Match.InFolder` / `Match.Glob` で実在しないフォルダ（綴りの誤り、移動・削除されたフォルダ）を
+  参照しているルールは、ブロッキングの問題 `ValidationStatus.DeclaredFolderMissing` として報告されるように
+  なった。そのようなルールはこれまで何にもマッチしないだけだったため、該当するルールを黙って抱えていた
+  プロジェクトでは、`CheckCLI` / `ApplyWithValidateCLI` の終了コードが 0 から 2 になり、メニューの
+  Apply with Validate が中止され、`CleanupStaleEntries` が ON なら、フォルダが無い間は毎回 stale エントリ掃除が
+  止まる。フォルダのパスを直すこと。意図して残している参照なら、条件を生ラムダ
+  （`Where(ctx => ctx.IsInFolder("..."))`）で書けば、フォルダは宣言されず報告もされない。
 - **BREAKING**: ラベルは、勝ったアドレスルールとラベルのみのルール（`AnyGroup()`、および `Address()` を
   呼ばない `Group()` ルール）からだけ書き込まれるようになった。従来はマッチした全ルールのラベルが
   アセットに書き込まれていたため、広い低優先ルールのラベルが、より狭い高優先ルールにアドレスを奪われた

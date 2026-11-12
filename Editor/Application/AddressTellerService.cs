@@ -54,6 +54,18 @@ namespace AddressTeller.Editor
                 ? RuleCollector.CollectRules()
                 : Array.Empty<AddressRuleBase>();
 
+        /// <summary>stale クリーンアップを止めた理由（Configure() の失敗件数・欠落した宣言フォルダ件数）を警告ログ用に整形する。</summary>
+        private static string DescribeCleanupSuspension(EvaluationSetup setup)
+        {
+            var reasons = new List<string>();
+            if (setup.ConfigureFailures.Count > 0)
+                reasons.Add($"{setup.ConfigureFailures.Count} rule(s) failed to configure");
+            var missingFolders = setup.DeclaredFolderIssues.Count(i => i.Status == ValidationStatus.DeclaredFolderMissing);
+            if (missingFolders > 0)
+                reasons.Add($"{missingFolders} declared folder(s) do not exist");
+            return string.Join(" and ", reasons);
+        }
+
         /// <summary>
         /// Applies all collected rules to every asset in the project and returns the results that had a
         /// problem (conflicts, missing groups, rule exceptions, etc.).
@@ -132,6 +144,21 @@ namespace AddressTeller.Editor
         /// rule list the caller supplies (intended for use in tests, etc.).
         /// </summary>
         public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules)
+            => ApplyAllCore(paths, settings, progress, rules, useDeclaredFolderCache: false);
+
+        /// <summary>
+        /// Postprocessor が import のたびに呼ぶ増分適用。<see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings)"/>
+        /// と同じ処理だが、ルールが宣言したフォルダの検査結果を（Postprocessor が変更されたパスで無効化しながら）
+        /// ドメインリロードまでキャッシュして再利用する。公開 API の ApplyAll は常に検査し直す。
+        /// </summary>
+        internal static IReadOnlyList<ValidationResult> ApplyAllIncremental(IEnumerable<string> paths, AddressableAssetSettings settings)
+            => ApplyAllIncremental(paths, settings, CollectEnabledRulesIfSettingsLoaded());
+
+        /// <summary>評価するルールを差し替えられる <see cref="ApplyAllIncremental(IEnumerable{string}, AddressableAssetSettings)"/>（テスト用）。</summary>
+        internal static IReadOnlyList<ValidationResult> ApplyAllIncremental(IEnumerable<string> paths, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
+            => ApplyAllCore(paths, settings, NullProgressReporter.Instance, rules, useDeclaredFolderCache: true);
+
+        private static IReadOnlyList<ValidationResult> ApplyAllCore(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules, bool useDeclaredFolderCache)
         {
             if (s_isApplying) return Array.Empty<ValidationResult>();
             s_isApplying = true;
@@ -164,18 +191,25 @@ namespace AddressTeller.Editor
                 if (duplicateAssetEntries.Count > 0)
                     return duplicateAssetEntries;
 
-                var setup = RuleEvaluationPipeline.BuildSetup(settings, rules);
+                var setup = RuleEvaluationPipeline.BuildSetup(settings, rules, useDeclaredFolderCache);
                 // OwnedGroups（CleanupStaleEntriesの対象判定）は有効化されているルールが Address() を
                 // 宣言しているグループのみが対象。無効化中のルールが所有するグループのエントリは
                 // ApplyAllでは掃除対象外（所有外扱い）になるが、資産削除時のRemoveEntriesForDeletedAssetsは
                 // 全ルール対象で掃除するため、両者の間に非対称が存在する。
 
-                var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
                 // Configure() に失敗したルールがある場合、ownedGroups は「失敗したルールが本来担当していた
                 // グループを、別の正常なルールがたまたま宣言していたため残っただけ」の可能性があり信頼できない。
-                // そのためこの実行全体で stale クリーンアップ（Apply の Skipped 分岐での削除）を停止する。
-                if (hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
-                    Debug.LogWarning($"[AddressTeller] Skipping stale entry cleanup for this run because {setup.ConfigureFailures.Count} rule(s) failed to configure.");
+                // 宣言フォルダが実在しないルールがある場合も、そのルールが何にもマッチしないだけで、本来は
+                // マッチするはずのエントリが「無マッチ」に見えている可能性がある。
+                // どちらもこの実行全体で stale クリーンアップ（Apply の Skipped 分岐での削除）を停止する。
+                // 以降の suspendStaleCleanup は両方を含む（EvaluationSetup.SuspendsStaleCleanup 参照）。
+                var suspendStaleCleanup = setup.SuspendsStaleCleanup;
+                // 増分適用（useDeclaredFolderCache）で、停止の理由が宣言フォルダの欠落だけの場合は、ここでは
+                // 警告しない。欠落が直らない間 import のたびに同じ警告が出てしまうため、Postprocessor が欠落の
+                // 報告と合わせて内容が変わったときだけ出す（Configure() の失敗は従来どおり毎回出す）。
+                if (suspendStaleCleanup && AddressTellerSettings.CleanupStaleEntries
+                    && !(useDeclaredFolderCache && setup.ConfigureFailures.Count == 0))
+                    Debug.LogWarning($"[AddressTeller] Skipping stale entry cleanup for this run because {DescribeCleanupSuspension(setup)}.");
 
                 // 旧バージョンの AddressTeller が作成した、いまはパスが無効なエントリ（ProjectSettings/*.asset の
                 // readOnly エントリ等）を掃除する。paths（このメソッドに渡された対象アセット）には依存させない
@@ -183,10 +217,11 @@ namespace AddressTeller.Editor
                 // 対象を絞ると永遠に掃除されなくなってしまう。既存の stale クリーンアップと同じ所有権判定
                 // （所有グループ限定）・同じ条件（CleanupStaleEntries、Configure() 失敗時は停止）を使う。
                 // 削除は RemoveInvalidPathEntries 側で個別に Warning ログ済みのため、戻り値は破棄する。
-                if (!hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
+                if (!suspendStaleCleanup && AddressTellerSettings.CleanupStaleEntries)
                     _ = AddressTellerApplier.RemoveInvalidPathEntries(settings, setup.OwnedGroups, setup.ConfigFolder);
 
                 var issues = new List<ValidationResult>(setup.ConfigureFailures);
+                issues.AddRange(setup.DeclaredFolderIssues);
 
                 var pathList = paths as IList<string> ?? paths.ToList();
                 var total = pathList.Count;
@@ -211,7 +246,7 @@ namespace AddressTeller.Editor
                     var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
                     RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.OwnedGroups, setup.AutoCreateMissingGroups, hasConfigureFailures);
+                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.OwnedGroups, setup.AutoCreateMissingGroups, suspendStaleCleanup);
                     // GroupWillBeCreated は IsOk=true（グループ自動作成が成功した）だが、
                     // 「作成された」ことを提示するため issues に情報として積む。
                     if (!result.IsOk || result.Status == ValidationStatus.GroupWillBeCreated)
@@ -293,15 +328,16 @@ namespace AddressTeller.Editor
 
             // ApplyAll と同じ理由（ownedGroups が信頼できなくなる）で、Configure() に失敗したルールが
             // ある場合はこの実行全体で削除追従（stale クリーンアップ）を停止する。
-            var hasConfigureFailures = setup.ConfigureFailures.Count > 0;
-            if (hasConfigureFailures && AddressTellerSettings.CleanupStaleEntries)
-                Debug.LogWarning($"[AddressTeller] Skipping stale entry cleanup for this run because {setup.ConfigureFailures.Count} rule(s) failed to configure.");
+            // 宣言フォルダの欠落でも同様に止める（EvaluationSetup.SuspendsStaleCleanup 参照）。
+            var suspendStaleCleanup = setup.SuspendsStaleCleanup;
+            if (suspendStaleCleanup && AddressTellerSettings.CleanupStaleEntries)
+                Debug.LogWarning($"[AddressTeller] Skipping stale entry cleanup for this run because {DescribeCleanupSuspension(setup)}.");
 
             var cleared = new List<ClearedEntry>();
             foreach (var guid in deletedGuids)
             {
                 if (string.IsNullOrEmpty(guid)) continue;
-                var removed = AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, setup.OwnedGroups, hasConfigureFailures);
+                var removed = AddressTellerApplier.RemoveEntryForDeletedAsset(guid, settings, setup.OwnedGroups, suspendStaleCleanup);
                 if (removed.HasValue) cleared.Add(removed.Value);
             }
 

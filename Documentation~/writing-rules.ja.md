@@ -83,13 +83,26 @@ rules.Group("Characters")
 ```
 
 主なメソッド:
-- `Match.InFolder(string path)` — 指定フォルダ配下のアセットにマッチ
+- `Match.InFolder(string path)` — 指定フォルダ配下のアセットにマッチ（フォルダを宣言する。[宣言フォルダ](#宣言フォルダ)を参照）
+- `Match.InFolderByGuid(string guid, bool recursive = true)` — `InFolder` と同じだが、フォルダをアセット GUID で指定する。フォルダを移動・改名してもルールが壊れない
 - `Match.OfType<T>()` — 指定の型（GameObject, Sprite など）にマッチ
 - `Match.Glob(string pattern)` — フルパスに対するワイルドカード照合（例: `Assets/**/*.prefab`。`*` は `/` をまたがないため、単に `*.prefab` と書いても、`/` を含まないアセットパスは存在しないので一件もマッチしない。詳しい構文は `Match.Glob` の XML doc を参照）
 - `Match.All()` — 常に真（条件なしルール）
 - `condition.And(otherCondition)` — 条件を AND 合成
 
 同じルールファイルで `System.Text.RegularExpressions` も使う場合は、2つの `Match` 型を区別するため `using Match = AddressTeller.Match;` を追加してください。
+
+### 宣言フォルダ
+
+`Match.InFolder`・`Match.InFolderByGuid`・`Match.Glob` で組み立てた条件は、依存するフォルダを記録します（`AssetCondition.Folders`。`Where()` に渡すと `AddressRuleEntry.DeclaredFolders` に引き継がれます）。`And()` と `Match.All()` は各条件のフォルダの和集合になります。AddressTeller はルールを評価するたび（Apply・Validate・ドライラン）に、宣言された各フォルダが実在するかを検査します。
+
+- 実在しないフォルダは `ValidationStatus.DeclaredFolderMissing`（ブロッキング）として、フォルダごとに1件、宣言したルール名つきで報告されます。実在しないフォルダに依存するルールは何にもマッチしません。多くは綴りの誤りか、移動・削除されたフォルダです。宣言フォルダが1つでも欠けている間は、Configure() に失敗したルールがあるときと同じく、そのランの stale エントリ掃除も止まります。何にもマッチしないルールのせいで、本来は対象のエントリが「無マッチ」に見えているだけかもしれず、それを削除してはいけないためです。素の `ApplyAll` 呼び出しや import 時の自動適用では、それ以外（ほかのルール・ほかのアセット）は通常どおり評価・書き込みされます。ただしブロッキングの問題なので、Apply with Validate（メニュー項目と `ApplyWithValidateCLI`）は Apply 全体を中止し、`CheckCLI` / `ApplyWithValidateCLI` は終了コード 2 になります。
+- 実在するが宣言と大小文字だけ異なるフォルダ（例: `Assets/art` と宣言、実際は `Assets/Art`）は、ブロッキングでない通知 `ValidationStatus.DeclaredFolderCaseMismatch` として報告されます。フォルダの照合は大小文字を区別しないのでルールは効きますが、宣言を実際の名前に直してください。
+- `Match.Glob` は、最初のワイルドカードより前にある、完結したパスセグメントだけから成るフォルダを宣言します。`Assets/Art/*.png` は `Assets/Art`、`Assets/Art*/x` は `Assets` です。先頭がワイルドカードのパターン（例: `**/foo`）には固定のプレフィックスが無く、何も宣言されないため、フォルダの欠落は報告できません。
+- 生ラムダの条件（`Where(ctx => ctx.IsInFolder("Assets/Foo"))`）は何も宣言せず、報告の対象になりません。検査が欲しい場合は `Match.InFolder` を使ってください。
+- `Match.InFolderByGuid` は、ルールを評価するたびに GUID を現在のフォルダパスへ解決します（引いた結果は、次のランの開始か次の import のどちらか早いほうまで保持されます）。フォルダに引けない GUID は `DeclaredFolderMissing` として報告され、条件は何にもマッチしません。GUID は条件を評価するたびに引かれるため、Editor の単体テストでの `RuleInspector.Collect` でも AddressTeller 自身の評価と同じ結果になります。GUID を引く手段が無い環境（Unity Editor の AssetDatabase の外）では、条件は常にマッチしません。
+
+ドメインリロードの間、import 時の自動適用（`AddressTellerPostprocessor`）はこの検査結果を再利用し、そのフォルダ自身か上位のフォルダが import で作成・削除・移動・改名されたときだけ検査し直します。Apply All・Validate・CLI の各入口は毎回検査し直します。
 
 ### Naming 静的クラス
 

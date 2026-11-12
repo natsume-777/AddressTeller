@@ -103,6 +103,8 @@ namespace AddressTeller
             private string _description;
             private Func<AssetContext, bool> _predicate = _ => true;
             private bool _whereSet;
+            private IReadOnlyList<string> _declaredFolders;
+            private IReadOnlyList<FolderGuidDeclaration> _folderGuids;
             private Func<AssetContext, string> _addressSelector;
             private bool _addressSet;
             private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
@@ -138,7 +140,11 @@ namespace AddressTeller
             public IAddressRuleGroupBuilder Where(AssetCondition condition)
             {
                 if (condition == null) throw new ArgumentNullException(nameof(condition));
-                return Where(condition.Predicate, condition.Description);
+                Where(condition.Predicate, condition.Description);
+                // 条件が宣言しているフォルダをエントリへ引き継ぐ（生ラムダの Where は宣言を持たない）。
+                _declaredFolders = condition.Folders;
+                _folderGuids = condition.FolderGuids;
+                return this;
             }
 
             private void ThrowIfWhereAlreadySet()
@@ -202,7 +208,7 @@ namespace AddressTeller
 
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order);
+                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids);
             }
         }
 
@@ -213,6 +219,8 @@ namespace AddressTeller
             private string _description;
             private Func<AssetContext, bool> _predicate = _ => true;
             private bool _whereSet;
+            private IReadOnlyList<string> _declaredFolders;
+            private IReadOnlyList<FolderGuidDeclaration> _folderGuids;
             private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
             private bool _includeFolders;
             private bool _includeFoldersSet;
@@ -245,7 +253,11 @@ namespace AddressTeller
             public ILabelRuleBuilder Where(AssetCondition condition)
             {
                 if (condition == null) throw new ArgumentNullException(nameof(condition));
-                return Where(condition.Predicate, condition.Description);
+                Where(condition.Predicate, condition.Description);
+                // 条件が宣言しているフォルダをエントリへ引き継ぐ（生ラムダの Where は宣言を持たない）。
+                _declaredFolders = condition.Folders;
+                _folderGuids = condition.FolderGuids;
+                return this;
             }
 
             private void ThrowIfWhereAlreadySet()
@@ -280,7 +292,7 @@ namespace AddressTeller
 
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order);
+                return new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids);
             }
         }
     }
