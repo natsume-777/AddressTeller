@@ -38,8 +38,10 @@
 |---|---|
 | 0 | 差分なし・問題なし |
 | 1 | ドリフトあり（差分あり、Validation エラーなし） |
-| 2 | Validation エラーあり |
+| 2 | Validation エラーあり、または（`-addressTellerFailOnUnmatched` 指定時のみ）ルールが宣言したフォルダ配下に、どのルールからもアドレスもラベルも付かないアセットが1件以上ある |
 | 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗・設定ファイルまたはラベル台帳の読み込み失敗、または予期しない例外） |
+
+`-addressTellerFailOnUnmatched` は `CheckCLI` だけが読み、ほかの CLI エントリポイントは無視し、その旨の警告を1行ログします。詳しくは[未登録アセットと一致 0 件のルール](#未登録アセットと一致-0-件のルール)を参照してください。
 
 `ApplyAllCLI` / `ApplyWithValidateCLI` の exit code（成功時に書き込みを行う。exit code は差分の有無に依存しない——差分だけを検出したい場合は `CheckCLI` を使うこと）:
 
@@ -72,6 +74,13 @@
 - `-logFile -` は Editor ログをファイルではなく標準出力へ流します。この機能が出力する `Debug.Log` / `Debug.LogError` を CI で捕捉するのに便利です。
 - 必要に応じて `CheckCLI`・`ApplyWithValidateCLI`・`ClearCLI`（こちらは `-addressTellerConfirmClear` が別途必須。`-addressTellerClearScope all` も任意で指定可）に差し替えてください。
 - ビルドを失敗させるかどうかは、上記の exit code 表と照らし合わせて判定してください。
+
+### 未登録アセットと一致 0 件のルール
+
+`Match.InFolder`・`Match.InFolderByGuid`・`Match.Glob`（固定のフォルダ接頭辞を持つもの）で書いたルールは、条件が依存するフォルダを宣言します。この宣言を使って、ルールが取りこぼしているものを2通りで知らせます。
+
+- **未登録アセット。** 宣言フォルダの配下（深さを問わず、大小文字を区別しない）にあるのに、どのルールからもアドレスもラベルも付かないアセット。`Match.InFolder(path, recursive: false)` で宣言したフォルダは直下の子だけが対象です。結果ウィンドウの `Unmatched` タブ（dry-run で1件以上あるときだけ表示。プロジェクトの一部しか見ないルール・アセット・グループのプレビューには出ません）、`json` レポートの `Unmatched[]`、JUnit レポートの `unmatched` testcase、コンソールの1行の件数で確認できます。コンソールの1行は、`CheckCLI`・`ApplyAllCLI`・`ApplyWithValidateCLI`・Apply All / Apply with Validate が、1件以上あるときに出します。フォルダ自体、ルールが例外を送出したアセット、ラベル専用ルールだけにマッチしたアセットは含まれません。`Where` が生ラムダのルールはフォルダを宣言しないため、アセットが載る原因にはなりません。報告専用で、exit code は変わりません。ただし `CheckCLI` に `-addressTellerFailOnUnmatched` を付けると、一覧が空でないとき exit code 2 になります（コンソールの1行も error になり、JUnit の testcase に `<failure>` が付きます）。
+- **一致 0 件のルール。** アドレスを付けうるルールが、プロジェクト全体の走査でどのアセットにもマッチしなかったとき、`ValidationStatus.RuleMatchedNothing`（ブロッキングでない通知）としてルールごとに1件、`Validate`・`CheckCLI`・`Apply All` / `Apply with Validate` の dry-run が報告し、これらと `ApplyAllCLI` / `ApplyWithValidateCLI` がコンソールに警告としてログします。宣言したフォルダが実在しないルールは除かれます（`DeclaredFolderMissing` が原因を示すため）。`ApplyAll` 自体、範囲指定プレビュー、`BuildPredictedSnapshot` の直接呼び出しは、プロジェクト全体を走査しないため報告しません。条件の typo や、移動したフォルダが原因であることが多いです。
 
 ### 論理バンドル分布サマリ
 

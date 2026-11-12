@@ -79,6 +79,16 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void RuleMatchedNothing_IsOkTrue_NotBlocking()
+        {
+            // 一致 0 件のルールを知らせるだけの通知。書き込みも削除も止めない。
+            var result = new ValidationResult(null, ValidationStatus.RuleMatchedNothing, "matched nothing");
+
+            Assert.IsTrue(result.IsOk);
+            Assert.IsFalse(result.IsBlocking);
+        }
+
+        [Test]
         public void DuplicateAddress_HasWritableDuplicateFalse_IsOkTrue_NotBlocking()
         {
             var result = new ValidationResult(null, ValidationStatus.DuplicateAddress, "duplicate", hasWritableDuplicate: false);

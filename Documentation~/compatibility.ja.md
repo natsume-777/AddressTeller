@@ -57,6 +57,7 @@
 | `-addressTellerDisableRules <names>` | カンマ区切りのルールクラス完全修飾名 | 空（追加除外なし） |
 | `-addressTellerConfirmClear` | 値を取らない存在フラグ | 未指定（`ClearCLI` は意図的な拒否として扱う） |
 | `-addressTellerClearScope <scope>` | `all`, `managed` | `managed` |
+| `-addressTellerFailOnUnmatched` | 値を取らない存在フラグ | 未指定（`CheckCLI` は未登録のアセットを失敗として扱わない。ほかのエントリポイントはこのフラグを無視する） |
 
 `managed` が対象にするのは AddressTeller が所有するグループである。所有権の現在の定義は
 [設計上の決定事項: 削除は資産単位の所有権で判定する](design-decisions.ja.md#削除は資産単位の所有権で判定する)
@@ -79,7 +80,7 @@
 |---|---|
 | 0 | 差分なし・問題なし |
 | 1 | ドリフトあり（差分あり、Validation エラーなし） |
-| 2 | Validation エラーあり |
+| 2 | Validation エラーあり、または（`-addressTellerFailOnUnmatched` 指定時のみ）ルールが宣言したフォルダ配下に、どのルールからもアドレスもラベルも付かないアセットが1件以上ある |
 | 3 | 実行環境エラー（`AddressableAssetSettings` 不在・引数不正・`-addressTellerDisableRules` に未知のルールクラス名を指定・レポート書き込み失敗・設定ファイルの読み込み失敗、または予期しない例外） |
 
 `ApplyAllCLI` / `ApplyWithValidateCLI`（成功時に書き込みを行う。exit code は差分の有無に依存しない）:
@@ -122,6 +123,7 @@ Drift[]
 Issues[]
   Path, Status, Message                             (System.String)
   Blocking, Ok                                      (System.Boolean)
+Unmatched[]                                         (System.String。アセットパス、Ordinal 順)
 BundleDistribution                                  (常に存在する。詳細は下記の注記を参照)
   Bundles[]
     GroupName, Mode, SplitKey                        (System.String)
@@ -130,6 +132,8 @@ BundleDistribution                                  (常に存在する。詳細
   Disclaimer                                          (System.String)
 SchemaVersion                                         (System.Int32)
 ```
+
+**`Unmatched[]`**: いずれかのルールが宣言したフォルダ（`AddressRuleEntry.DeclaredFolders`。深さを問わず、大小文字を区別しない）の配下にあるのに、どのルールからもアドレスもラベルも付かなかったアセットのパス。`Match.InFolder(path, recursive: false)` で宣言したフォルダは直下の子だけが対象です。フォルダ自体、ルールが例外を送出したアセット、ラベル専用ルールだけにマッチしたアセットは含まれません。フォルダを宣言しないルール（生ラムダの `Where`）は何も寄与しません。報告専用で `Summary.ExitCode` には影響しませんが、`CheckCLI -addressTellerFailOnUnmatched` では空でないとき exit code 2 になります。このキーの追加では `SchemaVersion` を変えていません（任意キーの追加）。
 
 **`Summary.Issues`**: `Issues[]` の総件数（`Summary.ExitCode` に影響しない報告専用の通知、例えば `DuplicateAddress` も含む）。`Summary.Issues` が0でないことは、それ自体では実行が失敗したことを意味しません——合否は `Summary.ExitCode` を確認してください。
 
@@ -154,6 +158,7 @@ SchemaVersion                                         (System.Int32)
 - レポートの issues に含まれる `ValidationStatus` の種類ごとに1つの `<testcase>`: `name="<ステータス名>"`（例: `"ConflictingAddress"`）、`classname="AddressTeller.Validation"`。`treatDriftAsFailure` の影響を受けない。このステータスが存在する限り、入れ子の `<failure>` が付くかどうかにかかわらずこの testcase 自体は必ず存在します——`<failure>` が付くかどうかは次の項目を参照。
 - Validation の `<testcase>` に入れ子の `<failure>` が付くかどうかは、そのステータスの `ValidationResult` に `IsOk=false` のものが1件でもあるかだけでなく、呼び出し元エントリポイント自身の exit code 判定基準に依存します。`CheckCLI` は `IsOk=false` の結果を1件でも持つステータスに `<failure>` を付けます（自身の exit code 2 判定と一致）。`ApplyAllCLI` / `ApplyWithValidateCLI` は、Apply を中止すべき問題として扱われるステータスにのみ `<failure>` を付けます（自身の exit code 2 判定と一致）——報告専用の `DuplicateAddress` 通知は、`IsOk=false` として報告されている場合でも、この2つのエントリポイントからは Apply を中止しないため `<failure>` が付きません。dry-run で予測できる issue については、`failures="0"` だけを見るCIジョブは、任意の `IsOk=false` issue の有無ではなく、そのエントリポイント自身の実際の exit code を追跡することになります。ただし、実際に書き込みを行って初めて発生しうるステータス（例えば `ValidationStatus.EntryRejectedByAddressables`。`ApplyAll` 自身のエントリ作成処理内でのみ発生し、dry-run の `Predict` からは発生しません）はこの限りではありません——`ApplyAllCLI` / `ApplyWithValidateCLI` は、実際の exit code の根拠となる実行結果ではなく、Apply 前の dry-run 結果からレポートを組み立てるため、そのようなステータスは exit code に影響しうる一方で、この JUnit 出力には一切現れないことがあります。
 - `tests` / `failures` の件数、および入れ子の `<failure>` 要素の有無は、標準的なJUnit消費者の期待に従います（`<failure>` の無い `<testcase>` は成功、有る場合は失敗）。
+- `Unmatched[]` が空でないとき、`<testcase>` がもう1つ付きます: `name="unmatched"`、`classname="AddressTeller.Unmatched"`（空のときは出ないので、未登録アセットのないレポートの testcase 構成は従来のままです）。入れ子の `<failure>`（パス一覧）が付くのは `treatUnmatchedAsFailure` を true にして書いたときだけで、これを行うのは `CheckCLI -addressTellerFailOnUnmatched` だけです。
 - `treatDriftAsFailure`（`AddressTellerReportWriter.ToJUnitXml` / `WriteToFile`、既定 `true`）: 上記どちらの挙動になるかを切り替えるパラメータ。どの CLI エントリポイントがどちらの値を渡すかは前述の通りであり、既定値そのものが契約ではない——将来のエントリポイントがどちらを必要とするかは個別に妥当。
 
 **消費者側の義務**: 未知のJSONフィールドは無視する（追加で失敗しない）こと。`SchemaVersion` を自分が理解している最大バージョンと比較し、それより大きければ形状を推測せず未対応として扱うこと。
@@ -251,7 +256,7 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 
 **メンバー追加がコンパイルを壊さずに実行時の挙動を壊しうる理由**: `default` アームの無い `switch` 文は、認識していない新しいenum値に対してもコンパイル・実行ができてしまいます。ただ何もしない（あるいは周辺コード次第でフォールスルーする）だけで、これは呼び出し元が見たことのないステータスに対してはたいてい誤った挙動です。追加をパッチではなくマイナーとして扱うのはこのためです。ビルドは失敗しないものの、CHANGELOGで可視化され、これらの型を網羅的に `switch` しているコードの持ち主に検討してもらうことを意図しています。
 
-具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress`、`SettingsUnavailable`、`UnmatchedEntryKept`、`BlockedByRuleError`、`DuplicateAssetEntry`、`DeclaredFolderMissing`、`DeclaredFolderCaseMismatch`、`StaleRemovalLimitExceeded`、`AssetTypeUnresolved`、`StaleManagedLabelKept`、`LabelLedgerWriteFailed` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
+具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress`、`SettingsUnavailable`、`UnmatchedEntryKept`、`BlockedByRuleError`、`DuplicateAssetEntry`、`DeclaredFolderMissing`、`DeclaredFolderCaseMismatch`、`StaleRemovalLimitExceeded`、`AssetTypeUnresolved`、`StaleManagedLabelKept`、`LabelLedgerWriteFailed`、`RuleMatchedNothing` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
 
 `SettingsUnavailable` は、設定ファイル（`ProjectSettings/AddressTellerSettings.json`）またはラベル台帳（`ProjectSettings/AddressTellerLabelLedger.json`）が読み込めなかった場合に、結果リストの唯一のエントリとして返されます。`Context` は `RuleConfigureFailed`・`DuplicateAddress`・`DuplicateAssetEntry` と同様 null です（特定の1アセットに関するものではないため）。
 
@@ -272,6 +277,8 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 `StaleManagedLabelKept`（`IsOk=true`）は、`RemoveStaleManagedLabels` が OFF のときに `ValidateAll` と `BuildPredictedSnapshot` の全呼び出し元が報告する、ブロッキングでない通知です。AddressTeller が書き込むエントリに、AddressTeller が過去に書いた（名前がラベル台帳にある）が、そのアセットのルールがもう出さないラベルが付いており、設定が ON なら外されることを示します。アセットごとに1件報告され、`Context` は設定され、メッセージにラベルが並びます。設定が ON のときは何も報告されず、除去は dry-run の差分に変更されたエントリとして現れます。`UnmatchedEntryKept` と同様、`ApplyAll` 自体（アセットの import ごとの増分適用を含む）からは生成されません。何も止めません。
 
 `LabelLedgerWriteFailed`（`IsOk=false`、`IsBlocking=true`）は、`AddressTellerService.ApplyAll` がラベルを書いたものの、その名前をラベル台帳に記録できなかった場合（たとえばファイルがバージョン管理で read-only）に報告されます。ラベルはエントリに書かれており、AddressTeller のものとしてまだ記録されていないだけなので、後のランが記録するまで `RemoveStaleManagedLabels` はそれらを外しません。除去自体は、ラン開始時の台帳に基づくため影響を受けません。`Context` は特定の1アセットに関するものではないため null で、報告されると `ApplyAllCLI` / `ApplyWithValidateCLI` は終了コード 2 になります。生成するのは `ApplyAll` だけです。
+
+`RuleMatchedNothing`（`IsOk=true`）は、アドレスを付けうる（`AddressSelector` が非 null の）ルールが、プロジェクト全体の走査でどのアセットにもマッチせず、評価中に例外も送出しなかったことを知らせる、ブロッキングでない通知です。ルールごとに1件、ルール名を示して報告され、`Context` は null です。宣言したフォルダが実在しないルールは報告されません（`DeclaredFolderMissing` が原因を示すため）。プロジェクト全体を走査する `ValidateAll` と dry-run 系のエントリポイント（`CheckCLI`、Apply All / Apply with Validate メニュー）が報告します。`ApplyAll`、範囲指定プレビュー、`BuildPredictedSnapshot` の直接呼び出しは報告しません——一部のアセットの中でマッチしなかったルールも、ほかの場所ではマッチするかもしれないためです。ラベル専用ルールは報告されません。何も止めません。
 
 `DuplicateAddress`（`IsOk` は `ValidationResult.HasWritableDuplicate` に依存し、`IsBlocking` は常に false）は、`ValidateAll`・`BuildPredictedSnapshot` に加えて `ApplyAll`——アセットの import のたびに `AddressTellerPostprocessor` が行う増分適用を含む——でも報告されます。`ApplyAll` はラン末尾に、アドレスを1件以上割り当てた場合だけ検査します（アドレスが変わらない再 import でも、書き込み可能なグループに解決されていれば割り当てた扱いです）。Addressables の全エントリからアドレス索引を作り、そのランが割り当てたアドレスを別のアセットも持っていれば報告します。アドレスを1件も割り当てなかったランでは索引を作りません。そのランが割り当てたアドレスと無関係な既存の重複は `ValidateAll` と dry-run だけが報告します。検査は stale エントリの削除後に行うため、同じランで削除されたエントリは数えません。書き込みを止めることはありません。
 

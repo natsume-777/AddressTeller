@@ -38,8 +38,10 @@ All four CLI entry points check, before doing anything else, whether AddressTell
 |---|---|
 | 0 | No drift, no issues |
 | 1 | Drift detected (changes present, no Validation errors) |
-| 2 | Validation errors present |
+| 2 | Validation errors present, or (only with `-addressTellerFailOnUnmatched`) at least one asset under a folder a rule declares gets no address or label from any rule |
 | 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, a settings file or label ledger load failure, or an unexpected exception) |
+
+`-addressTellerFailOnUnmatched` is read by `CheckCLI` only; the other CLI entry points ignore it and log one warning saying so. See [Unmatched Assets and Rules That Match Nothing](#unmatched-assets-and-rules-that-match-nothing).
 
 `ApplyAllCLI` / `ApplyWithValidateCLI` exit codes (writes on success; the exit code does not depend on whether there was drift — use `CheckCLI` to detect drift without applying):
 
@@ -72,6 +74,13 @@ Example: running `ApplyAllCLI` headless, writing a JSON report, and using the pr
 - `-logFile -` streams the Editor log to stdout instead of a file, which is useful for capturing this package's `Debug.Log` / `Debug.LogError` output in CI.
 - Swap in `CheckCLI`, `ApplyWithValidateCLI`, or `ClearCLI` (which additionally requires `-addressTellerConfirmClear`, and optionally `-addressTellerClearScope all`) as needed.
 - Inspect the exit code against the tables above to decide whether the run should fail the build.
+
+### Unmatched Assets and Rules That Match Nothing
+
+A rule written with `Match.InFolder`, `Match.InFolderByGuid` or `Match.Glob` (with a fixed folder prefix) declares the folders its condition depends on. Two reports use those declarations to show what the rules leave out:
+
+- **Unmatched assets.** An asset under a declared folder (at any depth, ignoring letter case) that no rule gave an address or a label. A folder declared with `Match.InFolder(path, recursive: false)` counts only its direct children. They are listed in the `Unmatched` tab of the result window (shown when the dry-run finds any; not in the rule / asset / group previews, which look at only part of the project), in the `Unmatched[]` list of a `json` report and as an `unmatched` testcase of a JUnit report, and counted in one console line, which `CheckCLI`, `ApplyAllCLI`, `ApplyWithValidateCLI` and Apply All / Apply with Validate write when there is any. Folders themselves, assets for which a rule threw, and assets matched only by a label-only rule are not listed. A rule whose `Where` is a raw lambda declares no folder, so it never causes an asset to be listed. The list is report-only: it does not change the exit code unless `CheckCLI` is run with `-addressTellerFailOnUnmatched`, which then exits with code 2 when the list is not empty (the console line becomes an error, and the JUnit testcase carries a `<failure>`).
+- **Rules that match nothing.** A rule that can assign an address but matched no asset in a scan of the whole project is reported once as `ValidationStatus.RuleMatchedNothing` (a non-blocking notice) by `Validate`, `CheckCLI`, and the dry-run of `Apply All` / `Apply with Validate`, and logged to the Console as a warning by each of those and by `ApplyAllCLI` / `ApplyWithValidateCLI`. A rule whose declared folder does not exist is left out (`DeclaredFolderMissing` already names the cause). It is not reported by `ApplyAll` itself, by the scoped previews, or by a direct `BuildPredictedSnapshot` call, since those do not scan the whole project. It usually means a typo in the condition or a folder that was moved.
 
 ### Logical Bundle Distribution Summary
 

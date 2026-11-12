@@ -97,6 +97,37 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
+        /// 宣言フォルダ内の未登録アセット（<see cref="DryRunResult.UnmatchedInDeclaredFolders"/>）を件数だけの1行で
+        /// ログする。個別のパスは結果ウィンドウの Unmatched タブとレポートの <c>Unmatched[]</c> で提供するため、
+        /// ここでは出さない。0 件なら何も出さない。<paramref name="failing"/>（<c>-addressTellerFailOnUnmatched</c>）が
+        /// true のときは、exit code 2 の原因になるので LogError にする。
+        /// </summary>
+        public static void LogUnmatched(IReadOnlyList<string> unmatched, bool failing)
+        {
+            if (unmatched.Count == 0) return;
+
+            var isSingle = unmatched.Count == 1;
+            var message = $"[AddressTeller] Unmatched: {unmatched.Count} asset{(isSingle ? "" : "s")} under folders that rules declare " +
+                $"get{(isSingle ? "s" : "")} no address or label from any rule (first: {unmatched[0]}). Inspect the Unmatched tab of the Result Window " +
+                "or the Unmatched[] list of a JSON report.";
+            if (failing)
+                Debug.LogError(message);
+            else
+                Debug.LogWarning(message);
+        }
+
+        /// <summary>
+        /// dry-run が計算した <see cref="ValidationStatus.RuleMatchedNothing"/> の通知だけを個別にログする。
+        /// Apply 系の対話・CLI 経路は dry-run の issues 全体をログしないため、これだけを取り出して出す。
+        /// </summary>
+        public static void LogRuleMatchedNothing(IReadOnlyList<ValidationResult> issues)
+        {
+            foreach (var issue in issues)
+                if (issue.Status == ValidationStatus.RuleMatchedNothing)
+                    Log(issue);
+        }
+
+        /// <summary>
         /// 1件の <see cref="ValidationResult"/> をログ出力する。IsOk=true（GroupWillBeCreated 等の正常系通知）は
         /// LogWarning、IsOk=false（実際の問題）は LogError とする。
         /// </summary>

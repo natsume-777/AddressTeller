@@ -172,6 +172,70 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void UnmatchedAssets_WithoutFailOnUnmatched_DoNotAffectExitCode()
+        {
+            var result = new DryRunResult(new SnapshotDiff(), new List<ValidationResult>(),
+                unmatchedInDeclaredFolders: new[] { "Assets/A/Orphan.prefab" });
+
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineExitCode(result));
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineExitCode(result, failOnUnmatched: false));
+        }
+
+        [Test]
+        public void UnmatchedAssets_WithFailOnUnmatched_ExitCodeIsTwo()
+        {
+            var result = new DryRunResult(new SnapshotDiff(), new List<ValidationResult>(),
+                unmatchedInDeclaredFolders: new[] { "Assets/A/Orphan.prefab" });
+
+            Assert.AreEqual(2, AddressTellerReportBuilder.DetermineExitCode(result, failOnUnmatched: true));
+        }
+
+        [Test]
+        public void NoUnmatchedAssets_WithFailOnUnmatched_ExitCodeIsStillZero()
+        {
+            var result = new DryRunResult(new SnapshotDiff(), new List<ValidationResult>());
+
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineExitCode(result, failOnUnmatched: true));
+        }
+
+        [Test]
+        public void UnmatchedAssets_WithFailOnUnmatched_TakePrecedenceOverDrift()
+        {
+            var removedGuid = CreatePrefab(TestRootFolder + "/UnmatchedAndDrift.prefab");
+            var diff = new SnapshotDiff();
+            diff.AddRemoved(new SnapshotEntry { Guid = removedGuid, Address = "x", GroupName = "Default", Labels = new List<string>() });
+            var result = new DryRunResult(diff, new List<ValidationResult>(),
+                unmatchedInDeclaredFolders: new[] { "Assets/A/Orphan.prefab" });
+
+            Assert.AreEqual(1, AddressTellerReportBuilder.DetermineExitCode(result));
+            Assert.AreEqual(2, AddressTellerReportBuilder.DetermineExitCode(result, failOnUnmatched: true));
+        }
+
+        [Test]
+        public void Build_CopiesUnmatchedAssetsToReport_AndKeepsSchemaVersion()
+        {
+            var unmatched = new[] { "Assets/A/Orphan.prefab", "Assets/A/Sub/Other.prefab" };
+            var result = new DryRunResult(new SnapshotDiff(), new List<ValidationResult>(), unmatchedInDeclaredFolders: unmatched);
+
+            var report = AddressTellerReportBuilder.Build(result);
+
+            CollectionAssert.AreEqual(unmatched, report.Unmatched);
+            Assert.AreEqual(1, report.SchemaVersion);
+            Assert.AreEqual(0, report.Summary.ExitCode, "-addressTellerFailOnUnmatched を指定しない限り、exit code に影響しない。");
+
+            var roundTripped = AddressTellerReport.FromJson(report.ToJson());
+            CollectionAssert.AreEqual(unmatched, roundTripped.Unmatched);
+        }
+
+        [Test]
+        public void Build_NoUnmatchedAssets_LeavesUnmatchedEmpty()
+        {
+            var report = AddressTellerReportBuilder.Build(new DryRunResult(new SnapshotDiff(), new List<ValidationResult>()));
+
+            Assert.AreEqual(0, report.Unmatched.Count);
+        }
+
+        [Test]
         public void RemovedOnly_ExitCodeIsOne()
         {
             var removedGuid = CreatePrefab(TestRootFolder + "/RemovedOnly.prefab");
@@ -229,7 +293,7 @@ namespace AddressTeller.Editor.Tests
         }
 
         // DetermineApplyExitCode は ApplyAllCLI / ApplyWithValidateCLI 専用の exit code 判定。
-        // CheckCLI 用の DetermineExitCode(DryRunResult) と異なり、diff の有無を一切見ない
+        // CheckCLI 用の DetermineExitCode(DryRunResult, bool) と異なり、diff の有無を一切見ない
         // （Apply は既に書き込みを完了しているため、差分があったことを理由に exit 1 を返さない）。
 
         [Test]

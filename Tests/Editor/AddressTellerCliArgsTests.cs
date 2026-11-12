@@ -195,6 +195,30 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void NoFailOnUnmatchedFlag_FailOnUnmatchedIsFalse()
+        {
+            var args = new[] { "-batchmode", "-quit" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            Assert.IsFalse(result.FailOnUnmatched);
+        }
+
+        [Test]
+        public void FailOnUnmatchedFlag_SetsFailOnUnmatchedTrue()
+        {
+            var args = new[] { "-addressTellerFailOnUnmatched" };
+
+            var ok = AddressTellerCliArgs.TryParse(args, out var result, out var error);
+
+            Assert.IsTrue(ok);
+            Assert.IsNull(error);
+            Assert.IsTrue(result.FailOnUnmatched);
+        }
+
+        [Test]
         public void NoClearScopeFlag_DefaultsToManaged()
         {
             var args = new[] { "-batchmode", "-quit" };

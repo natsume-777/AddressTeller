@@ -99,7 +99,12 @@ namespace AddressTeller.Editor.Tests
             AddressTellerSettings.AutoCreateMissingGroups = _originalAutoCreateMissingGroups;
             AddressTellerApplyFlow.s_notifyApplyAborted = _originalNotifyApplyAborted;
 
+            // 他のテストが同じ親を使うため親ごとは消さず、自分のサブフォルダだけを消す。
+            // 親が空になっていれば親も消す（テスト後に Assets 直下へ残さない）。
             AssetDatabase.DeleteAsset(TestRootFolder);
+            if (AssetDatabase.IsValidFolder("Assets/_AddressTellerTestTemp")
+                && AssetDatabase.FindAssets(string.Empty, new[] { "Assets/_AddressTellerTestTemp" }).Length == 0)
+                AssetDatabase.DeleteAsset("Assets/_AddressTellerTestTemp");
 
             DestroySettings(_settings);
 

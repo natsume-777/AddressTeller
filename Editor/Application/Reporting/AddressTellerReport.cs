@@ -21,6 +21,14 @@ namespace AddressTeller.Editor
         public List<AddressTellerReportIssue> Issues = new();
 
         /// <summary>
+        /// Paths of assets that lie under a folder some rule declared but that no rule matched (see
+        /// <see cref="DryRunResult.UnmatchedInDeclaredFolders"/>), in Ordinal order. Report-only: it does not
+        /// affect <see cref="AddressTellerReportSummary.ExitCode"/> unless <c>CheckCLI</c> was run with
+        /// <c>-addressTellerFailOnUnmatched</c>.
+        /// </summary>
+        public List<string> Unmatched = new();
+
+        /// <summary>
         /// Logical bundle distribution summary. Left <c>null</c> — never assigned a new value — when the
         /// dry-run has no <see cref="DryRunResult.After"/> (e.g. when constructed in a test), when no
         /// <see cref="UnityEditor.AddressableAssets.Settings.AddressableAssetSettings"/> was supplied to the

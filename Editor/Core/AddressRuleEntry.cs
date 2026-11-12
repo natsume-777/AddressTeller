@@ -60,6 +60,12 @@ namespace AddressTeller
         /// </summary>
         internal IReadOnlyList<FolderGuidDeclaration> FolderGuids { get; }
 
+        /// <summary>
+        /// <see cref="DeclaredFolders"/> のうち、直下のアセットだけを対象にする宣言（<c>recursive: false</c>）。
+        /// Unmatched の列挙が、宣言フォルダ配下を「直下だけ」と「子孫すべて」で区別するために使う。
+        /// </summary>
+        internal IReadOnlyList<string> NonRecursiveFolders { get; }
+
         /// <summary>Creates an AddressRuleEntry. See the properties above for each parameter's meaning.</summary>
         public AddressRuleEntry(
             string groupName,
@@ -70,7 +76,7 @@ namespace AddressTeller
             string description = null,
             int ruleIndex = 0,
             IReadOnlyList<string> declaredFolders = null)
-            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false, order: 0, declaredFolders: declaredFolders, folderGuids: null)
+            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false, order: 0, declaredFolders: declaredFolders, folderGuids: null, nonRecursiveFolders: null)
         {
         }
 
@@ -89,9 +95,11 @@ namespace AddressTeller
             bool includesFolders,
             int order,
             IReadOnlyList<string> declaredFolders = null,
-            IReadOnlyList<FolderGuidDeclaration> folderGuids = null)
+            IReadOnlyList<FolderGuidDeclaration> folderGuids = null,
+            IReadOnlyList<string> nonRecursiveFolders = null)
         {
             DeclaredFolders = AssetCondition.NormalizeFolders(declaredFolders);
+            NonRecursiveFolders = AssetCondition.NormalizeFolders(nonRecursiveFolders);
             FolderGuids = folderGuids ?? Array.Empty<FolderGuidDeclaration>();
             // groupName は AnyGroup() 由来のラベル専用エントリでは null を許容する。
             GroupName = groupName;
@@ -107,11 +115,11 @@ namespace AddressTeller
 
         /// <summary>グループ名だけを差し替えた複製を返す（GroupDefault() のセンチネル解決用）。</summary>
         internal AddressRuleEntry WithGroupName(string groupName)
-            => new AddressRuleEntry(groupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, DeclaredFolders, FolderGuids);
+            => new AddressRuleEntry(groupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, DeclaredFolders, FolderGuids, NonRecursiveFolders);
 
         /// <summary>宣言フォルダだけを差し替えた複製を返す（GUID で宣言されたフォルダの解決結果を反映する用）。</summary>
-        internal AddressRuleEntry WithDeclaredFolders(IReadOnlyList<string> declaredFolders)
-            => new AddressRuleEntry(GroupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, declaredFolders, FolderGuids);
+        internal AddressRuleEntry WithDeclaredFolders(IReadOnlyList<string> declaredFolders, IReadOnlyList<string> nonRecursiveFolders)
+            => new AddressRuleEntry(GroupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, declaredFolders, FolderGuids, nonRecursiveFolders);
 
         /// <summary>
         /// Builds an identifier string for error messages from SourceClass / Description / RuleIndex.

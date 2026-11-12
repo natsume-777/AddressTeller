@@ -45,6 +45,13 @@ namespace AddressTeller.Editor
         /// </summary>
         public ClearScope ClearScope { get; private set; } = ClearScope.Managed;
 
+        /// <summary>
+        /// Whether -addressTellerFailOnUnmatched was specified. Makes <see cref="AddressTellerMenu.CheckCLI"/> exit
+        /// with code 2 when any asset under a folder some rule declared gets no address or label from any rule. Ignored by the other
+        /// CLI entry points.
+        /// </summary>
+        public bool FailOnUnmatched { get; private set; }
+
         /// <summary>全フラグに共通のプレフィックス。未知引数の判定（<see cref="TryParse"/> の switch の default 節）
         /// と、この XML doc コメント冒頭の説明の、2箇所で重複していた文字列リテラルをここに集約する。</summary>
         private const string FlagPrefix = "-addressTeller";
@@ -54,11 +61,12 @@ namespace AddressTeller.Editor
         private const string DisableRulesFlag = FlagPrefix + "DisableRules";
         private const string ConfirmClearFlag = FlagPrefix + "ConfirmClear";
         private const string ClearScopeFlag = FlagPrefix + "ClearScope";
+        private const string FailOnUnmatchedFlag = FlagPrefix + "FailOnUnmatched";
 
         /// <summary>エラーメッセージに列挙する既知フラグ名一覧（<see cref="TryParse"/> の未知フラグエラー用）。</summary>
         private static readonly string[] KnownFlags =
         {
-            ReportPathFlag, ReportFormatFlag, DisableRulesFlag, ConfirmClearFlag, ClearScopeFlag,
+            ReportPathFlag, ReportFormatFlag, DisableRulesFlag, ConfirmClearFlag, ClearScopeFlag, FailOnUnmatchedFlag,
         };
 
         /// <summary>
@@ -84,6 +92,7 @@ namespace AddressTeller.Editor
             IReadOnlyList<string> disableRuleFullNames = Array.Empty<string>();
             var confirmClear = false;
             var clearScope = ClearScope.Managed;
+            var failOnUnmatched = false;
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -136,6 +145,10 @@ namespace AddressTeller.Editor
                         confirmClear = true;
                         break;
 
+                    case FailOnUnmatchedFlag:
+                        failOnUnmatched = true;
+                        break;
+
                     case ClearScopeFlag:
                         if (i + 1 >= args.Length)
                         {
@@ -186,6 +199,7 @@ namespace AddressTeller.Editor
                 DisableRuleFullNames = disableRuleFullNames,
                 ConfirmClear = confirmClear,
                 ClearScope = clearScope,
+                FailOnUnmatched = failOnUnmatched,
             };
             return true;
         }

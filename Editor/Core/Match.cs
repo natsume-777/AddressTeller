@@ -27,7 +27,7 @@ namespace AddressTeller
 
             var normalized = AssetCondition.NormalizeFolder(folder);
             var descriptionNonRecursive = $"InFolder({folder}, recursive: false)";
-            return new AssetCondition(ctx => ctx.Directory.Equals(normalized, StringComparison.OrdinalIgnoreCase), descriptionNonRecursive, declared);
+            return new AssetCondition(ctx => ctx.Directory.Equals(normalized, StringComparison.OrdinalIgnoreCase), descriptionNonRecursive, declared, null, declared);
         }
 
         /// <summary>
@@ -45,7 +45,7 @@ namespace AddressTeller
         {
             if (string.IsNullOrEmpty(guid)) throw new ArgumentException("guid must not be empty.", nameof(guid));
 
-            var declaration = new FolderGuidDeclaration(guid);
+            var declaration = new FolderGuidDeclaration(guid, recursive);
             var declaredGuid = guid;
             var description = recursive ? $"InFolderByGuid({guid})" : $"InFolderByGuid({guid}, recursive: false)";
             Func<AssetContext, bool> predicate = ctx =>

@@ -82,16 +82,23 @@ namespace AddressTeller.Editor
             // この paths は更新されない（古いスナップショットに対して Apply される）。意図的な割り切り。
             var paths = AssetDatabase.GetAllAssetPaths();
 
-            var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths);
+            // paths はプロジェクト全体なので、1件もマッチしないルールの通知（RuleMatchedNothing）も含めて計算する。
+            var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, RuleCollector.CollectEnabledRules(), isFullScan: true);
 
             if (HasNoChanges(dryRun))
             {
                 // 差分は無くても通知（Warning 相当）が残っていれば、ここで報告だけはしておく。
                 if (dryRun.Issues.Count > 0)
                     AddressTellerIssueLogger.LogAll(dryRun.Issues);
+                AddressTellerIssueLogger.LogUnmatched(dryRun.UnmatchedInDeclaredFolders, failing: false);
                 Debug.Log("[AddressTeller] No changes detected.");
                 return;
             }
+
+            // 確認ダイアログへ進む場合、dry-run の issues 全体はログしないが、ダイアログからは見えない通知
+            // （一致 0 件のルール・宣言フォルダ内の未登録アセット）だけはここで報告しておく。
+            AddressTellerIssueLogger.LogRuleMatchedNothing(dryRun.Issues);
+            AddressTellerIssueLogger.LogUnmatched(dryRun.UnmatchedInDeclaredFolders, failing: false);
 
             var errorIssueCount = dryRun.Issues.Count(i => !i.IsOk);
             var noticeIssueCount = dryRun.Issues.Count - errorIssueCount;

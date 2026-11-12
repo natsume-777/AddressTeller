@@ -89,6 +89,8 @@ namespace AddressTeller.Editor
                 .ThenBy(i => i.Message, StringComparer.Ordinal)
                 .ToList();
 
+            report.Unmatched = new List<string>(result.UnmatchedInDeclaredFolders);
+
             report.Summary.Added = diff.Added.Count;
             report.Summary.Removed = diff.Removed.Count;
             report.Summary.Changed = diff.Changed.Count;
@@ -154,7 +156,7 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// 1件の <see cref="ValidationResult"/> が <see cref="AddressTellerMenu.CheckCLI"/> の exit code 判定
-        /// （<see cref="DetermineExitCode(DryRunResult)"/>）で問題として数えられるかどうか。CheckCLI は
+        /// （<see cref="DetermineExitCode(DryRunResult, bool)"/>）で問題として数えられるかどうか。CheckCLI は
         /// 読み取り専用で <see cref="ValidationStatus.DuplicateAddress"/> のような書き込み専用の例外を
         /// 設けないため、単純に <see cref="ValidationResult.IsOk"/> の否定で判定する
         /// （Apply 系の基準は <see cref="ValidationResult.IsBlocking"/> を参照——DuplicateAddress の
@@ -183,6 +185,8 @@ namespace AddressTeller.Editor
         /// <summary>
         /// <see cref="AddressTellerMenu.CheckCLI"/> 向けの exit code 判定。
         /// 0 = 差分なし・問題なし、1 = ドリフトあり（Validation エラーなし）、2 = Validation エラーあり。
+        /// <paramref name="failOnUnmatched"/> が true のとき、宣言フォルダ内の未登録アセット
+        /// （<see cref="DryRunResult.UnmatchedInDeclaredFolders"/>）が1件でもあれば 2 を返す（ドリフトより優先）。
         /// 実行環境エラー（3）はここでは判定しない（CLI 側で扱う）。
         /// <see cref="DryRunResult.Issues"/> は本来 IsOk=false の結果のみを想定するが、
         /// 任意のリストを受け取れる public 関数であるため <see cref="IsCheckCliFailing"/> で判定する。
@@ -190,9 +194,10 @@ namespace AddressTeller.Editor
         /// exit code 1（ドリフトあり）を返してよい。書き込みを行う Apply 系の判定は
         /// <see cref="DetermineApplyExitCode"/> を参照（差分の有無を理由に exit code を変えない）。
         /// </summary>
-        public static int DetermineExitCode(DryRunResult result)
+        public static int DetermineExitCode(DryRunResult result, bool failOnUnmatched = false)
         {
             if (result.Issues.Any(IsCheckCliFailing)) return 2;
+            if (failOnUnmatched && result.UnmatchedInDeclaredFolders.Count > 0) return 2;
             if (!result.Diff.IsEmpty) return 1;
             return 0;
         }
@@ -205,7 +210,7 @@ namespace AddressTeller.Editor
         /// <see cref="ValidationStatus.DuplicateAddress"/> は <see cref="ValidationResult.HasWritableDuplicate"/>
         /// が true でも IsOk=false（Error 扱い）になりうるが、書き込みを止めない報告専用ステータスであるため
         /// exit code には反映しない（<see cref="ValidationResult.IsBlocking"/> のXMLドキュメント参照）。
-        /// <see cref="DetermineExitCode(DryRunResult)"/>（CheckCLI 用）と異なり、dry-run の差分の有無は
+        /// <see cref="DetermineExitCode(DryRunResult, bool)"/>（CheckCLI 用）と異なり、dry-run の差分の有無は
         /// 見ない——Apply は実際に変更を書き込んで完了しているため、差分があったこと自体を失敗として
         /// 扱う（exit code 1 を返す）と、`set -e` の下で正常な適用が毎回失敗になってしまう。
         /// 差分の検出用途には <see cref="AddressTellerMenu.CheckCLI"/> を使うこと。

@@ -60,10 +60,10 @@ namespace AddressTeller.Editor
         /// GUID で宣言されたフォルダ（<see cref="Match.InFolderByGuid"/>）を現在のパスへ解決する。
         /// 解決結果のキャッシュ（<see cref="AssetDatabaseFolderGuidResolver"/>）は、このランの最初に捨てて引き直す。
         /// </summary>
-        public static IReadOnlyList<AddressRuleEntry> ResolveGuids(IReadOnlyList<AddressRuleEntry> entries, List<ValidationResult> failures)
+        public static IReadOnlyList<AddressRuleEntry> ResolveGuids(IReadOnlyList<AddressRuleEntry> entries, List<ValidationResult> failures, HashSet<int> failedEntryIndexes = null)
         {
             AssetDatabaseFolderGuidResolver.ClearCache();
-            return ResolveGuids(entries, failures, AssetDatabaseFolderGuidResolver.ResolveCached);
+            return ResolveGuids(entries, failures, AssetDatabaseFolderGuidResolver.ResolveCached, failedEntryIndexes);
         }
 
         /// <summary>
@@ -74,10 +74,15 @@ namespace AddressTeller.Editor
         /// GUID 宣言が1件も無ければ <paramref name="entries"/> をそのまま返す。
         /// </summary>
         /// <param name="resolve">guid → フォルダの現在のパス。フォルダに引けなければ null または空。</param>
+        /// <param name="failedEntryIndexes">
+        /// 非 null のとき、引けない GUID を宣言していたエントリの <paramref name="entries"/> 内の添字を加える
+        /// （戻り値の一覧は同じ順序・同じ件数なので、同じ添字で引ける）。
+        /// </param>
         internal static IReadOnlyList<AddressRuleEntry> ResolveGuids(
             IReadOnlyList<AddressRuleEntry> entries,
             List<ValidationResult> failures,
-            Func<string, string> resolve)
+            Func<string, string> resolve,
+            HashSet<int> failedEntryIndexes = null)
         {
             if (!entries.Any(e => e.FolderGuids.Count > 0)) return entries;
 
@@ -85,8 +90,9 @@ namespace AddressTeller.Editor
             var failedGuids = new List<string>();
             var failedSources = new Dictionary<string, List<AddressRuleEntry>>(StringComparer.Ordinal);
 
-            foreach (var entry in entries)
+            for (var index = 0; index < entries.Count; index++)
             {
+                var entry = entries[index];
                 if (entry.FolderGuids.Count == 0)
                 {
                     result.Add(entry);
@@ -94,19 +100,23 @@ namespace AddressTeller.Editor
                 }
 
                 var declared = new List<string>(entry.DeclaredFolders);
+                var nonRecursive = new List<string>(entry.NonRecursiveFolders);
                 foreach (var declaration in entry.FolderGuids)
                 {
                     var path = resolve(declaration.Guid);
                     if (string.IsNullOrEmpty(path))
                     {
                         AddSource(failedGuids, failedSources, declaration.Guid, entry);
+                        failedEntryIndexes?.Add(index);
                         continue;
                     }
 
-                    declared.Add(AssetCondition.NormalizeFolder(path));
+                    var normalized = AssetCondition.NormalizeFolder(path);
+                    declared.Add(normalized);
+                    if (!declaration.Recursive) nonRecursive.Add(normalized);
                 }
 
-                result.Add(entry.WithDeclaredFolders(declared));
+                result.Add(entry.WithDeclaredFolders(declared, nonRecursive));
             }
 
             foreach (var guid in failedGuids)
@@ -121,8 +131,8 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>宣言フォルダを検査する。</summary>
-        public static List<ValidationResult> Inspect(IReadOnlyList<AddressRuleEntry> entries, bool useCache)
-            => Inspect(entries, useCache, AssetDatabase.GetSubFolders, AssetDatabase.IsValidFolder);
+        public static List<ValidationResult> Inspect(IReadOnlyList<AddressRuleEntry> entries, bool useCache, HashSet<string> missingFolders = null)
+            => Inspect(entries, useCache, AssetDatabase.GetSubFolders, AssetDatabase.IsValidFolder, missingFolders);
 
         /// <summary>
         /// <paramref name="entries"/> の宣言フォルダを重複を除いて検査し、実在しなければ
@@ -133,11 +143,13 @@ namespace AddressTeller.Editor
         /// <param name="useCache">
         /// true のとき、キャッシュ済みのフォルダは検査し直さない（増分適用用）。false でも結果はキャッシュへ書き込む。
         /// </param>
+        /// <param name="missingFolders">非 null のとき、実在しなかった宣言フォルダ（宣言のままのパス）を加える。</param>
         internal static List<ValidationResult> Inspect(
             IReadOnlyList<AddressRuleEntry> entries,
             bool useCache,
             Func<string, string[]> getSubFolders,
-            Func<string, bool> isValidFolder)
+            Func<string, bool> isValidFolder,
+            HashSet<string> missingFolders = null)
         {
             var results = new List<ValidationResult>();
 
@@ -175,6 +187,7 @@ namespace AddressTeller.Editor
                 switch (check.State)
                 {
                     case DeclaredFolderState.Missing:
+                        missingFolders?.Add(folder);
                         results.Add(new ValidationResult(
                             null,
                             ValidationStatus.DeclaredFolderMissing,

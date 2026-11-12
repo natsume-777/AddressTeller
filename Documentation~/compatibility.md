@@ -57,6 +57,7 @@ Parsed by `AddressTellerCliArgs.TryParse` (source of truth: `Editor/EntryPoints/
 | `-addressTellerDisableRules <names>` | comma-separated rule class full names | empty (no additional exclusions) |
 | `-addressTellerConfirmClear` | presence-only flag (no value) | absent (treated as intentional refusal by `ClearCLI`) |
 | `-addressTellerClearScope <scope>` | `all`, `managed` | `managed` |
+| `-addressTellerFailOnUnmatched` | presence-only flag (no value) | absent (`CheckCLI` does not treat unmatched assets as a failure; the other entry points ignore the flag) |
 
 `managed` targets the groups AddressTeller owns; see [Design Decisions: Deletions Are Determined by Per-Asset Ownership](design-decisions.md#deletions-are-determined-by-per-asset-ownership) for the current definition of ownership. This document freezes the flag's name and vocabulary, not that definition — a change to what counts as owned is called out in CHANGELOG.md but does not change this section.
 
@@ -76,7 +77,7 @@ From `Documentation~/operations.md`.
 |---|---|
 | 0 | No drift, no issues |
 | 1 | Drift detected (changes present, no Validation errors) |
-| 2 | Validation errors present |
+| 2 | Validation errors present, or (only with `-addressTellerFailOnUnmatched`) at least one asset under a folder a rule declares gets no address or label from any rule |
 | 3 | Environment error (`AddressableAssetSettings` missing, invalid arguments, an unknown rule class name in `-addressTellerDisableRules`, report write failure, a settings load failure, or an unexpected exception) |
 
 `ApplyAllCLI` / `ApplyWithValidateCLI` (writes on success; exit code does not depend on whether there was drift):
@@ -119,6 +120,7 @@ Drift[]
 Issues[]
   Path, Status, Message                             (System.String)
   Blocking, Ok                                      (System.Boolean)
+Unmatched[]                                         (System.String; asset paths, Ordinal order)
 BundleDistribution                                  (always present; see note below)
   Bundles[]
     GroupName, Mode, SplitKey                        (System.String)
@@ -127,6 +129,8 @@ BundleDistribution                                  (always present; see note be
   Disclaimer                                          (System.String)
 SchemaVersion                                         (System.Int32)
 ```
+
+**`Unmatched[]`**: the paths of assets under a folder some rule declares (`AddressRuleEntry.DeclaredFolders`, at any depth, ignoring letter case) that no rule gave an address or a label. A folder declared with `Match.InFolder(path, recursive: false)` counts only its direct children. Folder assets, assets for which a rule threw, and assets matched only by a label-only rule are not listed; rules that declare no folder (a raw lambda `Where`) contribute nothing. It is report-only and does not affect `Summary.ExitCode`, except that `CheckCLI -addressTellerFailOnUnmatched` makes a non-empty list exit with code 2. Adding this key did not change `SchemaVersion` (a new optional key).
 
 **`Summary.Issues`**: the total count of entries in `Issues[]`, including report-only notices (e.g. `DuplicateAddress`) that do not affect `Summary.ExitCode`. A non-zero `Summary.Issues` does not by itself mean the run failed — check `Summary.ExitCode` for that.
 
@@ -151,6 +155,7 @@ SchemaVersion                                         (System.Int32)
 - One `<testcase>` per distinct `ValidationStatus` name present among the report's issues: `name="<StatusName>"` (e.g. `"ConflictingAddress"`), `classname="AddressTeller.Validation"`. Not affected by `treatDriftAsFailure`. This testcase always exists whenever the status is present, whether or not it also gets a nested `<failure>` — see the next bullet.
 - Whether a Validation testcase's nested `<failure>` is present depends on the calling entry point's own exit-code criteria, not merely on whether the status's `ValidationResult`s are `IsOk=false`: `CheckCLI` attaches `<failure>` to any status with at least one `IsOk=false` result (matching its own exit code 2 criteria); `ApplyAllCLI` / `ApplyWithValidateCLI` attach `<failure>` only to a status that is a blocking issue for Apply (matching their own exit code 2 criteria) — a report-only `DuplicateAddress` notice never gets `<failure>` from these two, even when reported as `IsOk=false`, because it does not abort Apply. For issues that can be predicted from the dry-run, a CI job that only checks `failures="0"` tracks that entry point's actual exit code, not just the presence of any `IsOk=false` issue. This does not extend to a status that can only be produced by actually performing the write (for example `ValidationStatus.EntryRejectedByAddressables`, raised only from inside `ApplyAll`'s own entry-creation step, never from a dry-run `Predict`): `ApplyAllCLI` / `ApplyWithValidateCLI` build their report from the pre-Apply dry-run result, not from the execution result the exit code is actually based on, so such a status can affect the exit code without ever appearing in this JUnit output at all.
 - `tests` / `failures` counts and the presence of a nested `<failure>` element follow standard JUnit consumer expectations (a `<testcase>` without `<failure>` passed; with `<failure>` it failed).
+- When `Unmatched[]` is non-empty, one more `<testcase>`: `name="unmatched"`, `classname="AddressTeller.Unmatched"` (omitted when empty, so the testcase set is unchanged for a report without unmatched assets). It carries a nested `<failure>` listing the paths only when the report was written with `treatUnmatchedAsFailure` true, which only `CheckCLI -addressTellerFailOnUnmatched` does.
 - `treatDriftAsFailure` (`AddressTellerReportWriter.ToJUnitXml` / `WriteToFile`, default `true`): which of the two behaviors above a given call produces. Which CLI entry point passes which value is covered above, not the parameter's default — a future entry point could reasonably need either.
 
 **Consumer obligations**: ignore unknown JSON fields (do not fail on additions); check `SchemaVersion` against the highest version you were built to understand and treat higher as unsupported rather than guessing at the shape.
@@ -247,7 +252,7 @@ Adding a new, off-by-default opt-in setting that changes evaluation behavior onl
 
 **Why appending a member doesn't break compilation but can break behavior at runtime**: a `switch` statement without a `default` arm compiles and runs fine against a new enum value it doesn't recognize — it just silently does nothing (or falls through, depending on the surrounding code), which is usually the wrong behavior for a status the caller has never seen. This is why appending is minor rather than patch: it is meant to be visible in a changelog and considered by anyone who switches exhaustively over these types, even though it cannot fail a build.
 
-Concretely, `ValidationStatus` currently has: `Ok`, `Skipped`, `LabelsOnly`, `ConflictingAddress`, `GroupNotFound`, `InvalidAddress`, `RuleError`, `GroupWillBeCreated`, `GroupCreationFailed`, `DefaultGroupUnavailable`, `RuleConfigureFailed`, `EntryRejectedByAddressables`, `DuplicateAddress`, `SettingsUnavailable`, `UnmatchedEntryKept`, `BlockedByRuleError`, `DuplicateAssetEntry`, `DeclaredFolderMissing`, `DeclaredFolderCaseMismatch`, `StaleRemovalLimitExceeded`, `AssetTypeUnresolved`, `StaleManagedLabelKept`, `LabelLedgerWriteFailed`. This is the enum most likely to keep growing (it is the package's general-purpose "what happened for this asset" result type), so a `switch` over it is the most important place to have a `default` arm.
+Concretely, `ValidationStatus` currently has: `Ok`, `Skipped`, `LabelsOnly`, `ConflictingAddress`, `GroupNotFound`, `InvalidAddress`, `RuleError`, `GroupWillBeCreated`, `GroupCreationFailed`, `DefaultGroupUnavailable`, `RuleConfigureFailed`, `EntryRejectedByAddressables`, `DuplicateAddress`, `SettingsUnavailable`, `UnmatchedEntryKept`, `BlockedByRuleError`, `DuplicateAssetEntry`, `DeclaredFolderMissing`, `DeclaredFolderCaseMismatch`, `StaleRemovalLimitExceeded`, `AssetTypeUnresolved`, `StaleManagedLabelKept`, `LabelLedgerWriteFailed`, `RuleMatchedNothing`. This is the enum most likely to keep growing (it is the package's general-purpose "what happened for this asset" result type), so a `switch` over it is the most important place to have a `default` arm.
 
 `SettingsUnavailable` is returned as the sole entry of the result list when the settings file (`ProjectSettings/AddressTellerSettings.json`) or the label ledger (`ProjectSettings/AddressTellerLabelLedger.json`) could not be loaded — `Context` is null, the same as `RuleConfigureFailed`, `DuplicateAddress`, and `DuplicateAssetEntry`, since it is not about one specific asset.
 
@@ -273,6 +278,8 @@ Troubleshooting](operations.md#troubleshooting) for the user-facing fix.
 `StaleManagedLabelKept` (`IsOk=true`) is a non-blocking notice reported by `ValidateAll` and every caller of `BuildPredictedSnapshot` when `RemoveStaleManagedLabels` is off: an entry AddressTeller would write carries a label that AddressTeller wrote earlier (its name is in the label ledger) but that the asset's rules no longer produce, so it would be removed if the setting were on. One result is reported per asset; `Context` is set and the message lists the labels. When the setting is on, nothing is reported — the removal appears as a changed entry in the dry-run diff instead. Like `UnmatchedEntryKept`, it is never produced by `ApplyAll` itself (including the incremental apply on every asset import). It stops nothing.
 
 `LabelLedgerWriteFailed` (`IsOk=false`, `IsBlocking=true`) is reported by `AddressTellerService.ApplyAll` when the run wrote labels but could not record their names in the label ledger (for example the file is read-only under version control). The labels were still written to the entries; they are only not remembered as AddressTeller's yet, so `RemoveStaleManagedLabels` will not remove them until a later run records them. Removal itself is not affected, since it rests on the ledger as it was when the run started. `Context` is null, since it is not about one specific asset; `ApplyAllCLI` / `ApplyWithValidateCLI` exit with code 2 when it is reported. It is produced by `ApplyAll` only.
+
+`RuleMatchedNothing` (`IsOk=true`) is a non-blocking notice for a rule that can assign an address (its `AddressSelector` is non-null) but matched no asset in a scan of the whole project, and none of whose evaluations threw. It is reported once per rule, naming the rule; `Context` is null. A rule whose declared folder does not exist is not reported (`DeclaredFolderMissing` already names the cause). `ValidateAll` and the dry-run entry points that scan the whole project (`CheckCLI`, the Apply All / Apply with Validate menu items) report it; `ApplyAll`, the scoped previews, and a direct call to `BuildPredictedSnapshot` do not, because a rule that matches nothing among a subset of assets may still match elsewhere. Label-only rules are never reported. It stops nothing.
 
 `DuplicateAddress` (`IsOk` depends on `ValidationResult.HasWritableDuplicate`; `IsBlocking` is always false) is reported by `ValidateAll`, `BuildPredictedSnapshot`, and also by `ApplyAll` — including the incremental apply `AddressTellerPostprocessor` performs on every asset import. `ApplyAll` checks only at the end of the run, and only if it assigned an address to at least one asset (re-assigning the same value on a re-import counts, as long as the asset resolved to a writable group): it then builds an address index of every entry already in Addressables and reports any other asset holding an address that run assigned. A run that assigned no address builds no index. Duplicates unrelated to the addresses the run assigned are reported only by `ValidateAll` and the dry-run. The check runs after stale entry removal, so an entry removed in the same run is not counted. It never blocks a write.
 

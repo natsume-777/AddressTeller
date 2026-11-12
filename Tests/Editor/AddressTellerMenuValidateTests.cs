@@ -182,15 +182,18 @@ namespace AddressTeller.Editor.Tests
             IReadOnlyList<ValidationResult> shownIssues = null;
             AddressTellerMenu.s_showResultWindow = (issues, title) => shownIssues = issues;
 
+            // このルールは何にもマッチしないので、フルスキャンの ValidateAll は RuleMatchedNothing の通知も加える。
+            LogAssert.Expect(LogType.Warning, new Regex("RuleMatchedNothing: .*" + nameof(NoMatchOwnsStubGroupRule)));
             LogAssert.Expect(LogType.Log, new Regex("UnmatchedEntryKept: 1 entry"));
-            LogAssert.Expect(LogType.Log, new Regex(Regex.Escape("[AddressTeller] Validate completed: 1 notice(s) (no issues), including 1 entry")));
+            LogAssert.Expect(LogType.Log, new Regex(Regex.Escape("[AddressTeller] Validate completed: 2 notice(s) (no issues), including 1 entry")));
 
             AddressTellerMenu.Validate(_settings, rules);
 
             Assert.IsNotNull(shownIssues,
                 "UnmatchedEntryKept 通知が1件以上ある場合、errorCount が0でも結果ウィンドウ表示が呼ばれるべき。");
-            Assert.AreEqual(1, shownIssues.Count);
-            Assert.AreEqual(ValidationStatus.UnmatchedEntryKept, shownIssues[0].Status);
+            Assert.AreEqual(2, shownIssues.Count);
+            Assert.AreEqual(1, shownIssues.Count(i => i.Status == ValidationStatus.UnmatchedEntryKept));
+            Assert.AreEqual(1, shownIssues.Count(i => i.Status == ValidationStatus.RuleMatchedNothing));
         }
 
         [Test]

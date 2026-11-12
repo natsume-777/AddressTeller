@@ -105,6 +105,7 @@ namespace AddressTeller
             private bool _whereSet;
             private IReadOnlyList<string> _declaredFolders;
             private IReadOnlyList<FolderGuidDeclaration> _folderGuids;
+            private IReadOnlyList<string> _nonRecursiveFolders;
             private Func<AssetContext, string> _addressSelector;
             private bool _addressSet;
             private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
@@ -144,6 +145,7 @@ namespace AddressTeller
                 // 条件が宣言しているフォルダをエントリへ引き継ぐ（生ラムダの Where は宣言を持たない）。
                 _declaredFolders = condition.Folders;
                 _folderGuids = condition.FolderGuids;
+                _nonRecursiveFolders = condition.NonRecursiveFolders;
                 return this;
             }
 
@@ -208,7 +210,7 @@ namespace AddressTeller
 
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids);
+                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids, _nonRecursiveFolders);
             }
         }
 
@@ -221,6 +223,7 @@ namespace AddressTeller
             private bool _whereSet;
             private IReadOnlyList<string> _declaredFolders;
             private IReadOnlyList<FolderGuidDeclaration> _folderGuids;
+            private IReadOnlyList<string> _nonRecursiveFolders;
             private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
             private bool _includeFolders;
             private bool _includeFoldersSet;
@@ -257,6 +260,7 @@ namespace AddressTeller
                 // 条件が宣言しているフォルダをエントリへ引き継ぐ（生ラムダの Where は宣言を持たない）。
                 _declaredFolders = condition.Folders;
                 _folderGuids = condition.FolderGuids;
+                _nonRecursiveFolders = condition.NonRecursiveFolders;
                 return this;
             }
 
@@ -292,7 +296,7 @@ namespace AddressTeller
 
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids);
+                return new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids, _nonRecursiveFolders);
             }
         }
     }

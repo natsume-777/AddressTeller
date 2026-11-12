@@ -485,7 +485,7 @@ namespace AddressTeller.Editor
             // state.Issues には GroupWillBeCreated（IsOk=true の作成予定通知）もアセットごとに含まれる
             // ——ValidateAll の従来契約どおり、フィルタせずそのまま返す（BuildPredictedSnapshot は逆に
             // GroupsToCreate で提示するため自分の側で除外している。AddressTellerSnapshotService 参照）。
-            var state = RuleEvaluationPipeline.BuildPredictedRunState(settings, pathList, rules, progress);
+            var state = RuleEvaluationPipeline.BuildPredictedRunState(settings, pathList, rules, progress, isFullScan: true);
 
             // 別アセット間のアドレス重複を検出する（同一アセットへの複数ルールの衝突とは別軸。
             // ValidationStatus.DuplicateAddress の XML doc 参照）。

@@ -7,6 +7,7 @@ sealed class AddressTeller.Editor.AddressTellerCliArgs
   Property AddressTeller.Editor.ClearScope ClearScope { get; }
   Property System.Boolean ConfirmClear { get; }
   Property System.Collections.Generic.IReadOnlyList<System.String> DisableRuleFullNames { get; }
+  Property System.Boolean FailOnUnmatched { get; }
   Property System.Nullable<AddressTeller.Editor.ReportFormat> ReportFormat { get; }
   Property System.String ReportPath { get; }
 
@@ -39,6 +40,7 @@ sealed class AddressTeller.Editor.AddressTellerReport
   Field System.Collections.Generic.List<AddressTeller.Editor.AddressTellerReportIssue> Issues
   Field System.Int32 SchemaVersion
   Field AddressTeller.Editor.AddressTellerReportSummary Summary
+  Field System.Collections.Generic.List<System.String> Unmatched
   Method static AddressTeller.Editor.AddressTellerReport FromJson(System.String json)
   Method System.String ToJson()
 
@@ -73,9 +75,9 @@ sealed class AddressTeller.Editor.AddressTellerReportSummary
   Field System.Int32 Removed
 
 static class AddressTeller.Editor.AddressTellerReportWriter
-  Method static System.String ToJUnitXml(AddressTeller.Editor.AddressTellerReport report, System.Boolean treatDriftAsFailure = true)
+  Method static System.String ToJUnitXml(AddressTeller.Editor.AddressTellerReport report, System.Boolean treatDriftAsFailure = true, System.Boolean treatUnmatchedAsFailure = false)
   Method static System.String ToJson(AddressTeller.Editor.AddressTellerReport report)
-  Method static System.Boolean WriteToFile(System.String path, AddressTeller.Editor.AddressTellerReport report, AddressTeller.Editor.ReportFormat format, System.Boolean treatDriftAsFailure = true)
+  Method static System.Boolean WriteToFile(System.String path, AddressTeller.Editor.AddressTellerReport report, AddressTeller.Editor.ReportFormat format, System.Boolean treatDriftAsFailure = true, System.Boolean treatUnmatchedAsFailure = false)
 
 static class AddressTeller.Editor.AddressTellerService
   Method static System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> ApplyAll(System.Collections.Generic.IEnumerable<System.String> paths, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings settings = null)
@@ -185,6 +187,7 @@ struct AddressTeller.Editor.DryRunResult
   Property AddressTeller.Editor.SnapshotDiff Diff { get; }
   Property System.Collections.Generic.IReadOnlyList<System.String> GroupsToCreate { get; }
   Property System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> Issues { get; }
+  Property System.Collections.Generic.IReadOnlyList<System.String> UnmatchedInDeclaredFolders { get; }
 
 sealed class AddressTeller.Editor.EditorProgressReporter : AddressTeller.Editor.IProgressReporter, System.IDisposable
   Constructor (System.String title)
@@ -255,6 +258,7 @@ enum AddressTeller.Editor.ValidationStatus
   EnumMember Ok = 0
   EnumMember RuleConfigureFailed = 10
   EnumMember RuleError = 6
+  EnumMember RuleMatchedNothing = 23
   EnumMember SettingsUnavailable = 13
   EnumMember Skipped = 1
   EnumMember StaleManagedLabelKept = 21

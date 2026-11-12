@@ -29,7 +29,8 @@ namespace AddressTeller.Editor
                 "AddressTeller Preview", $"Rule: {rule.GetType().Name}");
             var notice = AddressTellerScopeBuilder.BuildScopeNotice(isRuleFiltered: true);
 
-            AddressTellerResultWindow.Show(dryRun, title, settings, notice: notice);
+            // ルールを絞っているので、絞ったルールにマッチしないだけのアセットを「未登録」として見せない。
+            AddressTellerResultWindow.Show(dryRun, title, settings, notice: notice, showUnmatchedTab: false);
         }
 
         /// <summary>
@@ -53,7 +54,7 @@ namespace AddressTeller.Editor
             var scopeLabel = paths.Count == 1 ? $"Asset: {paths[0]}" : $"Assets: {paths.Count}";
             var title = AddressTellerScopeBuilder.BuildScopeTitle("AddressTeller Preview", scopeLabel);
 
-            AddressTellerResultWindow.Show(dryRun, title, settings);
+            AddressTellerResultWindow.Show(dryRun, title, settings, showUnmatchedTab: false);
         }
 
         /// <summary>
@@ -83,7 +84,7 @@ namespace AddressTeller.Editor
             var title = AddressTellerScopeBuilder.BuildScopeTitle(
                 "AddressTeller Preview", $"Group: {group.Name} (current members)");
 
-            AddressTellerResultWindow.Show(dryRun, title, settings);
+            AddressTellerResultWindow.Show(dryRun, title, settings, showUnmatchedTab: false);
         }
     }
 }

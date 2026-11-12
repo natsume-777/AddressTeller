@@ -10,14 +10,21 @@ namespace AddressTeller
     /// </summary>
     internal static class RuleEvaluator
     {
-        public static AddressResolution Evaluate(AssetContext context, IEnumerable<AddressRuleEntry> entries)
+        /// <param name="matchedAddressEntries">
+        /// 非 null のとき、アドレス候補を出したエントリの <paramref name="entries"/> 内の添字の要素を true にする
+        /// （「一致 0 件のルール」の検出用。添字で記録するのは、ルールの識別名が衝突しうるため）。
+        /// </param>
+        /// <param name="erroredEntries">非 null のとき、例外を送出したエントリの添字の要素を true にする。</param>
+        public static AddressResolution Evaluate(AssetContext context, IEnumerable<AddressRuleEntry> entries, bool[] matchedAddressEntries = null, bool[] erroredEntries = null)
         {
             var candidates = new List<AddressCandidate>();
             var labels = new HashSet<string>();
             var errors = new List<RuleEvaluationError>();
 
+            var entryIndex = -1;
             foreach (var entry in entries)
             {
+                entryIndex++;
                 // フォルダは、ルールが IncludeFolders() で明示的に opt-in していない限り評価対象外。
                 // Predicate すら呼ばない（フォルダを想定していない既存ルールの Predicate を壊さないため）。
                 if (context.IsFolder && !entry.IncludesFolders)
@@ -55,10 +62,14 @@ namespace AddressTeller
                     }
 
                     if (addressProduced)
+                    {
                         candidates.Add(new AddressCandidate(entry.GroupName, address, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order, candidateLabels));
+                        if (matchedAddressEntries != null) matchedAddressEntries[entryIndex] = true;
+                    }
                 }
                 catch (Exception ex)
                 {
+                    if (erroredEntries != null) erroredEntries[entryIndex] = true;
                     // アドレス産出後に LabelSelector が例外を送出した場合も候補は残す（勝者になりうるルールの
                     // 例外が BlockedByRuleError の判定対象から落ちないようにするため）。この候補のラベルは、
                     // 勝てば BlockedByRuleError で書き込まれず、負ければ使われないため、持たせない。

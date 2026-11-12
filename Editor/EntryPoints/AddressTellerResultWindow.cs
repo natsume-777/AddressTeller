@@ -20,6 +20,7 @@ namespace AddressTeller.Editor
             Diff,
             Issues,
             Distribution,
+            Unmatched,
         }
 
         // _showDiffTab/_showDistributionTab はドメインリロード後にリセットされ、
@@ -38,6 +39,10 @@ namespace AddressTeller.Editor
         private List<IssueRow> _allIssueRows = new();
         private IReadOnlyList<string> _groupsToCreate = Array.Empty<string>();
 
+        // Unmatched タブの内容（宣言フォルダ配下で、どのルールにもマッチしなかったアセットのパス）。
+        // 1件以上あるときだけタブを表示する。
+        private IReadOnlyList<string> _unmatched = Array.Empty<string>();
+
         // Distribution タブの集計結果。Show() 時に一度だけ算出する。
         // 算出失敗・対象外（After が null 等）の場合は null（タブ自体を非表示にする）。
         private BundleDistribution _distribution;
@@ -55,6 +60,7 @@ namespace AddressTeller.Editor
         private VisualElement _diffTabContent;
         private VisualElement _issueTabContent;
         private VisualElement _distributionTabContent;
+        private VisualElement _unmatchedTabContent;
         private VisualElement _tabBar;
         private HelpBox _noticeBox;
 
@@ -63,13 +69,18 @@ namespace AddressTeller.Editor
         /// Distribution タブの算出に使う。null または <paramref name="dryRun"/>.After が null の場合、Distribution タブは表示しない。
         /// </param>
         /// <param name="notice">非 null の場合、タブ描画前に HelpBox(Info) として表示する注意文。</param>
-        public static void Show(DryRunResult dryRun, string title = "AddressTeller - Apply Preview", AddressableAssetSettings settings = null, string notice = null)
+        /// <param name="showUnmatchedTab">
+        /// false のとき、宣言フォルダ内の未登録アセットの Unmatched タブを出さない。ルールを絞ったプレビューでは、
+        /// 絞ったルールにマッチしないだけのアセットまで「未登録」に見えてしまうため。
+        /// </param>
+        public static void Show(DryRunResult dryRun, string title = "AddressTeller - Apply Preview", AddressableAssetSettings settings = null, string notice = null, bool showUnmatchedTab = true)
         {
             var window = GetOrCreateWindow(title);
             window._showDiffTab = true;
             window._currentTab = Tab.Diff;
             window._onApply = null;
             window._groupsToCreate = dryRun.GroupsToCreate;
+            window._unmatched = showUnmatchedTab ? dryRun.UnmatchedInDeclaredFolders : Array.Empty<string>();
             window._notice = notice;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
@@ -93,6 +104,7 @@ namespace AddressTeller.Editor
             window._currentTab = Tab.Diff;
             window._onApply = onApply;
             window._groupsToCreate = dryRun.GroupsToCreate;
+            window._unmatched = dryRun.UnmatchedInDeclaredFolders;
             window._notice = null;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
@@ -110,6 +122,7 @@ namespace AddressTeller.Editor
             window._currentTab = Tab.Issues;
             window._onApply = null;
             window._groupsToCreate = Array.Empty<string>();
+            window._unmatched = Array.Empty<string>();
             window._notice = null;
             window.SetDiffRows(new List<DiffRow>());
             window.SetIssueRows(issues);
@@ -218,6 +231,9 @@ namespace AddressTeller.Editor
             root.Add(_diffTabContent);
             root.Add(_issueTabContent);
             root.Add(_distributionTabContent);
+            _unmatchedTabContent = new VisualElement();
+            _unmatchedTabContent.AddToClassList("at-tab-content");
+            root.Add(_unmatchedTabContent);
 
             // Diff タブの内容
             BuildDiffTabContent();
@@ -228,6 +244,9 @@ namespace AddressTeller.Editor
             // Distribution タブの内容
             BuildDistributionTabContent();
 
+            // Unmatched タブの内容
+            BuildUnmatchedTabContent();
+
             // タブボタンを並べる
             if (_showDiffTab)
             {
@@ -235,6 +254,8 @@ namespace AddressTeller.Editor
                 AddTabButton("Issues", Tab.Issues);
                 if (_showDistributionTab)
                     AddTabButton("Distribution", Tab.Distribution);
+                if (_unmatched.Count > 0)
+                    AddTabButton($"Unmatched ({_unmatched.Count})", Tab.Unmatched);
             }
             else
             {
@@ -260,6 +281,7 @@ namespace AddressTeller.Editor
             _diffTabContent.style.display = tab == Tab.Diff ? DisplayStyle.Flex : DisplayStyle.None;
             _issueTabContent.style.display = tab == Tab.Issues ? DisplayStyle.Flex : DisplayStyle.None;
             _distributionTabContent.style.display = tab == Tab.Distribution ? DisplayStyle.Flex : DisplayStyle.None;
+            _unmatchedTabContent.style.display = tab == Tab.Unmatched ? DisplayStyle.Flex : DisplayStyle.None;
 
             // アクティブタブのボタンを太字にする（簡易ハイライト）
             foreach (var btn in _tabBar.Children().OfType<Button>())
@@ -347,6 +369,32 @@ namespace AddressTeller.Editor
             _issueTreeView = new AddressTellerIssueTreeView();
             ApplyIssueFilter();
             _issueTabContent.Add(_issueTreeView);
+        }
+
+        private void BuildUnmatchedTabContent()
+        {
+            _unmatchedTabContent.Clear();
+
+            if (_unmatched.Count == 0)
+            {
+                _unmatchedTabContent.Add(new HelpBox("No unmatched assets in declared folders.", HelpBoxMessageType.Info));
+                return;
+            }
+
+            var summaryLabel = new Label(
+                $"{_unmatched.Count} asset(s) under folders that rules declare get no address or label from any rule.");
+            summaryLabel.AddToClassList("at-summary-label");
+            _unmatchedTabContent.Add(summaryLabel);
+
+            // 件数が多くなりうるので、見えている行だけを生成する仮想化 ListView を使う。
+            var items = _unmatched.ToList();
+            var list = new ListView(items, 18, () => new Label(), (element, index) => ((Label)element).text = items[index])
+            {
+                selectionType = SelectionType.None,
+                showAlternatingRowBackgrounds = AlternatingRowBackground.ContentOnly,
+            };
+            list.style.flexGrow = 1;
+            _unmatchedTabContent.Add(list);
         }
 
         private void BuildDistributionTabContent()

@@ -129,7 +129,12 @@ namespace AddressTeller.Editor.Tests
             DeclaredFolderInspector.ResetCache();
             AddressTellerPostprocessor.s_lastLoggedDeclaredFolderSignature = null;
 
+            // 他のテストが同じ親を使うため親ごとは消さず、自分のサブフォルダだけを消す。
+            // 親が空になっていれば親も消す（テスト後に Assets 直下へ残さない）。
             AssetDatabase.DeleteAsset(TestRootFolder);
+            if (AssetDatabase.IsValidFolder(TempRoot)
+                && AssetDatabase.FindAssets(string.Empty, new[] { TempRoot }).Length == 0)
+                AssetDatabase.DeleteAsset(TempRoot);
             if (_settings != null)
             {
                 foreach (var group in _settings.groups.Where(g => g != null).ToList())

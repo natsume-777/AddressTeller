@@ -57,6 +57,14 @@ namespace AddressTeller.Editor
         public bool HasMissingDeclaredFolder { get; }
 
         /// <summary>
+        /// 実在しない宣言フォルダ（GUID が引けないものを含む）を持つエントリの <see cref="Entries"/> 内の添字。
+        /// そのルールは宣言のせいで何にもマッチしないだけなので、「一致 0 件」の通知（
+        /// <see cref="ValidationStatus.RuleMatchedNothing"/>）からは外す（<see cref="ValidationStatus.DeclaredFolderMissing"/> が
+        /// 既に原因を報告している）。
+        /// </summary>
+        public IReadOnlyCollection<int> EntriesWithMissingFolder { get; }
+
+        /// <summary>
         /// このランで stale クリーンアップ（無マッチ・無効パスエントリの削除と、資産削除への追従）を止めるべきか。
         /// Configure() の失敗（所有グループが信頼できない）か、宣言フォルダの欠落（そのルールが何にもマッチ
         /// しないだけで、エントリが「無マッチ」に見えている可能性がある）のどちらかがあれば true。
@@ -64,8 +72,9 @@ namespace AddressTeller.Editor
         /// </summary>
         public bool SuspendsStaleCleanup => ConfigureFailures.Count > 0 || HasMissingDeclaredFolder;
 
-        public EvaluationSetup(IReadOnlyList<AddressRuleEntry> entries, string configFolder, HashSet<string> ownedGroups, HashSet<string> existingGroupNames, bool autoCreateMissingGroups, bool defaultGroupUnavailable = false, IReadOnlyList<ValidationResult> configureFailures = null, IReadOnlyList<ValidationResult> declaredFolderIssues = null)
+        public EvaluationSetup(IReadOnlyList<AddressRuleEntry> entries, string configFolder, HashSet<string> ownedGroups, HashSet<string> existingGroupNames, bool autoCreateMissingGroups, bool defaultGroupUnavailable = false, IReadOnlyList<ValidationResult> configureFailures = null, IReadOnlyList<ValidationResult> declaredFolderIssues = null, IReadOnlyCollection<int> entriesWithMissingFolder = null)
         {
+            EntriesWithMissingFolder = entriesWithMissingFolder ?? Array.Empty<int>();
             Entries = entries;
             ConfigFolder = configFolder;
             OwnedGroups = ownedGroups;
@@ -107,13 +116,21 @@ namespace AddressTeller.Editor
         /// <summary>progress がキャンセルを返し、走査を打ち切った場合は true。</summary>
         public bool Cancelled { get; }
 
+        /// <summary>
+        /// 走査したアセットのうち、いずれかのルールが宣言したフォルダの配下にあるのに、どのルールにもマッチ
+        /// しなかったもののパス（Ordinal 昇順）。ラベル専用ルールにマッチしたもの・ルール例外があったもの・
+        /// フォルダ自体は含めない。
+        /// </summary>
+        public List<string> UnmatchedInDeclaredFolders { get; }
+
         public PredictedRunState(
             AddressTellerSnapshot before,
             Dictionary<string, SnapshotEntry> afterMap,
             HashSet<string> writtenGuids,
             List<ValidationResult> issues,
             HashSet<string> groupsToCreate,
-            bool cancelled)
+            bool cancelled,
+            List<string> unmatchedInDeclaredFolders = null)
         {
             Before = before;
             AfterMap = afterMap;
@@ -121,6 +138,7 @@ namespace AddressTeller.Editor
             Issues = issues;
             GroupsToCreate = groupsToCreate;
             Cancelled = cancelled;
+            UnmatchedInDeclaredFolders = unmatchedInDeclaredFolders ?? new List<string>();
         }
     }
 
@@ -188,8 +206,16 @@ namespace AddressTeller.Editor
             // GUID で宣言されたフォルダを現在のパスへ解決し（引けなければ DeclaredFolderMissing）、
             // そのうえで宣言された全フォルダの実在・大小文字を検査する。
             var declaredFolderIssues = new List<ValidationResult>();
-            entries = DeclaredFolderInspector.ResolveGuids(entries, declaredFolderIssues);
-            declaredFolderIssues.AddRange(DeclaredFolderInspector.Inspect(entries, useDeclaredFolderCache));
+            var entriesWithMissingFolder = new HashSet<int>();
+            var missingFolders = new HashSet<string>(StringComparer.Ordinal);
+            entries = DeclaredFolderInspector.ResolveGuids(entries, declaredFolderIssues, entriesWithMissingFolder);
+            declaredFolderIssues.AddRange(DeclaredFolderInspector.Inspect(entries, useDeclaredFolderCache, missingFolders));
+            if (missingFolders.Count > 0)
+            {
+                for (var i = 0; i < entries.Count; i++)
+                    if (entries[i].DeclaredFolders.Any(missingFolders.Contains))
+                        entriesWithMissingFolder.Add(i);
+            }
 
             // 削除の権限が発生するのは Address() を宣言したグループだけ（AnyGroup() 由来の GroupName=null、
             // 未解決のセンチネル、Group() だけでまだ Address() を呼んでいないエントリは除外する）。
@@ -199,7 +225,7 @@ namespace AddressTeller.Editor
                 .Select(e => e.GroupName));
             // settings.groups の null 要素を除外する（Capture の if (group == null) continue; と対称にする）。
             var existingGroupNames = new HashSet<string>(settings.groups.Where(g => g != null).Select(g => g.Name));
-            return new EvaluationSetup(entries, configFolder, ownedGroups, existingGroupNames, AddressTellerSettings.AutoCreateMissingGroups, defaultGroupUnavailable, configureFailures, declaredFolderIssues);
+            return new EvaluationSetup(entries, configFolder, ownedGroups, existingGroupNames, AddressTellerSettings.AutoCreateMissingGroups, defaultGroupUnavailable, configureFailures, declaredFolderIssues, entriesWithMissingFolder);
         }
 
         /// <summary>
@@ -210,11 +236,18 @@ namespace AddressTeller.Editor
         /// 両呼び出し元で従来通り同一だが、重複アドレス検出（DuplicateAddressDetector）の入力となる
         /// AfterMap/WrittenGuids も両者で完全に同じ計算過程（stale 削除・無効パス掃除を反映済み）から得られる。
         /// </summary>
+        /// <param name="isFullScan">
+        /// <paramref name="paths"/> がプロジェクト全体のアセットパスであるときだけ true。true のとき、走査の最後に
+        /// 1件もマッチしなかったアドレス産出ルールを <see cref="ValidationStatus.RuleMatchedNothing"/> として
+        /// Issues へ加える（一部のパスだけを走査したランでは、マッチしなかったことが「どこにもマッチしない」を
+        /// 意味しないため報告しない）。キャンセルされたランでも報告しない。
+        /// </param>
         public static PredictedRunState BuildPredictedRunState(
             AddressableAssetSettings settings,
             IEnumerable<string> paths,
             IReadOnlyList<AddressRuleBase> rules,
-            IProgressReporter progress = null)
+            IProgressReporter progress = null,
+            bool isFullScan = false)
         {
             progress ??= NullProgressReporter.Instance;
 
@@ -280,6 +313,15 @@ namespace AddressTeller.Editor
             var groupsToCreate = new HashSet<string>();
             var writtenGuids = new HashSet<string>();
 
+            // 宣言フォルダ配下の未登録アセット（UnmatchedInDeclaredFolders）と、一致 0 件ルールの検出用。
+            // どちらもエントリ集合から決まるラン中不変の値なので、毎資産ループの外で1回だけ組み立てる。
+            var declaredFolderScope = new DeclaredFolderScope(setup.Entries);
+            var unmatchedInDeclaredFolders = new List<string>();
+            // アドレスを産出したエントリ・ルール例外を出したエントリを、エントリの添字で記録する。isFullScan のときだけ集める。
+            // ルール例外を出したエントリは評価が完了していないので「一致 0 件」とは言えない。
+            var matchedAddressEntries = isFullScan ? new bool[setup.Entries.Count] : null;
+            var erroredEntries = isFullScan ? new bool[setup.Entries.Count] : null;
+
             var pathList = paths as IList<string> ?? paths.ToList();
             var total = pathList.Count;
             var cancelled = false;
@@ -304,7 +346,7 @@ namespace AddressTeller.Editor
                 }
                 if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;
 
-                var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
+                var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries, matchedAddressEntries, erroredEntries);
                 AddRuleErrors(ctx, resolution, issues);
 
                 var prediction = AddressTellerApplier.Predict(ctx, resolution, settings, setup.ExistingGroupNames, setup.OwnedGroups, setup.AutoCreateMissingGroups, suspendStaleCleanup);
@@ -344,13 +386,52 @@ namespace AddressTeller.Editor
                 // Validation（Apply の結果そのもの）とは別に、同じ資産について追加で報告する。
                 if (prediction.Notice != null)
                     issues.Add(prediction.Notice);
+
+                // 宣言フォルダの配下にあるのにどのルールにもマッチしなかったアセット。Skipped は IsOk=true で
+                // issues に積まれないため、別リストで持つ。ルール例外があったアセットは「マッチしなかった」と
+                // 言い切れないので除く。フォルダ自体は IncludeFolders() しないルールには評価されない
+                // （常に Skipped になる）ため対象外にする。
+                if (prediction.Validation.Status == ValidationStatus.Skipped
+                    && resolution.Errors.Count == 0
+                    && !ctx.IsFolder
+                    && declaredFolderScope.Contains(ctx.Path))
+                    unmatchedInDeclaredFolders.Add(ctx.Path);
             }
+
+            if (isFullScan && !cancelled)
+                AddRuleMatchedNothingNotices(setup, matchedAddressEntries, erroredEntries, issues);
 
             // キャンセル時は完了通知を呼ばない（中断したのに「完了」を通知すると意味的に矛盾するため）。
             if (!cancelled)
                 progress.Report(total, total, string.Empty);
 
-            return new PredictedRunState(before, afterMap, writtenGuids, issues, groupsToCreate, cancelled);
+            unmatchedInDeclaredFolders.Sort(StringComparer.Ordinal);
+            return new PredictedRunState(before, afterMap, writtenGuids, issues, groupsToCreate, cancelled, unmatchedInDeclaredFolders);
+        }
+
+        /// <summary>
+        /// アドレスを産出しうる（AddressSelector が非 null の）エントリのうち、走査したどのアセットでも
+        /// 候補を出さず、ルール例外も出さなかったものを <see cref="ValidationStatus.RuleMatchedNothing"/> として
+        /// <paramref name="issues"/> へ加える。エントリの登場順。宣言フォルダが実在しないエントリは、
+        /// <see cref="ValidationStatus.DeclaredFolderMissing"/> が原因を報告済みなので外す。
+        /// </summary>
+        private static void AddRuleMatchedNothingNotices(EvaluationSetup setup, bool[] matchedAddressEntries, bool[] erroredEntries, List<ValidationResult> issues)
+        {
+            var entries = setup.Entries;
+            var withMissingFolder = new HashSet<int>(setup.EntriesWithMissingFolder);
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                if (entry.AddressSelector == null) continue;
+                if (matchedAddressEntries[i] || erroredEntries[i]) continue;
+                if (withMissingFolder.Contains(i)) continue;
+
+                var source = AddressRuleEntry.DescribeSource(entry.SourceClass, entry.Description, entry.RuleIndex);
+                issues.Add(new ValidationResult(
+                    null,
+                    ValidationStatus.RuleMatchedNothing,
+                    $"{source} did not match any asset in the project, so it assigns no address. Check its condition (a typo, or a folder that was moved), or remove the rule if it is no longer needed."));
+            }
         }
 
         /// <summary>
@@ -457,6 +538,57 @@ namespace AddressTeller.Editor
 
             configureFailures = (IReadOnlyList<ValidationResult>)failures ?? Array.Empty<ValidationResult>();
             return all;
+        }
+    }
+
+    /// <summary>
+    /// エントリが宣言したフォルダの「配下」を判定する。宣言が <c>Match.InFolder(path, recursive: false)</c> なら直下のアセット
+    /// だけ、それ以外（再帰の InFolder・GUID 宣言・Glob の固定接頭辞）は子孫すべて。大小文字は区別しない
+    /// （<see cref="AssetContext.IsInFolder"/> と同じ）。同じフォルダを別のルールが再帰で宣言していれば再帰が優先される
+    /// （そのルールの宣言の配下でもあるため）。毎資産ループから呼ばれるので、接頭辞はコンストラクタで1回だけ組み立てる。
+    /// </summary>
+    internal sealed class DeclaredFolderScope
+    {
+        private readonly string[] _recursivePrefixes;
+        private readonly string[] _directPrefixes;
+
+        public DeclaredFolderScope(IReadOnlyList<AddressRuleEntry> entries)
+        {
+            var recursive = new List<string>();
+            var direct = new List<string>();
+            var seenRecursive = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenDirect = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var entry in entries)
+            {
+                foreach (var folder in entry.DeclaredFolders)
+                {
+                    if (entry.NonRecursiveFolders.Contains(folder))
+                    {
+                        if (seenDirect.Add(folder)) direct.Add(folder + "/");
+                    }
+                    else if (seenRecursive.Add(folder))
+                    {
+                        recursive.Add(folder + "/");
+                    }
+                }
+            }
+
+            _recursivePrefixes = recursive.ToArray();
+            _directPrefixes = direct.ToArray();
+        }
+
+        public bool Contains(string path)
+        {
+            foreach (var prefix in _recursivePrefixes)
+                if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+            foreach (var prefix in _directPrefixes)
+                if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && path.IndexOf('/', prefix.Length) < 0)
+                    return true;
+
+            return false;
         }
     }
 }

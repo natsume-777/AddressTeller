@@ -103,6 +103,44 @@ namespace AddressTeller.Editor.Tests
             return report;
         }
 
+        private static XElement UnmatchedTestCase(string xml)
+            => XDocument.Parse(xml).Root.Elements("testcase").SingleOrDefault(tc => (string)tc.Attribute("name") == "unmatched");
+
+        [Test]
+        public void ToJUnitXml_NoUnmatched_HasNoUnmatchedTestCase()
+        {
+            Assert.IsNull(UnmatchedTestCase(AddressTellerReportWriter.ToJUnitXml(EmptyReport(), treatDriftAsFailure: true, treatUnmatchedAsFailure: true)));
+        }
+
+        [Test]
+        public void ToJUnitXml_Unmatched_DefaultIsPassingTestCase()
+        {
+            var report = EmptyReport();
+            report.Unmatched.Add("Assets/A/Orphan.prefab");
+
+            var testCase = UnmatchedTestCase(AddressTellerReportWriter.ToJUnitXml(report));
+
+            Assert.IsNotNull(testCase);
+            Assert.AreEqual("AddressTeller.Unmatched", (string)testCase.Attribute("classname"));
+            Assert.IsNull(testCase.Element("failure"), "既定では報告専用で、failure を付けない。");
+        }
+
+        [Test]
+        public void ToJUnitXml_Unmatched_TreatAsFailure_ListsPathsInFailure()
+        {
+            var report = EmptyReport();
+            report.Unmatched.Add("Assets/A/Orphan.prefab");
+            report.Unmatched.Add("Assets/A/Other.prefab");
+
+            var xml = AddressTellerReportWriter.ToJUnitXml(report, treatDriftAsFailure: true, treatUnmatchedAsFailure: true);
+            var failure = UnmatchedTestCase(xml).Element("failure");
+
+            Assert.IsNotNull(failure);
+            StringAssert.Contains("Assets/A/Orphan.prefab", failure.Value);
+            StringAssert.Contains("Assets/A/Other.prefab", failure.Value);
+            Assert.AreEqual("1", (string)XDocument.Parse(xml).Root.Attribute("failures"));
+        }
+
         [Test]
         public void DefaultSchemaVersion_IsOne()
         {

@@ -256,6 +256,7 @@ namespace AddressTeller.Editor
                 s_exitCli(3);
                 return;
             }
+            WarnIfFailOnUnmatchedIgnored(cliArgs, nameof(ClearCLI));
 
             var settingsGate = AddressTellerSettings.EnsureLoaded();
             if (!settingsGate.Success)
@@ -450,6 +451,7 @@ namespace AddressTeller.Editor
                 s_exitCli(3);
                 return;
             }
+            WarnIfFailOnUnmatchedIgnored(cliArgs, nameof(ApplyAllCLI));
 
             var settingsGate = AddressTellerSettings.EnsureLoaded();
             if (!settingsGate.Success)
@@ -477,14 +479,15 @@ namespace AddressTeller.Editor
 
             // 母集合を1回確定し、dry-run（レポート化）と実 Apply で同じ対象パスを使う。
             var paths = AssetDatabase.GetAllAssetPaths();
-            var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
+            var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules, isFullScan: true);
 
             // dry-run の DuplicateAddress は、書き込んだアドレスと無関係な既存の重複（ApplyAll は報告しない）も含む。
             // コンソールに出すため、ApplyAll の後にログする（ApplyAll が同じ内容を返した分は二重にならないよう除く）。
-            var duplicateNotices = dryRun.Issues.Where(i => i.Status == ValidationStatus.DuplicateAddress).ToList();
+            var duplicateNotices = dryRun.Issues.Where(IsDryRunOnlyNotice).ToList();
 
             var applyIssues = AddressTellerService.ApplyAll(paths, settings, NullProgressReporter.Instance, rules);
             LogApplyIssuesAndDryRunDuplicates(applyIssues, duplicateNotices);
+            AddressTellerIssueLogger.LogUnmatched(dryRun.UnmatchedInDeclaredFolders, failing: false);
 
             ExitWithReport(dryRun, applyIssues, cliArgs, settings);
         }
@@ -537,6 +540,7 @@ namespace AddressTeller.Editor
                 s_exitCli(3);
                 return;
             }
+            WarnIfFailOnUnmatchedIgnored(cliArgs, nameof(ApplyWithValidateCLI));
 
             var settingsGate = AddressTellerSettings.EnsureLoaded();
             if (!settingsGate.Success)
@@ -575,40 +579,67 @@ namespace AddressTeller.Editor
 
                 // Apply を行わないため、現在の状態のままの dry-run をレポート化する。
                 var paths = AssetDatabase.GetAllAssetPaths();
-                var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
+                var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules, isFullScan: true);
+                // validateIssues（RuleMatchedNothing を含む）は上で全件ログ済みなので、未登録アセットの件数だけを足す。
+                AddressTellerIssueLogger.LogUnmatched(dryRun.UnmatchedInDeclaredFolders, failing: false);
                 ExitWithReport(dryRun, validateIssues, cliArgs, settings);
                 return;
             }
 
             // 中止しない場合でも、validateIssues の DuplicateAddress（書き込んだアドレスと無関係な既存の重複を含む）は
             // コンソールに出す。ApplyAll の後にログし、ApplyAll が同じ内容を返した分は二重にならないよう除く。
-            var duplicateNotices = validateIssues.Where(i => i.Status == ValidationStatus.DuplicateAddress).ToList();
+            var duplicateNotices = validateIssues.Where(IsDryRunOnlyNotice).ToList();
 
             // 母集合を1回確定し、dry-run（レポート化）と実 Apply で同じ対象パスを使う。
             var applyPaths = AssetDatabase.GetAllAssetPaths();
-            var applyDryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, applyPaths, rules);
+            var applyDryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, applyPaths, rules, isFullScan: true);
 
             var applyIssues = AddressTellerService.ApplyAll(applyPaths, settings, NullProgressReporter.Instance, rules);
             LogApplyIssuesAndDryRunDuplicates(applyIssues, duplicateNotices);
+            AddressTellerIssueLogger.LogUnmatched(applyDryRun.UnmatchedInDeclaredFolders, failing: false);
 
             ExitWithReport(applyDryRun, applyIssues, cliArgs, settings);
         }
 
         /// <summary>
-        /// ApplyAll の結果をログし、続けて事前の検証/dry-run で見つかった DuplicateAddress のうち ApplyAll 側の結果に
-        /// 同じ Message が無いものをログする。ApplyAll も同じ重複を返すため、単純に両方ログすると二重になる。
-        /// Predict と Apply のずれで取りこぼさないよう、先にログする側の絞り込みはせず Message の一致だけで除く。
+        /// ApplyAll が返さず、事前の検証/dry-run だけが計算する通知（DuplicateAddress は書き込んだアドレス以外の
+        /// 既存の重複を含む。RuleMatchedNothing は全件走査でしか分からない）。Apply 系 CLI はこれらを
+        /// ApplyAll の後にログする。
+        /// </summary>
+        private static bool IsDryRunOnlyNotice(ValidationResult issue)
+            => issue.Status == ValidationStatus.DuplicateAddress || issue.Status == ValidationStatus.RuleMatchedNothing;
+
+        /// <summary>
+        /// ApplyAll の結果をログし、続けて事前の検証/dry-run で見つかった通知（<see cref="IsDryRunOnlyNotice"/>）のうち
+        /// ApplyAll 側の結果に同じ Status・Message が無いものをログする。ApplyAll も同じ重複を返すことがあるため、
+        /// 単純に両方ログすると二重になる。Predict と Apply のずれで取りこぼさないよう、先にログする側の絞り込みはせず
+        /// Status と Message の一致だけで除く。
         /// </summary>
         private static void LogApplyIssuesAndDryRunDuplicates(IReadOnlyList<ValidationResult> applyIssues, IReadOnlyList<ValidationResult> duplicateNotices)
         {
             AddressTellerIssueLogger.LogAll(applyIssues);
 
-            var alreadyLogged = new HashSet<string>(
-                applyIssues.Where(i => i.Status == ValidationStatus.DuplicateAddress).Select(i => i.Message),
-                StringComparer.Ordinal);
-            var remaining = duplicateNotices.Where(d => !alreadyLogged.Contains(d.Message)).ToList();
+            var alreadyLogged = new HashSet<(ValidationStatus, string)>(
+                applyIssues.Where(IsDryRunOnlyNotice).Select(i => (i.Status, i.Message)));
+            var remaining = duplicateNotices.Where(d => !alreadyLogged.Contains((d.Status, d.Message))).ToList();
             if (remaining.Count > 0)
                 AddressTellerIssueLogger.LogAll(remaining);
+        }
+
+        /// <summary>
+        /// <c>-addressTellerFailOnUnmatched</c> は <see cref="CheckCLI"/> だけが評価する。それ以外のエントリポイントで
+        /// 指定されたら、黙って無視せず Warning を1行出す。
+        /// </summary>
+        /// <remarks>
+        /// 「新設定フラグは全エントリポイントで一貫評価する」という原則からの意図的な逸脱。このフラグは永続設定ではなく
+        /// 「dry-run の未登録アセットを失敗にする」という CI 判定の指定で、Apply 系は書き込みを完了した後に
+        /// 差分の有無を失敗扱いしない（<see cref="AddressTellerReportBuilder.DetermineApplyExitCode"/>）のと同じく、
+        /// 未登録アセットで exit code を変えない。
+        /// </remarks>
+        private static void WarnIfFailOnUnmatchedIgnored(AddressTellerCliArgs cliArgs, string entryPoint)
+        {
+            if (cliArgs.FailOnUnmatched)
+                Debug.LogWarning($"[AddressTeller] -addressTellerFailOnUnmatched is ignored by {entryPoint}; use CheckCLI.");
         }
 
         /// <summary>
@@ -647,7 +678,7 @@ namespace AddressTeller.Editor
             foreach (var (before, after) in dryRun.Diff.Changed) diff.AddChanged(before, after);
 
             var issues = dryRun.Issues.Concat(limitIssues).ToList();
-            return new DryRunResult(diff, issues, dryRun.GroupsToCreate, dryRun.After);
+            return new DryRunResult(diff, issues, dryRun.GroupsToCreate, dryRun.After, dryRun.UnmatchedInDeclaredFolders);
         }
 
         /// <summary>
@@ -710,6 +741,8 @@ namespace AddressTeller.Editor
         /// default settings (a missing file is not an error).
         /// Exit codes: 0 = no diff and no issues, 1 = drift found, 2 = validation errors found, 3 = environment
         /// error (including a settings load failure and any unexpected exception).
+        /// With -addressTellerFailOnUnmatched, exit code 2 is also returned when an asset under a folder some rule
+        /// declared gets no address or label from any rule (<see cref="DryRunResult.UnmatchedInDeclaredFolders"/>).
         /// </summary>
         public static void CheckCLI() => RunCliEntryPoint(nameof(CheckCLI), CheckCLICore);
 
@@ -750,14 +783,29 @@ namespace AddressTeller.Editor
             // （BuildPredictedSnapshot は予測計算のみで、実際の CreateOrMoveEntry 等を呼ばない）。
             // そのため ApplyAllCLI / ApplyWithValidateCLI / ClearCLI と異なり AssetDatabase.SaveAssets() は不要。
             var paths = AssetDatabase.GetAllAssetPaths();
-            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
+            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules, isFullScan: true);
 
-            Debug.Log($"[AddressTeller] Check completed: Added={result.Diff.Added.Count} / Removed={result.Diff.Removed.Count} / Changed={result.Diff.Changed.Count}, Issues={result.Issues.Count}.");
+            ReportCheckResult(result, cliArgs, settings);
+        }
+
+        /// <summary>
+        /// CheckCLI の dry-run 結果の報告（ログ・レポート出力・exit code）。dry-run の計算（<see cref="AssetDatabase"/> と
+        /// ルール収集に依存する）から切り離してあるのは、<c>-addressTellerFailOnUnmatched</c> の配線（exit code と
+        /// レポートの <c>Summary.ExitCode</c>、ログの重大度）を、実 CLI を起動せずに検証できるようにするため。
+        /// </summary>
+        internal static void ReportCheckResult(DryRunResult result, AddressTellerCliArgs cliArgs, AddressableAssetSettings settings)
+        {
+            Debug.Log($"[AddressTeller] Check completed: Added={result.Diff.Added.Count} / Removed={result.Diff.Removed.Count} / Changed={result.Diff.Changed.Count}, Issues={result.Issues.Count}, Unmatched={result.UnmatchedInDeclaredFolders.Count}.");
             AddressTellerIssueLogger.LogAll(result.Issues);
+            AddressTellerIssueLogger.LogUnmatched(result.UnmatchedInDeclaredFolders, cliArgs.FailOnUnmatched);
+
+            var exitCode = AddressTellerReportBuilder.DetermineExitCode(result, cliArgs.FailOnUnmatched);
 
             if (!string.IsNullOrEmpty(cliArgs.ReportPath))
             {
                 var report = AddressTellerReportBuilder.Build(result, settings);
+                // Build は -addressTellerFailOnUnmatched を知らないため、exit code はここで確定した値に揃える。
+                report.Summary.ExitCode = exitCode;
                 // JUnit の Validation testcase は、CheckCLI の exit code 判定（DetermineExitCode）と同じ基準
                 // （AddressTellerReportBuilder.BuildCheckCliFailingStatusNames）で failure を付ける Status
                 // だけに絞る。全 Status に無条件で failure を付けると、exit code に影響しない通知
@@ -767,14 +815,14 @@ namespace AddressTeller.Editor
                 // treatDriftAsFailure: true（既定値と同じだが明示） — CheckCLI は drift の検出そのものが
                 // 目的の読み取り専用 dry-run であるため、ExitWithReport（適用系）とは対称に drift を
                 // JUnit の <failure> として報告する。
-                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value, treatDriftAsFailure: true, failingStatusNames))
+                if (!AddressTellerReportWriter.WriteToFile(cliArgs.ReportPath, report, cliArgs.ReportFormat.Value, treatDriftAsFailure: true, failingStatusNames, treatUnmatchedAsFailure: cliArgs.FailOnUnmatched))
                 {
                     s_exitCli(3);
                     return;
                 }
             }
 
-            s_exitCli(AddressTellerReportBuilder.DetermineExitCode(result));
+            s_exitCli(exitCode);
         }
     }
 }

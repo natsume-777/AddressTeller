@@ -341,6 +341,16 @@ namespace AddressTeller.Editor
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="settings"/> or <paramref name="paths"/> is null.</exception>
         public static DryRunResult BuildPredictedSnapshot(AddressableAssetSettings settings, IEnumerable<string> paths, IReadOnlyList<AddressRuleBase> rules)
+            => BuildPredictedSnapshot(settings, paths, rules, isFullScan: false);
+
+        /// <summary>
+        /// <see cref="BuildPredictedSnapshot(AddressableAssetSettings, IEnumerable{string}, IReadOnlyList{AddressRuleBase})"/>
+        /// の本体。<paramref name="isFullScan"/> は <paramref name="paths"/> がプロジェクト全体のアセットパスである
+        /// ことを呼び出し側（メニュー・CLI）が保証するときだけ true にする。true のときだけ、1件もマッチしなかった
+        /// アドレス産出ルールを <see cref="ValidationStatus.RuleMatchedNothing"/> として報告する
+        /// （一部のパスだけを渡す範囲指定プレビューや公開 API の直接呼び出しでは、全体を走査したか分からない）。
+        /// </summary>
+        internal static DryRunResult BuildPredictedSnapshot(AddressableAssetSettings settings, IEnumerable<string> paths, IReadOnlyList<AddressRuleBase> rules, bool isFullScan)
         {
             if (settings == null) throw new ArgumentNullException(nameof(settings));
             if (paths == null) throw new ArgumentNullException(nameof(paths));
@@ -363,7 +373,7 @@ namespace AddressTeller.Editor
             // 「予測される最終状態」の集合が食い違いうるため、ここに集約している
             // （PredictedRunState の XML doc 参照）。dry-run に progress/cancellation の概念は無いため
             // NullProgressReporter を渡す（state.Cancelled は常に false になる）。
-            var state = RuleEvaluationPipeline.BuildPredictedRunState(settings, paths, rules, NullProgressReporter.Instance);
+            var state = RuleEvaluationPipeline.BuildPredictedRunState(settings, paths, rules, NullProgressReporter.Instance, isFullScan);
 
             // BuildPredictedSnapshot 独自の契約: GroupWillBeCreated はアセットごとの Issues ではなく
             // GroupsToCreate（作成予定グループ名の集合）で提示する（ValidateAll は逆にアセットごとの通知として
@@ -383,7 +393,7 @@ namespace AddressTeller.Editor
 
             var diff = Diff(state.Before, after);
             var sortedGroupsToCreate = state.GroupsToCreate.OrderBy(g => g, StringComparer.Ordinal).ToList();
-            return new DryRunResult(diff, issues, sortedGroupsToCreate, after);
+            return new DryRunResult(diff, issues, sortedGroupsToCreate, after, state.UnmatchedInDeclaredFolders);
         }
 
         /// <summary>
@@ -513,16 +523,28 @@ namespace AddressTeller.Editor
         public AddressTellerSnapshot After { get; }
 
         /// <summary>
+        /// Paths of assets that lie under a folder some rule declared (see
+        /// <see cref="AddressRuleEntry.DeclaredFolders"/>) but that no rule matched, so they get no address and no
+        /// label. A path counts as under a declared folder at any depth, ignoring letter case, whether or not the
+        /// declaration was recursive. Folder assets themselves are not listed, and neither is an asset for which a
+        /// rule threw. Rules whose conditions declare no folder (a raw lambda <c>Where</c>) contribute nothing, so with
+        /// no declared folders this is empty. Sorted in Ordinal order. Only the paths passed to the dry-run are
+        /// examined.
+        /// </summary>
+        public IReadOnlyList<string> UnmatchedInDeclaredFolders { get; }
+
+        /// <summary>
         /// <see cref="AddressTellerSnapshotService.BuildPredictedSnapshot(AddressableAssetSettings, IEnumerable{string})"/>
         /// でのみ構築される。外部からは意味を持たないインスタンスを組み立てられないよう internal 化している
         /// （テストは InternalsVisibleTo 経由で構築可能）。
         /// </summary>
-        internal DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues, IReadOnlyList<string> groupsToCreate = null, AddressTellerSnapshot after = null)
+        internal DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues, IReadOnlyList<string> groupsToCreate = null, AddressTellerSnapshot after = null, IReadOnlyList<string> unmatchedInDeclaredFolders = null)
         {
             Diff = diff;
             Issues = issues;
             GroupsToCreate = groupsToCreate ?? Array.Empty<string>();
             After = after;
+            UnmatchedInDeclaredFolders = unmatchedInDeclaredFolders ?? Array.Empty<string>();
         }
     }
 }

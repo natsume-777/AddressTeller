@@ -32,18 +32,27 @@ namespace AddressTeller
         internal IReadOnlyList<FolderGuidDeclaration> FolderGuids { get; }
 
         /// <summary>
+        /// <see cref="Folders"/> のうち、直下のアセットだけを対象にするもの（<c>Match.InFolder(path, recursive: false)</c>）。
+        /// 公開しないのは、宣言フォルダ配下の未登録アセットの列挙（Unmatched）が「直下だけ」と「子孫すべて」を
+        /// 区別するためだけの内部情報だから。<see cref="And(AssetCondition)"/> / <see cref="Match.All"/> では和集合にする
+        /// （AND なので、同じフォルダが再帰・非再帰の両方で宣言された場合は非再帰が実際の範囲になる）。
+        /// </summary>
+        internal IReadOnlyList<string> NonRecursiveFolders { get; }
+
+        /// <summary>
         /// Creates an AssetCondition from a predicate, an optional description, and the optional list of
         /// folders the condition depends on (see <see cref="Folders"/>). Null, empty, and duplicate
         /// folder entries are dropped.
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="predicate"/> is null.</exception>
         public AssetCondition(Func<AssetContext, bool> predicate, string description = null, IReadOnlyList<string> folders = null)
-            : this(predicate, description, folders, null)
+            : this(predicate, description, folders, null, null)
         {
         }
 
-        internal AssetCondition(Func<AssetContext, bool> predicate, string description, IReadOnlyList<string> folders, IReadOnlyList<FolderGuidDeclaration> folderGuids)
+        internal AssetCondition(Func<AssetContext, bool> predicate, string description, IReadOnlyList<string> folders, IReadOnlyList<FolderGuidDeclaration> folderGuids, IReadOnlyList<string> nonRecursiveFolders = null)
         {
+            NonRecursiveFolders = NormalizeFolders(nonRecursiveFolders);
             Predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
             Description = description;
             Folders = NormalizeFolders(folders);
@@ -61,7 +70,7 @@ namespace AddressTeller
         public AssetCondition And(AssetCondition other)
         {
             if (other == null) throw new ArgumentNullException(nameof(other));
-            return CombineAnd(this, other.Predicate, other.Description, other.Folders, other.FolderGuids);
+            return CombineAnd(this, other.Predicate, other.Description, other.Folders, other.FolderGuids, other.NonRecursiveFolders);
         }
 
         /// <summary>
@@ -73,7 +82,7 @@ namespace AddressTeller
         public AssetCondition And(Func<AssetContext, bool> other, string description = null)
         {
             if (other == null) throw new ArgumentNullException(nameof(other));
-            return CombineAnd(this, other, description, null, null);
+            return CombineAnd(this, other, description, null, null, null);
         }
 
         private static AssetCondition CombineAnd(
@@ -81,7 +90,8 @@ namespace AddressTeller
             Func<AssetContext, bool> secondPredicate,
             string secondDescription,
             IReadOnlyList<string> secondFolders,
-            IReadOnlyList<FolderGuidDeclaration> secondFolderGuids)
+            IReadOnlyList<FolderGuidDeclaration> secondFolderGuids,
+            IReadOnlyList<string> secondNonRecursiveFolders)
         {
             var firstPredicate = first.Predicate;
             var combinedPredicate = (Func<AssetContext, bool>)(ctx => firstPredicate(ctx) && secondPredicate(ctx));
@@ -93,7 +103,10 @@ namespace AddressTeller
             var folderGuids = new List<FolderGuidDeclaration>(first.FolderGuids);
             if (secondFolderGuids != null) folderGuids.AddRange(secondFolderGuids);
 
-            return new AssetCondition(combinedPredicate, combinedDescription, folders, folderGuids);
+            var nonRecursiveFolders = new List<string>(first.NonRecursiveFolders);
+            if (secondNonRecursiveFolders != null) nonRecursiveFolders.AddRange(secondNonRecursiveFolders);
+
+            return new AssetCondition(combinedPredicate, combinedDescription, folders, folderGuids, nonRecursiveFolders);
         }
 
         private static string CombineDescriptions(string a, string b)
@@ -142,9 +155,13 @@ namespace AddressTeller
     {
         public string Guid { get; }
 
-        public FolderGuidDeclaration(string guid)
+        /// <summary>false なら、解決したフォルダの直下のアセットだけが対象（<c>recursive: false</c>）。</summary>
+        public bool Recursive { get; }
+
+        public FolderGuidDeclaration(string guid, bool recursive = true)
         {
             Guid = guid;
+            Recursive = recursive;
         }
     }
 
