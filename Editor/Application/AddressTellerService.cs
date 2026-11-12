@@ -232,6 +232,7 @@ namespace AddressTeller.Editor
                 // cleanupStale はラン中不変なのでループ外で1回だけ評価する。
                 var cleanupStale = AddressTellerSettings.CleanupStaleEntries && !suspendStaleCleanup;
                 var staleRemovals = new StaleRemovalPlan();
+                var writtenGuids = new HashSet<string>();
 
                 var issues = new List<ValidationResult>(setup.ConfigureFailures);
                 issues.AddRange(setup.DeclaredFolderIssues);
@@ -273,6 +274,11 @@ namespace AddressTeller.Editor
                     if (!result.IsOk || result.Status == ValidationStatus.GroupWillBeCreated)
                         issues.Add(result);
 
+                    // アドレスを実際に書き込んだ資産（Ok/GroupWillBeCreated は Apply が書き込みまで成功した場合のみ。
+                    // LabelsOnly は既存アドレスを維持するだけなので対象外）。ラン末尾の重複検出の入力。
+                    if (result.Status == ValidationStatus.Ok || result.Status == ValidationStatus.GroupWillBeCreated)
+                        writtenGuids.Add(ctx.Guid);
+
                     // ルール例外(resolution.Errors)があった場合、「全ルールが正常評価された上でマッチ0件」とは
                     // 言えないため削除予定にしない（ルールのバグで誤ってエントリを削除しないようにする）。
                     // Configure() 失敗・宣言フォルダ欠落は cleanupStale に織り込み済み。
@@ -307,6 +313,11 @@ namespace AddressTeller.Editor
                         // 削除された各エントリは個別に Warning ログ済みのため、戻り値は意図的に破棄する。
                         _ = staleRemovals.Execute(settings);
                 }
+
+                // 別アセットとのアドレス重複検出。stale 削除の後に行い、削除されたエントリを重複として数えない
+                // （ValidateAll の予測後集合と同じ見方）。書き込みが1件も無いランでは索引を作らない。
+                // 非ブロッキング（DuplicateAddress は書き込みを止めない報告専用ステータス）。
+                issues.AddRange(DuplicateAddressDetector.DetectForWrittenGuids(settings, writtenGuids));
 
                 // キャンセル時は完了通知を呼ばない（中断したのに「完了」を通知すると意味的に矛盾するため）。
                 if (!cancelled)

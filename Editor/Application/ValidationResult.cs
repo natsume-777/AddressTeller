@@ -86,10 +86,12 @@ namespace AddressTeller.Editor
         /// <see cref="AddressTellerScopedPreview"/>): since the existing-address side of the comparison
         /// always comes from every entry already in Addressables regardless of the scope requested, a
         /// scoped preview can surface a pre-existing duplicate that has nothing to do with the scope you
-        /// asked to preview. The incremental apply AddressTeller performs from
-        /// <see cref="AddressTellerPostprocessor"/> on every asset import only evaluates the changed paths,
-        /// not the whole project, so it cannot detect a duplicate against an asset outside that set without
-        /// re-scanning everything on every import — that path alone does not report this status.
+        /// asked to preview. <c>ApplyAll</c> reports it too, including the incremental apply AddressTeller
+        /// performs from <see cref="AddressTellerPostprocessor"/> on every asset import: at the end of the
+        /// run, and only if it assigned an address to at least one asset (re-assigning the same value on a
+        /// re-import counts), it builds an address index of all entries already in Addressables and reports
+        /// any other asset holding an address that run assigned. A run that assigned no address does not
+        /// build the index, and duplicates unrelated to the addresses the run assigned are left to <c>ValidateAll</c> and the dry-run reports.
         /// <see cref="Context"/> is null for this status, the same as <see cref="RuleConfigureFailed"/>,
         /// since it is not about one specific asset.
         /// </summary>

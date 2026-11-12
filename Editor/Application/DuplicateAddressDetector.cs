@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using UnityEditor;
+using UnityEditor.AddressableAssets.Settings;
 
 namespace AddressTeller.Editor
 {
@@ -56,6 +57,39 @@ namespace AddressTeller.Editor
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// ApplyAll の末尾用。<paramref name="writtenGuids"/>（このランでアドレスを割り当てた guid。アドレスが変わらない
+        /// 再割り当ても含む）が1件以上あるときだけ Addressables の全エントリからアドレス索引を作り、
+        /// 割り当てたアドレスを他の guid も持っているものを
+        /// <see cref="ValidationStatus.DuplicateAddress"/>（<see cref="ValidationResult.HasWritableDuplicate"/> = true）で返す。
+        /// 割り当てが無ければ settings に触れず空を返す（索引を作らない）。割り当てたアドレスと無関係な既存の重複は、このランで書いたものが
+        /// 原因ではなく import のたびに同じ内容を出し続けることになるため対象にしない（全件走査の
+        /// ValidateAll / BuildPredictedSnapshot 側で報告される）。
+        /// </summary>
+        public static IReadOnlyList<ValidationResult> DetectForWrittenGuids(
+            AddressableAssetSettings settings,
+            IReadOnlyCollection<string> writtenGuids)
+        {
+            if (writtenGuids.Count == 0) return Array.Empty<ValidationResult>();
+
+            var entries = new List<KeyValuePair<string, string>>();
+            foreach (var group in settings.groups)
+            {
+                if (group == null) continue;
+                foreach (var entry in group.entries)
+                    entries.Add(new KeyValuePair<string, string>(entry.guid, entry.address));
+            }
+
+            var writtenAddresses = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var kvp in entries)
+            {
+                if (!string.IsNullOrEmpty(kvp.Value) && writtenGuids.Contains(kvp.Key))
+                    writtenAddresses.Add(kvp.Value);
+            }
+
+            return Detect(entries.Where(kvp => writtenAddresses.Contains(kvp.Value ?? string.Empty)), writtenGuids);
         }
 
         /// <summary>1件の重複アドレスにつき、関与する全アセットのパスを含む ValidationResult を組み立てる。</summary>

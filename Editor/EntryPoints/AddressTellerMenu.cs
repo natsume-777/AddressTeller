@@ -436,9 +436,9 @@ namespace AddressTeller.Editor
         /// point, since the apply already completed successfully; use <see cref="CheckCLI"/> to detect
         /// drift without applying.
         /// A duplicate address across two different assets (<see cref="ValidationStatus.DuplicateAddress"/>)
-        /// never affects this exit code either way, since it is a report-only status computed from the
-        /// dry-run, not from the Apply results this exit code is based on — it is still logged to the
-        /// console and included in the report file, but only <see cref="CheckCLI"/>'s exit code reacts to it.
+        /// never affects this exit code, since it is a report-only status that does not block a write
+        /// (<see cref="ValidationResult.IsBlocking"/> is false) — it is still logged to the console and
+        /// included in the report file, but only <see cref="CheckCLI"/>'s exit code reacts to it.
         /// </summary>
         public static void ApplyAllCLI() => RunCliEntryPoint(nameof(ApplyAllCLI), ApplyAllCLICore);
 
@@ -479,15 +479,12 @@ namespace AddressTeller.Editor
             var paths = AssetDatabase.GetAllAssetPaths();
             var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules);
 
-            // DuplicateAddress は ApplyAll（実際の書き込み）では検出されず dry-run 側にしか現れないため、
-            // ここでログしておかないとコンソールには一切出ないままレポートファイルにだけ残ることになる
-            // （「報告のみ」を確実にするため。ExitWithReport の exit code 判定には影響しない）。
+            // dry-run の DuplicateAddress は、書き込んだアドレスと無関係な既存の重複（ApplyAll は報告しない）も含む。
+            // コンソールに出すため、ApplyAll の後にログする（ApplyAll が同じ内容を返した分は二重にならないよう除く）。
             var duplicateNotices = dryRun.Issues.Where(i => i.Status == ValidationStatus.DuplicateAddress).ToList();
-            if (duplicateNotices.Count > 0)
-                AddressTellerIssueLogger.LogAll(duplicateNotices);
 
             var applyIssues = AddressTellerService.ApplyAll(paths, settings, NullProgressReporter.Instance, rules);
-            AddressTellerIssueLogger.LogAll(applyIssues);
+            LogApplyIssuesAndDryRunDuplicates(applyIssues, duplicateNotices);
 
             ExitWithReport(dryRun, applyIssues, cliArgs, settings);
         }
@@ -583,21 +580,35 @@ namespace AddressTeller.Editor
                 return;
             }
 
-            // 中止しない場合でも、DuplicateAddress は ExitWithReport の exit code 判定（Apply 実行結果のみを見る
-            // AddressTellerReportBuilder.DetermineApplyExitCode）には反映されない。「報告のみ」を確実にするため、
-            // コンソールにはここで一度ログしておく（レポートファイルには dry-run の Issues として別途含まれる）。
+            // 中止しない場合でも、validateIssues の DuplicateAddress（書き込んだアドレスと無関係な既存の重複を含む）は
+            // コンソールに出す。ApplyAll の後にログし、ApplyAll が同じ内容を返した分は二重にならないよう除く。
             var duplicateNotices = validateIssues.Where(i => i.Status == ValidationStatus.DuplicateAddress).ToList();
-            if (duplicateNotices.Count > 0)
-                AddressTellerIssueLogger.LogAll(duplicateNotices);
 
             // 母集合を1回確定し、dry-run（レポート化）と実 Apply で同じ対象パスを使う。
             var applyPaths = AssetDatabase.GetAllAssetPaths();
             var applyDryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, applyPaths, rules);
 
             var applyIssues = AddressTellerService.ApplyAll(applyPaths, settings, NullProgressReporter.Instance, rules);
-            AddressTellerIssueLogger.LogAll(applyIssues);
+            LogApplyIssuesAndDryRunDuplicates(applyIssues, duplicateNotices);
 
             ExitWithReport(applyDryRun, applyIssues, cliArgs, settings);
+        }
+
+        /// <summary>
+        /// ApplyAll の結果をログし、続けて事前の検証/dry-run で見つかった DuplicateAddress のうち ApplyAll 側の結果に
+        /// 同じ Message が無いものをログする。ApplyAll も同じ重複を返すため、単純に両方ログすると二重になる。
+        /// Predict と Apply のずれで取りこぼさないよう、先にログする側の絞り込みはせず Message の一致だけで除く。
+        /// </summary>
+        private static void LogApplyIssuesAndDryRunDuplicates(IReadOnlyList<ValidationResult> applyIssues, IReadOnlyList<ValidationResult> duplicateNotices)
+        {
+            AddressTellerIssueLogger.LogAll(applyIssues);
+
+            var alreadyLogged = new HashSet<string>(
+                applyIssues.Where(i => i.Status == ValidationStatus.DuplicateAddress).Select(i => i.Message),
+                StringComparer.Ordinal);
+            var remaining = duplicateNotices.Where(d => !alreadyLogged.Contains(d.Message)).ToList();
+            if (remaining.Count > 0)
+                AddressTellerIssueLogger.LogAll(remaining);
         }
 
         /// <summary>

@@ -103,11 +103,14 @@ namespace AddressTeller.Editor
                 // エントリは GUID ベースで管理されているため、movedAssets 側（新パス）を
                 // Apply するだけで CreateOrMoveEntry によりエントリが更新され、
                 // 新パスがどのルールにもマッチしなければ Skipped としてクリーンアップ対象になる。
-                // targetPaths（今回変更された資産のみ）に対する ApplyAll は、別アセット間のアドレス重複
-                // （ValidationStatus.DuplicateAddress）を検出しない。重複判定にはプロジェクト全体のアドレス
-                // 集合が必要だが、毎 import でプロジェクト全体を走査するのはコストが見合わない。
+                // targetPaths（今回変更された資産のみ）に対する ApplyAll も、別アセット間のアドレス重複
+                // （ValidationStatus.DuplicateAddress）を検出する。ただしアセットの再評価は変更パスだけで、
+                // 重複判定はラン末尾に「このランでアドレスを割り当てた資産が1件以上あるときだけ」（アドレスが変わらない
+                // 再 import でも、Ok/GroupWillBeCreated なら割り当てた扱い）Addressables の全エントリから
+                // アドレス索引を作って行う（割り当てが無い import では索引を作らない）。
+                // 報告するのは、割り当てたアドレスを別の guid も持っている重複だけ。それと無関係な既存の重複は
                 // フルスキャンする ValidateAll / BuildPredictedSnapshot（Apply All・Apply with Validate・
-                // 各 CLI が経由する dry-run）側でのみ検出する。
+                // 各 CLI が経由する dry-run）側で報告する。DuplicateAddress は書き込みを止めない。
                 var targetPaths = importedAssets.Concat(movedAssets);
                 var issues = AddressTellerService.ApplyAllIncremental(targetPaths, settings);
 
@@ -192,6 +195,7 @@ namespace AddressTeller.Editor
         /// </summary>
         internal static string s_lastLoggedDeclaredFolderSignature;
 
+        // DuplicateAddress は対象外: 衝突している資産自身の import でしか出ないので、出るたびに再通知してよい。
         private static bool IsLogOnceIssue(ValidationResult issue)
             => issue.Status == ValidationStatus.DeclaredFolderMissing
                 || issue.Status == ValidationStatus.DeclaredFolderCaseMismatch

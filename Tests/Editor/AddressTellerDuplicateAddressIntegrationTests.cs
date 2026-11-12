@@ -174,19 +174,139 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void ApplyAll_ManagedDuplicate_NeverReportsDuplicateAddress()
+        public void ApplyAll_TwoManagedAssetsSameAddress_ReportsNonBlockingDuplicateAddress()
         {
-            // Postprocessor 経由の増分適用では重複検出を行わない（毎 import のプロジェクト全体走査は
-            // コストに見合わないため）ことの回帰テスト。ApplyAll は唯一の書き込み系エントリポイントであり、
-            // DuplicateAddressDetector を一切呼ばない。将来ここへ重複検出が足された場合の回帰を検出する。
             CreatePrefab(AssetPath1);
             CreatePrefab(AssetPath2);
 
             var issues = AddressTellerService.ApplyAll(
                 new[] { AssetPath1, AssetPath2 }, _settings, NullProgressReporter.Instance, new AddressRuleBase[] { new ConstantAddressRule() });
 
+            var dup = issues.SingleOrDefault(i => i.Status == ValidationStatus.DuplicateAddress);
+            Assert.IsNotNull(dup, "このランで書いたアドレス同士の重複は ApplyAll の末尾で報告されるべき。");
+            Assert.IsTrue(dup.HasWritableDuplicate);
+            Assert.IsFalse(dup.IsOk);
+            Assert.IsFalse(dup.IsBlocking, "DuplicateAddress は書き込みを止めない。");
+            StringAssert.Contains(AssetPath1, dup.Message);
+            StringAssert.Contains(AssetPath2, dup.Message);
+
+            // 非ブロッキング: 重複していても両方とも実際に書き込まれている。
+            Assert.AreEqual("SharedAddress", _settings.FindAssetEntry(AssetDatabase.AssetPathToGUID(AssetPath1))?.address);
+            Assert.AreEqual("SharedAddress", _settings.FindAssetEntry(AssetDatabase.AssetPathToGUID(AssetPath2))?.address);
+        }
+
+        [Test]
+        public void ApplyAllIncremental_DuplicateAgainstAssetOutsideChangedPaths_IsReported()
+        {
+            // 増分適用の目的: 変更したパスに含まれない別アセットとの重複も検出する。
+            CreatePrefab(AssetPath1);
+            CreatePrefab(AssetPath2);
+            var rules = new AddressRuleBase[] { new ConstantAddressRule() };
+            AddressTellerService.ApplyAll(new[] { AssetPath2 }, _settings, NullProgressReporter.Instance, rules);
+
+            var issues = AddressTellerService.ApplyAllIncremental(new[] { AssetPath1 }, _settings, rules);
+
+            var dup = issues.SingleOrDefault(i => i.Status == ValidationStatus.DuplicateAddress);
+            Assert.IsNotNull(dup);
+            Assert.IsTrue(dup.HasWritableDuplicate);
+            StringAssert.Contains(AssetPath2, dup.Message, "変更パスの外にある既存エントリも重複相手として報告されるべき。");
+        }
+
+        [Test]
+        public void ApplyAll_WrittenAddressCollidesWithUnmanagedEntry_ReportsDuplicateAddress()
+        {
+            CreatePrefab(AssetPath1);
+            _settings.CreateOrMoveEntry("manual-guid-unmanaged", _unmanagedGroup).SetAddress("SharedAddress");
+
+            var issues = AddressTellerService.ApplyAll(
+                new[] { AssetPath1 }, _settings, NullProgressReporter.Instance, new AddressRuleBase[] { new ConstantAddressRule() });
+
+            var dup = issues.SingleOrDefault(i => i.Status == ValidationStatus.DuplicateAddress);
+            Assert.IsNotNull(dup);
+            Assert.IsTrue(dup.HasWritableDuplicate);
+        }
+
+        [Test]
+        public void ApplyAll_OnlySkippedAssetPassed_ReportsNoDuplicateAddress()
+        {
+            // 管理外同士の重複が既にあっても、このランがアドレスを割り当てなければ（Skipped のみ）何も報告しない。
+            // StaleAssetPath は StubFolder の外にあるため ConstantAddressRule にマッチしない（Skipped）。
+            CreatePrefab(StaleAssetPath);
+            _settings.CreateOrMoveEntry("manual-guid-1", _unmanagedGroup).SetAddress("ManualShared");
+            _settings.CreateOrMoveEntry("manual-guid-2", _unmanagedGroup).SetAddress("ManualShared");
+
+            var issues = AddressTellerService.ApplyAll(
+                new[] { StaleAssetPath }, _settings, NullProgressReporter.Instance, new AddressRuleBase[] { new ConstantAddressRule() });
+
+            Assert.IsFalse(issues.Any(i => i.Status == ValidationStatus.DuplicateAddress));
+        }
+
+        [Test]
+        public void DetectForWrittenGuids_NoWrittenGuids_ReturnsEmptyWithoutTouchingSettings()
+        {
+            // 書き込み（割り当て）0 件の早期 return を固定する。settings に触れないので null でも例外にならない。
+            var results = DuplicateAddressDetector.DetectForWrittenGuids(null, Array.Empty<string>());
+
+            Assert.IsEmpty(results);
+        }
+
+        [Test]
+        public void ApplyAll_StaleEntryRemovedInSameRun_IsNotCountedAsDuplicate()
+        {
+            // 同じランで stale 削除されるエントリは重複に数えない（ValidateAll / BuildPredictedSnapshot と同じ見方）。
+            CreatePrefab(AssetPath1);
+            CreatePrefab(StaleAssetPath);
+            var staleGuid = AssetDatabase.AssetPathToGUID(StaleAssetPath);
+            _settings.CreateOrMoveEntry(staleGuid, _stubGroup).SetAddress("SharedAddress");
+
+            var issues = AddressTellerService.ApplyAll(
+                new[] { AssetPath1, StaleAssetPath }, _settings, NullProgressReporter.Instance, new AddressRuleBase[] { new ConstantAddressRule() });
+
+            Assert.IsNull(_settings.FindAssetEntry(staleGuid), "前提条件: stale エントリはこのランで削除されるはず。");
             Assert.IsFalse(issues.Any(i => i.Status == ValidationStatus.DuplicateAddress),
-                "ApplyAll は DuplicateAddressDetector を呼んではならない（増分適用経路のため）。");
+                "削除済みのエントリは重複として報告されるべきではない。");
+        }
+
+        [Test]
+        public void ApplyAll_CancelledAfterWriting_StillReportsDuplicateForWrittenAssets()
+        {
+            // キャンセルされても、そこまでに書いた分については重複を報告する。
+            CreatePrefab(AssetPath1);
+            CreatePrefab(AssetPath2);
+            _settings.CreateOrMoveEntry("manual-guid-unmanaged", _unmanagedGroup).SetAddress("SharedAddress");
+
+            var issues = AddressTellerService.ApplyAll(
+                new[] { AssetPath1, AssetPath2 }, _settings, new CancelAfterReporter(1), new AddressRuleBase[] { new ConstantAddressRule() });
+
+            Assert.IsNull(_settings.FindAssetEntry(AssetDatabase.AssetPathToGUID(AssetPath2)), "前提条件: 2件目はキャンセルで未処理。");
+            var dup = issues.SingleOrDefault(i => i.Status == ValidationStatus.DuplicateAddress);
+            Assert.IsNotNull(dup);
+            Assert.IsTrue(dup.HasWritableDuplicate);
+        }
+
+        /// <summary>指定回数の Report までは true を返し、それ以降は false（キャンセル）を返す。</summary>
+        private sealed class CancelAfterReporter : IProgressReporter
+        {
+            private readonly int _allowedCalls;
+            private int _calls;
+
+            public CancelAfterReporter(int allowedCalls) => _allowedCalls = allowedCalls;
+
+            public bool Report(int current, int total, string description) => ++_calls <= _allowedCalls;
+        }
+
+        [Test]
+        public void ApplyAll_DuplicateUnrelatedToWrittenAddress_IsNotReported()
+        {
+            // 書き込んだアドレスと無関係な既存の重複（管理外同士）は、import のたびに出し続けないよう増分適用では報告しない。
+            CreatePrefab(AssetPath1);
+            _settings.CreateOrMoveEntry("manual-guid-1", _unmanagedGroup).SetAddress("ManualShared");
+            _settings.CreateOrMoveEntry("manual-guid-2", _unmanagedGroup).SetAddress("ManualShared");
+
+            var issues = AddressTellerService.ApplyAll(
+                new[] { AssetPath1 }, _settings, NullProgressReporter.Instance, new AddressRuleBase[] { new ConstantAddressRule() });
+
+            Assert.IsFalse(issues.Any(i => i.Status == ValidationStatus.DuplicateAddress));
         }
 
         [Test]
