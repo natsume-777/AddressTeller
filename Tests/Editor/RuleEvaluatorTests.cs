@@ -69,7 +69,7 @@ namespace AddressTeller.Editor.Tests
             var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), new[] { entry });
 
             Assert.AreEqual(0, result.AddressCandidates.Count);
-            Assert.AreEqual(0, result.Labels.Count);
+            Assert.AreEqual(0, result.LabelOnlyLabels.Count);
         }
 
         [Test]
@@ -97,7 +97,7 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void Labels_AccumulateAcrossAllMatchingRules()
+        public void AddressEntryLabels_AreHeldPerCandidate_NotInLabelOnlyLabels()
         {
             var entries = new[]
             {
@@ -106,7 +106,41 @@ namespace AddressTeller.Editor.Tests
             };
             var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), entries);
 
-            CollectionAssert.AreEquivalent(new[] { "a", "b", "c" }, result.Labels);
+            Assert.AreEqual(0, result.LabelOnlyLabels.Count);
+            CollectionAssert.AreEqual(new[] { "a", "b" }, result.AddressCandidates[0].Labels);
+            CollectionAssert.AreEqual(new[] { "b", "c" }, result.AddressCandidates[1].Labels);
+        }
+
+        [Test]
+        public void CandidateLabels_AreDeduplicatedInEvaluationOrder()
+        {
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"),
+                new[] { Entry("G1", address: _ => "addr", labels: new[] { "b", "a", "b", "a" }) });
+
+            CollectionAssert.AreEqual(new[] { "b", "a" }, result.AddressCandidates[0].Labels);
+        }
+
+        [Test]
+        public void CandidateWithoutLabels_LabelsIsEmptyNotNull()
+        {
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), new[] { Entry("G1", address: _ => "addr") });
+
+            Assert.IsNotNull(result.AddressCandidates[0].Labels);
+            Assert.AreEqual(0, result.AddressCandidates[0].Labels.Count);
+        }
+
+        [Test]
+        public void LabelOnlyEntries_AccumulateIntoLabelOnlyLabels_RegardlessOfAddressEntries()
+        {
+            var entries = new[]
+            {
+                Entry("G1", address: _ => "addr", labels: new[] { "fromAddressRule" }),
+                Entry(null, labels: new[] { "x", "y" }),
+                Entry("G2", labels: new[] { "y", "z" }),
+            };
+            var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), entries);
+
+            CollectionAssert.AreEquivalent(new[] { "x", "y", "z" }, result.LabelOnlyLabels);
         }
 
         [Test]
@@ -116,7 +150,7 @@ namespace AddressTeller.Editor.Tests
             var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), new[] { entry });
 
             Assert.AreEqual(0, result.AddressCandidates.Count);
-            CollectionAssert.Contains(result.Labels, "lbl");
+            CollectionAssert.Contains(result.LabelOnlyLabels, "lbl");
         }
 
         [Test]
@@ -143,8 +177,8 @@ namespace AddressTeller.Editor.Tests
             };
             var result = RuleEvaluator.Evaluate(Ctx("Assets/Foo.prefab"), entries);
 
-            CollectionAssert.DoesNotContain(result.Labels, "skipped");
-            CollectionAssert.Contains(result.Labels, "included");
+            CollectionAssert.DoesNotContain(result.LabelOnlyLabels, "skipped");
+            CollectionAssert.Contains(result.LabelOnlyLabels, "included");
         }
 
         [Test]

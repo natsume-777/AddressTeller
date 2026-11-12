@@ -125,7 +125,7 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(RuleMatchOutcome.Matched, explanation.Details[0].Outcome);
             CollectionAssert.Contains(explanation.Details[0].ProducedLabels, "lbl");
-            CollectionAssert.Contains(explanation.Resolution.Labels, "lbl");
+            CollectionAssert.Contains(explanation.Resolution.LabelOnlyLabels, "lbl");
         }
 
         [Test]
@@ -161,7 +161,10 @@ namespace AddressTeller.Editor.Tests
             CollectionAssert.AreEqual(
                 evaluated.AddressCandidates.Select(c => (c.GroupName, c.Address)),
                 explanation.Resolution.AddressCandidates.Select(c => (c.GroupName, c.Address)));
-            CollectionAssert.AreEquivalent(evaluated.Labels, explanation.Resolution.Labels);
+            CollectionAssert.AreEquivalent(evaluated.LabelOnlyLabels, explanation.Resolution.LabelOnlyLabels);
+            CollectionAssert.AreEqual(
+                evaluated.AddressCandidates.Select(c => string.Join(",", c.Labels)),
+                explanation.Resolution.AddressCandidates.Select(c => string.Join(",", c.Labels)));
             Assert.AreEqual(evaluated.Errors.Count, explanation.Resolution.Errors.Count);
             for (var i = 0; i < evaluated.Errors.Count; i++)
                 Assert.AreEqual(evaluated.Errors[i].Message, explanation.Resolution.Errors[i].Message);

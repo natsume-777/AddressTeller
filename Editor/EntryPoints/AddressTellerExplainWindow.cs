@@ -173,10 +173,25 @@ namespace AddressTeller.Editor
                 inner.Add(new Label($"Address: {detail.ProducedAddress}"));
 
             if (detail.ProducedLabels.Count > 0)
-                inner.Add(new Label($"Labels: {string.Join(", ", detail.ProducedLabels)}"));
+                inner.Add(new Label(DescribeLabelsLine(detail, minOrder)));
 
             container.Add(inner);
             return container;
+        }
+
+        /// <summary>
+        /// [Match] 行の Labels 表示。アドレスも発行したルールが優先度で負けた場合、そのラベルは付かないため
+        /// その旨を明示する（ラベル専用ルールのラベルは勝敗と無関係に付くので注記しない）。
+        /// 同点・ルール例外でブロックされた場合は、行のタイトル側の注記（tied / not written）が
+        /// 書き込まれないことを示すため、ここでは負け（Order が最小でない）場合だけを扱う。
+        /// テストから直接呼べるよう internal にしている。
+        /// </summary>
+        internal static string DescribeLabelsLine(RuleEvaluationDetail detail, int? minOrder)
+        {
+            var line = $"Labels: {string.Join(", ", detail.ProducedLabels)}";
+            if (!string.IsNullOrEmpty(detail.ProducedAddress) && minOrder.HasValue && detail.Order != minOrder.Value)
+                line += " (not applied: this rule's address lost to a higher-priority rule)";
+            return line;
         }
 
         /// <summary>

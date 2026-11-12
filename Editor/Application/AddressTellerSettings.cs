@@ -24,8 +24,8 @@ namespace AddressTeller.Editor
         /// in design-decisions.md for what counts as owned and what this means for manually registered
         /// entries.
         /// Deletion is per-entry (<c>RemoveAssetEntry</c>), so both the address and any labels the entry
-        /// held are lost. This does not affect labels on entries that remain matched: because labels
-        /// accumulate from all rules by design, it is impossible to identify after the fact which rule
+        /// held are lost. This does not affect labels on entries that remain matched: because label writes
+        /// are additive by design, it is impossible to identify after the fact which rule
         /// assigned which label, so ApplyAll only ever adds labels to a surviving entry and never removes
         /// any label from a surviving entry.
         /// Default: false. When off, an entry that would have been removed is instead reported once per

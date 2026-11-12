@@ -86,113 +86,46 @@ namespace AddressTeller.Editor
             {
                 // アドレス候補は無いが、ラベルが1件以上あればラベルのみルール（AnyGroup() 等）がマッチしている。
                 // これは「どのルールにもマッチしなかった」わけではないため、真の無マッチ(Skipped)とは区別する。
-                if (resolution.Labels.Count > 0)
+                if (resolution.LabelOnlyLabels.Count > 0)
                     return new ValidationResult(context, ValidationStatus.LabelsOnly,
                         "Only label rule(s) matched; no address assigned.");
                 return new ValidationResult(context, ValidationStatus.Skipped, "No matching rule.");
             }
 
-            // Order が最小の候補が単独なら、それが優先度で他を上書きした勝者。最小値が2件以上あるときだけ、
-            // どちらを採るべきか決める根拠が無いため競合になる（design-decisions.md 参照）。
-            if (!TrySelectWinningCandidate(resolution.AddressCandidates, out winner, out var tiedCandidates))
-                return BuildConflictResult(context, tiedCandidates);
-
-            // 勝者が確定した直後、勝者と同等以上に優先されるはずだったアドレス産出ルール（Order が勝者以下、
-            // 同点含む）に例外があれば、その勝者を書き込まない。例外が無ければ勝者になっていたかもしれない
-            // ルールを差し置いて、たまたま残った低優先ルールのアドレスを黙って採用してしまうのを防ぐため
-            // （ConflictingAddress が同点を黙って解決しないのと同じ考え方）。ラベル専用ルール
-            // （AddressSelector == null）の例外はここでは対象外（そもそも勝者と優先度を争わないため）。
-            if (TryBuildBlockedByRuleErrorResult(context, winner, resolution.Errors, out var blockedResult))
+            // 勝者の決定（Order 最小の単独候補／同点の競合／勝者と同等以上のルールの例外によるブロック）は
+            // Core の WinnerSelector が一括して行う。Predict/Explain も同じ判定を共有する。
+            var selection = WinnerSelector.Select(resolution);
+            switch (selection.Outcome)
             {
-                winner = default;
-                return blockedResult;
+                case WinnerSelectionOutcome.Tied:
+                    return BuildConflictResult(context, selection.TiedCandidates);
+                case WinnerSelectionOutcome.Blocked:
+                    return BuildBlockedByRuleErrorResult(context, selection.BlockingErrors);
+                case WinnerSelectionOutcome.Won:
+                    break;
+                default:
+                    // NoCandidates は上で処理済み。未知の Outcome を黙って Won 扱いにしない。
+                    throw new InvalidOperationException($"Unexpected winner selection outcome: {selection.Outcome}");
             }
 
+            winner = selection.Winner;
             return ValidateWinningCandidate(context, winner, existingGroupNames, autoCreateMissingGroups);
         }
 
         /// <summary>
-        /// 勝者候補と同等以上の優先度（Order が勝者以下、同点含む）を持つアドレス産出ルールの例外を
-        /// <paramref name="errors"/> から探し、1件以上あれば <see cref="ValidationStatus.BlockedByRuleError"/>
-        /// の結果を組み立てて true を返す。無ければ false。
+        /// 勝者を止めている例外（<paramref name="blocking"/>）から <see cref="ValidationStatus.BlockedByRuleError"/>
+        /// の結果を組み立てる。
         /// </summary>
-        private static bool TryBuildBlockedByRuleErrorResult(
-            AssetContext context,
-            AddressCandidate winner,
-            IReadOnlyList<RuleEvaluationError> errors,
-            out ValidationResult result)
+        private static ValidationResult BuildBlockedByRuleErrorResult(AssetContext context, IReadOnlyList<RuleEvaluationError> blocking)
         {
-            List<RuleEvaluationError> blocking = null;
-            for (var i = 0; i < errors.Count; i++)
-            {
-                var error = errors[i];
-                if (error.CanProduceAddress && error.Order <= winner.Order)
-                {
-                    blocking ??= new List<RuleEvaluationError>();
-                    blocking.Add(error);
-                }
-            }
-
-            if (blocking == null)
-            {
-                result = null;
-                return false;
-            }
-
             // 例外本文はこのメッセージでは繰り返さない（同じ例外がこの直前に RuleError として issues に
             // 積まれており、本文はそちらに載る。ここで再掲すると1つの例外の本文が Error として2回表示される）。
             // ここではどのルールが（どの Order で）ブロックの原因になったかだけを示す。
             var names = string.Join(", ", blocking.Select(e => $"{e.RuleSource} (Order={e.Order})"));
-            result = new ValidationResult(
+            return new ValidationResult(
                 context,
                 ValidationStatus.BlockedByRuleError,
                 $"Not writing an address for '{context.Path}': blocked by: {names}; see RuleError for the exception detail.");
-            return true;
-        }
-
-        /// <summary>
-        /// 候補群のうち Order が最小のものを勝者として選ぶ。最小値の候補が単独なら true を返し winner にセットする。
-        /// 最小値の候補が2件以上（同点）ある場合は false を返し、その同点候補のみを tiedCandidates にセットする
-        /// （同点でない他の候補は含めない。衝突メッセージに無関係な敗者を出さないため）。
-        /// <paramref name="candidates"/> は1件以上であること（呼び出し側で Count==0 を別途処理済みの前提）。
-        /// 単独勝者の通常ケース（同点なし）では LINQ を一切使わず配列走査のみで確定させ、同点時のみ
-        /// <c>Where().ToList()</c> で実体化する（毎アセット呼ばれる処理のためアロケーションを避ける）。
-        /// </summary>
-        private static bool TrySelectWinningCandidate(
-            IReadOnlyList<AddressCandidate> candidates,
-            out AddressCandidate winner,
-            out IReadOnlyList<AddressCandidate> tiedCandidates)
-        {
-            var minOrder = candidates[0].Order;
-            var minIndex = 0;
-            var minCount = 1;
-
-            for (var i = 1; i < candidates.Count; i++)
-            {
-                if (candidates[i].Order < minOrder)
-                {
-                    minOrder = candidates[i].Order;
-                    minIndex = i;
-                    minCount = 1;
-                }
-                else if (candidates[i].Order == minOrder)
-                {
-                    minCount++;
-                }
-            }
-
-            if (minCount == 1)
-            {
-                winner = candidates[minIndex];
-                tiedCandidates = null;
-                return true;
-            }
-
-            // 同点時のみ、衝突メッセージ用に該当候補を実体化する
-            // (resolution.AddressCandidates はルール評価順を保つため、この絞り込みも同じ相対順序を保つ)。
-            winner = default;
-            tiedCandidates = candidates.Where(c => c.Order == minOrder).ToList();
-            return false;
         }
 
         /// <summary>同点だった候補（Order が最小の候補のみ）だけを列挙した衝突結果を組み立てる。</summary>
@@ -330,7 +263,8 @@ namespace AddressTeller.Editor
                     // 管理しているものとみなし、ラベル専用ルールであっても書き込まないという
                     // AddressTeller 独自の方針。Addressables 本体の SetLabel 自体は ReadOnly を
                     // 検査しないため、このガードが無ければ書き込めてしまう。
-                    foreach (var label in resolution.Labels)
+                    // 勝者がいない経路なので、書くのはラベル専用エントリ由来のラベルだけ。
+                    foreach (var label in WinnerSelector.ComposeFinalLabels(resolution, null))
                     {
                         settings.AddLabel(label);
                         existingEntry.SetLabel(label, true);
@@ -410,7 +344,8 @@ namespace AddressTeller.Editor
             }
             entry.SetAddress(winner.Address);
 
-            foreach (var label in resolution.Labels)
+            // 最終ラベル = ラベル専用エントリのラベル ∪ 勝者候補のラベル。負けた候補のラベルは付けない。
+            foreach (var label in WinnerSelector.ComposeFinalLabels(resolution, winner))
             {
                 settings.AddLabel(label);
                 entry.SetLabel(label, true);
@@ -481,8 +416,8 @@ namespace AddressTeller.Editor
                     || existingEntryForLabels.ReadOnly || existingEntryForLabels.parentGroup.ReadOnly)
                     return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
 
-                // 既存エントリの address/group は維持しつつ、ラベルのみ既存分と resolution.Labels の和集合にする。
-                var labelsOnlyLabels = new HashSet<string>(resolution.Labels);
+                // 既存エントリの address/group は維持しつつ、ラベルのみ既存分と最終ラベル集合（Apply 側と同じ合成）の和集合にする。
+                var labelsOnlyLabels = new HashSet<string>(WinnerSelector.ComposeFinalLabels(resolution, null));
                 foreach (var existingLabel in existingEntryForLabels.labels)
                     labelsOnlyLabels.Add(existingLabel);
 
@@ -505,8 +440,8 @@ namespace AddressTeller.Editor
             var existingEntry = settings.FindAssetEntry(context.Guid);
 
             // 実際の Apply は SetLabel(label, true) で加算するのみで既存ラベルを剥がさないため、
-            // 予測も既存ラベルと resolution.Labels の和集合とする。
-            var labels = new HashSet<string>(resolution.Labels);
+            // 予測も既存ラベルと最終ラベル集合（Apply 側と同じ合成。負けた候補のラベルは含まない）の和集合とする。
+            var labels = new HashSet<string>(WinnerSelector.ComposeFinalLabels(resolution, candidate));
             if (existingEntry != null)
                 foreach (var existingLabel in existingEntry.labels)
                     labels.Add(existingLabel);

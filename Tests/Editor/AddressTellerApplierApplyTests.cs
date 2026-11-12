@@ -435,24 +435,118 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void LabelsAccumulateFromAllMatchingRules_RegardlessOfOrder()
+        public void Labels_OnlyWinnerCandidateAndLabelOnlyRulesAreWritten()
         {
-            // ラベルは Order による優先順位の影響を受けず、マッチした全ルールから蓄積される。
+            // 負けた候補（Order=100）のラベルは付かず、勝者（Order=0）のラベルとラベル専用ルールのラベルだけが付く。
             var guid = CreateRealPrefabAndGetGuid("PriorityLabelsAsset");
             var resolution = new AddressResolution(
                 new[]
                 {
-                    new AddressCandidate(_managedGroup.Name, "broadAddr", order: 100),
-                    new AddressCandidate(_otherGroup.Name, "specificAddr", order: 0),
+                    new AddressCandidate(_managedGroup.Name, "broadAddr", order: 100, labels: new[] { "fromBroad" }),
+                    new AddressCandidate(_otherGroup.Name, "specificAddr", order: 0, labels: new[] { "fromSpecific" }),
                 },
-                new HashSet<string> { "fromBroad", "fromSpecific" });
+                new HashSet<string> { "fromLabelOnlyRule" });
 
             var result = AddressTellerApplier.Apply(Ctx(guid), resolution, _settings, ExistingGroupNames());
 
             Assert.AreEqual(ValidationStatus.Ok, result.Status);
             var entry = _settings.FindAssetEntry(guid);
             Assert.IsNotNull(entry);
-            CollectionAssert.AreEquivalent(new[] { "fromBroad", "fromSpecific" }, entry.labels);
+            CollectionAssert.AreEquivalent(new[] { "fromSpecific", "fromLabelOnlyRule" }, entry.labels);
+        }
+
+        [Test]
+        public void Labels_EvaluatedBroadAndNarrowRules_OnlyNarrowRuleLabelIsWritten()
+        {
+            // RuleEvaluator を通した実評価での確認。広い Order=100 と狭い Order=0 の両方がマッチしても、
+            // 付くのは狭い側のラベルだけ。AnyGroup 相当のラベル専用エントリのラベルは勝敗と無関係に付く。
+            var guid = CreateRealPrefabAndGetGuid("PriorityLabelsEvaluatedAsset");
+            var entries = new[]
+            {
+                new AddressRuleEntry(_managedGroup.Name, _ => true, _ => "broadAddr",
+                    new List<Func<AssetContext, string>> { _ => "broadLabel" }, "Broad", null, 0, false, 100),
+                new AddressRuleEntry(_otherGroup.Name, _ => true, _ => "narrowAddr",
+                    new List<Func<AssetContext, string>> { _ => "narrowLabel" }, "Narrow", null, 0, false, 0),
+                new AddressRuleEntry(null, _ => true, null,
+                    new List<Func<AssetContext, string>> { _ => "alwaysLabel" }, "Always", null, 0, false, 50),
+            };
+            var ctx = Ctx(guid);
+            var resolution = RuleEvaluator.Evaluate(ctx, entries);
+
+            var result = AddressTellerApplier.Apply(ctx, resolution, _settings, ExistingGroupNames());
+
+            Assert.AreEqual(ValidationStatus.Ok, result.Status);
+            var entry = _settings.FindAssetEntry(guid);
+            CollectionAssert.AreEquivalent(new[] { "narrowLabel", "alwaysLabel" }, entry.labels);
+        }
+
+        [Test]
+        public void Labels_LabelOnlyRuleLabelsAreWritten_EvenWhenAddressRuleHasNoLabels()
+        {
+            var guid = CreateRealPrefabAndGetGuid("PriorityLabelOnlyAsset");
+            var resolution = new AddressResolution(
+                new[] { new AddressCandidate(_managedGroup.Name, "addr", order: 0) },
+                new HashSet<string> { "alwaysLabel" });
+
+            AddressTellerApplier.Apply(Ctx(guid), resolution, _settings, ExistingGroupNames());
+
+            CollectionAssert.AreEquivalent(new[] { "alwaysLabel" }, _settings.FindAssetEntry(guid).labels);
+        }
+
+        [Test]
+        public void Labels_TiedConflict_WritesNothing()
+        {
+            var resolution = new AddressResolution(
+                new[]
+                {
+                    new AddressCandidate(_managedGroup.Name, "addr1", order: 0, labels: new[] { "a" }),
+                    new AddressCandidate(_otherGroup.Name, "addr2", order: 0, labels: new[] { "b" }),
+                },
+                new HashSet<string> { "alwaysLabel" });
+
+            var result = AddressTellerApplier.Apply(Ctx("guid-tie-labels"), resolution, _settings, ExistingGroupNames());
+
+            Assert.AreEqual(ValidationStatus.ConflictingAddress, result.Status);
+            Assert.IsNull(_settings.FindAssetEntry("guid-tie-labels"));
+        }
+
+        [Test]
+        public void Labels_BlockedByRuleError_ExistingEntryLabelsUnchanged()
+        {
+            _settings.CreateOrMoveEntry("guid-blocked-labels", _managedGroup);
+            var existingEntry = _settings.FindAssetEntry("guid-blocked-labels");
+            existingEntry.SetLabel("oldLabel", true);
+
+            var resolution = new AddressResolution(
+                new[] { new AddressCandidate(_otherGroup.Name, "newAddr", order: 5, labels: new[] { "candidateLabel" }) },
+                new HashSet<string> { "alwaysLabel" },
+                new[] { new RuleEvaluationError("HighPriorityRule", "boom", order: 0, canProduceAddress: true) });
+
+            var result = AddressTellerApplier.Apply(Ctx("guid-blocked-labels"), resolution, _settings, ExistingGroupNames());
+
+            Assert.AreEqual(ValidationStatus.BlockedByRuleError, result.Status);
+            CollectionAssert.AreEquivalent(new[] { "oldLabel" }, existingEntry.labels);
+        }
+
+        [Test]
+        public void ValidatePredictApply_AgreeOnFinalLabels()
+        {
+            // Predict の予測ラベルと Apply が実際に書いたラベルが一致する（負けた候補のラベルを含めない）。
+            var guid = CreateRealPrefabAndGetGuid("PriorityLabelsConsistencyAsset");
+            var resolution = new AddressResolution(
+                new[]
+                {
+                    new AddressCandidate(_managedGroup.Name, "broadAddr", order: 100, labels: new[] { "fromBroad" }),
+                    new AddressCandidate(_otherGroup.Name, "specificAddr", order: 0, labels: new[] { "fromSpecific" }),
+                },
+                new HashSet<string> { "alwaysLabel" });
+            var existingGroupNames = ExistingGroupNames();
+
+            var prediction = AddressTellerApplier.Predict(Ctx(guid), resolution, _settings, existingGroupNames, new HashSet<string>());
+            AddressTellerApplier.Apply(Ctx(guid), resolution, _settings, existingGroupNames);
+
+            CollectionAssert.AreEqual(new[] { "alwaysLabel", "fromSpecific" }, prediction.PredictedEntry.Labels);
+            CollectionAssert.AreEquivalent(prediction.PredictedEntry.Labels, _settings.FindAssetEntry(guid).labels);
         }
 
         [Test]

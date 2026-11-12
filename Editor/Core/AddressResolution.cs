@@ -31,11 +31,21 @@ namespace AddressTeller
         /// </summary>
         public int Order { get; }
 
+        private readonly IReadOnlyList<string> _labels;
+
+        /// <summary>
+        /// Labels produced by the rule that produced this candidate. They are written to the asset only when
+        /// this candidate wins; a candidate that loses on <see cref="Order"/> contributes no labels. Never null;
+        /// contains no duplicates and is in the order the rule's <c>Label()</c> calls produced them.
+        /// </summary>
+        public IReadOnlyList<string> Labels => _labels ?? Array.Empty<string>();
+
         /// <summary>
         /// 公開コンストラクタではなく internal（ライブラリ内部のルール評価エンジンからのみ構築される想定）。
         /// テストからは <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute"/> 経由で参照する。
+        /// <paramref name="labels"/> は、このエントリが候補と同時に出したラベル（null は空）。
         /// </summary>
-        internal AddressCandidate(string groupName, string address, string sourceClass = null, string description = null, int ruleIndex = 0, int order = 0)
+        internal AddressCandidate(string groupName, string address, string sourceClass = null, string description = null, int ruleIndex = 0, int order = 0, IReadOnlyList<string> labels = null)
         {
             GroupName = groupName;
             Address = address;
@@ -43,6 +53,7 @@ namespace AddressTeller
             Description = description;
             RuleIndex = ruleIndex;
             Order = order;
+            _labels = labels;
         }
 
         /// <summary>Identifier string for error messages, e.g. <c>MyRule &gt; "InFolder(Assets/Characters)"</c>.</summary>
@@ -61,7 +72,7 @@ namespace AddressTeller
         public string Message { get; }
 
         /// <summary>
-        /// 例外を送出したルールの <see cref="AddressRuleBase.Order"/>。AddressTellerApplier.Validate が、
+        /// 例外を送出したルールの <see cref="AddressRuleBase.Order"/>。WinnerSelector.Select が、
         /// 勝者候補の Order 以下（同点含む）のアドレス産出ルールに例外があったかを判定するために使う。
         /// </summary>
         public int Order { get; }
@@ -85,29 +96,33 @@ namespace AddressTeller
     /// <summary>
     /// 1アセットに対するルール評価結果。
     /// AddressCandidates が2件以上のとき、Order が最小の候補が単独ならそれを採用し、最小値の候補が
-    /// 2件以上（同点）のときのみ競合になる（AddressTellerApplier.Validate 参照）。0 件でも Labels が
+    /// 2件以上（同点）のときのみ競合になる（WinnerSelector.Select 参照）。0 件でも LabelOnlyLabels が
     /// 1件以上あればラベルのみルールがマッチしている（AddressTellerApplier.Validate の LabelsOnly 判定）。
-    /// AddressCandidates も Labels も 0 件のときのみ、このアセットはどのルールにもマッチしていない（対象外）。
-    /// Labels は全マッチルールから蓄積される（Order による優先順位の影響を受けない）。
+    /// AddressCandidates も LabelOnlyLabels も 0 件のときのみ、このアセットはどのルールにもマッチしていない（対象外）。
+    /// 書き込む最終ラベル集合は LabelOnlyLabels と勝者候補の Labels の和集合で、<see cref="WinnerSelector.ComposeFinalLabels"/> が
+    /// 合成する。負けた候補のラベルは含まれない。
     /// </summary>
     internal sealed class AddressResolution
     {
         /// <summary>アドレスを発行したルールのグループ名＋アドレスのリスト。</summary>
         public IReadOnlyList<AddressCandidate> AddressCandidates { get; }
 
-        /// <summary>全マッチルールから蓄積されたラベルセット。</summary>
-        public IReadOnlyCollection<string> Labels { get; }
+        /// <summary>
+        /// ラベル専用エントリ（AddressSelector == null。AnyGroup() や Address() を呼ばない Group()）由来のラベル。
+        /// 勝敗と無関係に常に書き込まれる。アドレス候補を出したエントリのラベルは各 <see cref="AddressCandidate.Labels"/> が持つ。
+        /// </summary>
+        public IReadOnlyCollection<string> LabelOnlyLabels { get; }
 
         /// <summary>評価中に発生したルール例外のリスト。</summary>
         public IReadOnlyList<RuleEvaluationError> Errors { get; }
 
         public AddressResolution(
             IReadOnlyList<AddressCandidate> candidates,
-            IReadOnlyCollection<string> labels,
+            IReadOnlyCollection<string> labelOnlyLabels,
             IReadOnlyList<RuleEvaluationError> errors = null)
         {
             AddressCandidates = candidates;
-            Labels = labels;
+            LabelOnlyLabels = labelOnlyLabels;
             Errors = errors ?? Array.Empty<RuleEvaluationError>();
         }
     }

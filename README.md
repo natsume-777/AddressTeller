@@ -86,6 +86,8 @@ To assign to the Addressables DefaultGroup, use `GroupDefault()` instead of `Gro
 
 `Order` also doubles as a priority: write a broad rule with a high `Order` value and a narrower rule with a lower one, and the narrower rule's address wins whenever both match the same asset. See [Writing Rules: Address priority and conflicts](Documentation~/writing-rules.md#evaluation-rules-and-behavior) for an example.
 
+A rule's labels are written only when its address wins for the asset: if a narrower, higher-priority rule (lower `Order`) takes over an asset's address, the broader rule's labels are not written for it. To attach a label whatever address rule wins, put it in a separate `AnyGroup()` rule (see [Writing Rules](Documentation~/writing-rules.md#anygroup)).
+
 If you define rule classes in a custom assembly, add `AddressTeller.Core` to your asmdef's `references` — the whole rule-authoring surface (`AddressRuleBase`, `IAddressRuleBuilder`, `Match`, `Naming`, `AssetContext`) lives there. Add `AddressTeller.Editor` as well only if the same assembly also calls the operational APIs (`AddressTellerService`, `ValidationResult`, snapshots, reports); those are in `AddressTeller.Editor` but expose Core types in their signatures, so referencing `AddressTeller.Editor` always means referencing `AddressTeller.Core` too.
 
 Do not place rule classes in an assembly whose asmdef references `nunit.framework` (e.g. an EditMode test assembly) — AddressTeller's rule collection silently excludes any such assembly (no warning), so those rules would never run. Put them in an ordinary Editor asmdef instead.

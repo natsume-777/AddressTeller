@@ -192,5 +192,35 @@ namespace AddressTeller.Editor.Tests
             StringAssert.DoesNotContain("blocked by a rule error", suffix);
             StringAssert.Contains("not written", suffix);
         }
+
+        // --- Labels 行: 負けたアドレスルールのラベルは付かないことの表示 ---
+
+        private static RuleEvaluationDetail MatchedDetail(string address, int order, params string[] labels) =>
+            new RuleEvaluationDetail("Rule", "G", null, RuleMatchOutcome.Matched, address, labels, null, order);
+
+        [Test]
+        public void LabelsLine_LosingAddressRule_StatesLabelsAreNotApplied()
+        {
+            var line = AddressTellerExplainWindow.DescribeLabelsLine(MatchedDetail("broadAddr", 100, "fromBroad"), minOrder: 0);
+
+            StringAssert.Contains("fromBroad", line);
+            StringAssert.Contains("not applied", line);
+        }
+
+        [Test]
+        public void LabelsLine_WinningAddressRule_HasNoNote()
+        {
+            var line = AddressTellerExplainWindow.DescribeLabelsLine(MatchedDetail("addr", 0, "fromSpecific"), minOrder: 0);
+
+            Assert.AreEqual("Labels: fromSpecific", line);
+        }
+
+        [Test]
+        public void LabelsLine_LabelOnlyRule_HasNoNoteEvenWhenOrderIsAboveMin()
+        {
+            var line = AddressTellerExplainWindow.DescribeLabelsLine(MatchedDetail(null, 100, "always"), minOrder: 0);
+
+            Assert.AreEqual("Labels: always", line);
+        }
     }
 }

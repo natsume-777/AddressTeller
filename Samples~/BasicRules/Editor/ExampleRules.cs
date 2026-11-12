@@ -32,7 +32,7 @@ namespace AddressTellerSamples
                            && ctx.Type == typeof(GameObject))
                 // Address: file name without extension
                 .Address(ctx => ctx.FileNameWithoutExtension)
-                // Label() can be called any number of times. Labels from all matching rules accumulate.
+                // Label() can be called any number of times. These labels are written only when this rule's address wins for the asset.
                 .Label("character")
                 .Label("humanoid");
 

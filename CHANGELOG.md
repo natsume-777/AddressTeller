@@ -8,6 +8,24 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+### Added
+
+- `AddressCandidate.Labels`: a new public read-only property holding the labels produced by the rule that
+  produced that candidate (never null). They are written only if that candidate wins.
+
+### Changed
+
+- **BREAKING**: Labels are now written only from the winning address rule and from label-only rules
+  (`AnyGroup()`, or a `Group()` rule with no `Address()`). Previously, every matching rule's labels were
+  written to the asset, so a broad low-priority rule's labels were also stamped onto assets that a narrower
+  higher-priority rule had taken over. Now the labels of an address rule that loses on `Order` are not
+  written. Labels of label-only rules are still written whenever they match, regardless of which address
+  rule wins; no label is written when the asset is a conflict (`ConflictingAddress`) or blocked by a rule
+  error (`BlockedByRuleError`), as before. Labels already on an entry are still never removed. If you relied
+  on a broad rule's label appearing on assets that another rule won, move that label into a separate
+  `AnyGroup()` rule. Labels that an earlier `Apply All` already put on an entry are not stripped. The Explain window now marks a losing rule's labels as not
+  applied. See [Design Decisions: Labels Follow the Winning Rule](Documentation~/design-decisions.md#labels-follow-the-winning-rule).
+
 ## [0.7.1] - 2026-10-03
 
 ### Fixed

@@ -331,5 +331,34 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
             Assert.AreEqual(ValidationStatus.GroupNotFound, prediction.Validation.Status);
         }
+
+        [Test]
+        public void SpecificOrderWins_PredictsOnlyWinnerCandidateLabelsPlusLabelOnlyLabels()
+        {
+            // 負けた候補（Order=100）のラベルは予測に含めず、勝者のラベルとラベル専用ルールのラベルだけを含める。
+            var resolution = Resolution(
+                new HashSet<string> { "always" },
+                new AddressCandidate(_managedGroup.Name, "broadAddr", order: 100, labels: new[] { "fromBroad" }),
+                new AddressCandidate(_otherGroup.Name, "specificAddr", order: 0, labels: new[] { "fromSpecific" }));
+            var managedGroups = new HashSet<string> { _managedGroup.Name, _otherGroup.Name };
+
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-priority-labels"), resolution, _settings, ExistingGroupNames(), managedGroups);
+
+            CollectionAssert.AreEqual(new[] { "always", "fromSpecific" }, prediction.PredictedEntry.Labels);
+        }
+
+        [Test]
+        public void Conflict_TiedCandidatesWithLabels_PredictsNoOp()
+        {
+            var resolution = Resolution(
+                new HashSet<string> { "always" },
+                new AddressCandidate(_managedGroup.Name, "addr1", order: 0, labels: new[] { "a" }),
+                new AddressCandidate(_otherGroup.Name, "addr2", order: 0, labels: new[] { "b" }));
+
+            var prediction = AddressTellerApplier.Predict(Ctx("guid-tie-labels"), resolution, _settings, ExistingGroupNames(), new HashSet<string>());
+
+            Assert.AreEqual(PredictedAction.NoOp, prediction.Action);
+            Assert.IsNull(prediction.PredictedEntry);
+        }
     }
 }

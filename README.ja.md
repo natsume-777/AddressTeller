@@ -84,6 +84,8 @@ Addressables の DefaultGroup に付与したい場合は `Group("名前")` の�
 
 `Order` は優先順位も兼ねます。広いルールに大きい `Order`、特定のルールに小さい `Order` を与えておけば、両方が同じアセットにマッチしたとき特定側のアドレスが採用されます。例は [ルールの書き方: アドレスの優先順位と競合](Documentation~/writing-rules.ja.md#評価ルールと挙動) を参照してください。
 
+ルールのラベルは、そのルールのアドレスがアセットで勝ったときにだけ書き込まれます。より狭く優先度の高い（`Order` が小さい）ルールがアセットのアドレスを奪った場合、広い側のルールのラベルはそのアセットには書き込まれません。どのアドレスルールが勝つかに関わらずラベルを付けたい場合は、別の `AnyGroup()` ルールに分けて書いてください（[ルールの書き方](Documentation~/writing-rules.ja.md#anygroup)参照）。
+
 ルールクラスを独自の asmdef 内に定義する場合、その asmdef の `references` に `AddressTeller.Core` を追加してください。ルール記述に使う型（`AddressRuleBase` / `IAddressRuleBuilder` / `Match` / `Naming` / `AssetContext`）はすべてこのアセンブリにあります。同じアセンブリから運用系 API（`AddressTellerService` / `ValidationResult` / スナップショット / レポート）も呼ぶ場合に限り、`AddressTeller.Editor` も追加してください。これらは `AddressTeller.Editor` にありますが、シグネチャに Core の型を露出しているため、`AddressTeller.Editor` を参照する場合は必ず `AddressTeller.Core` の参照も必要になります。
 
 ルールクラスは、asmdef が `nunit.framework` を参照するアセンブリ（EditMode テストアセンブリ等）には置かないでください——AddressTeller のルール収集はそのようなアセンブリを警告なく除外するため、そこに置いたルールは一切実行されません。通常の Editor 用 asmdef に置いてください。
