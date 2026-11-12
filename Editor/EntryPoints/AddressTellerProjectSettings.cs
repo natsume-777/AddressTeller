@@ -146,7 +146,15 @@ namespace AddressTeller.Editor
             // InvalidOperationException を投げるようになった以上、操作させても意味が無いため）。
             var settingsGate = AddressTellerSettings.EnsureLoaded();
             var gateOk = settingsGate.Success;
-            if (!gateOk)
+            if (!gateOk && AddressTellerSettingsAsset.LoadSettingsFile().Success)
+            {
+                // 設定ファイル自体は読めているので、壊れているのはラベル台帳。設定ファイルの復旧ボタンは出さない
+                // （正常な設定を既定値に戻してしまうため）。台帳は削除すれば空の台帳として扱われる。
+                root.Add(new HelpBox(
+                    $"{settingsGate.Error} The values below are disabled until the label ledger is fixed or deleted.",
+                    HelpBoxMessageType.Error));
+            }
+            else if (!gateOk)
             {
                 root.Add(new HelpBox(
                     "AddressTeller's settings file could not be loaded (see the Console for details). " +
@@ -240,6 +248,14 @@ namespace AddressTeller.Editor
             maxRemovalsField.SetEnabled(gateOk);
             container.Add(maxRemovalsField);
             container.Add(MakeDescription("Safety valve for \"Remove unmatched entries\": if one run of ApplyAll (including the automatic apply on import, ApplyAllCLI, and ApplyWithValidateCLI) would remove more entries than this, it removes none of them and reports a blocking StaleRemovalLimitExceeded issue instead. 0 means unlimited (default). The Apply All and Apply with Validate menu items are not limited; their confirmation dialog shows the number of removals first."));
+
+            var staleLabelsToggle = new Toggle("Remove stale managed labels") { value = AddressTellerSettings.RemoveStaleManagedLabels };
+            staleLabelsToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () => AddressTellerSettings.RemoveStaleManagedLabels = e.newValue,
+                () => staleLabelsToggle.SetValueWithoutNotify(AddressTellerSettings.RemoveStaleManagedLabels)));
+            staleLabelsToggle.SetEnabled(gateOk);
+            container.Add(staleLabelsToggle);
+            container.Add(MakeDescription("When Apply writes an entry, removes the labels AddressTeller wrote earlier (recorded by name in ProjectSettings/AddressTellerLabelLedger.json) that no rule produces for that asset any more. Labels not in the ledger are never touched; a label with the same name that you added by hand to an entry AddressTeller writes is removed too. Each removal is logged as a warning. Off by default; while off, such labels are reported as a non-blocking StaleManagedLabelKept notice by Validate and dry-run previews. Delete label definitions nobody uses with Tools/AddressTeller/Remove Unused Managed Labels."));
 
             var autoCreateToggle = new Toggle("Auto-create missing groups") { value = AddressTellerSettings.AutoCreateMissingGroups };
             autoCreateToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(

@@ -24,19 +24,44 @@ namespace AddressTeller.Editor
         /// in design-decisions.md for what counts as owned and what this means for manually registered
         /// entries.
         /// Deletion is per-entry (<c>RemoveAssetEntry</c>), so both the address and any labels the entry
-        /// held are lost. This does not affect labels on entries that remain matched: because label writes
-        /// are additive by design, it is impossible to identify after the fact which rule
-        /// assigned which label, so ApplyAll only ever adds labels to a surviving entry and never removes
-        /// any label from a surviving entry.
+        /// held are lost. This does not affect labels on entries that remain matched: removing a label
+        /// an entry no longer needs is a separate opt-in, <see cref="RemoveStaleManagedLabels"/>.
         /// Default: false. When off, an entry that would have been removed is instead reported once per
         /// asset as <see cref="ValidationStatus.UnmatchedEntryKept"/> (a non-blocking notice) so the change
         /// is visible before you opt in.
         /// </summary>
-        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file).</exception>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
         public static bool CleanupStaleEntries
         {
             get => AddressTellerSettingsAsset.Current._cleanupStaleEntries;
             set => AddressTellerSettingsAsset.Mutate(data => data._cleanupStaleEntries = value);
+        }
+
+        /// <summary>
+        /// When true, ApplyAll removes, from each entry it writes, the labels AddressTeller itself wrote in the
+        /// past that the asset's rules no longer produce. "AddressTeller wrote it" is decided by a label
+        /// ledger (ProjectSettings/AddressTellerLabelLedger.json) that records the name of every label
+        /// AddressTeller has written; a label whose name is not in the ledger is never touched. The ledger
+        /// holds names only, not which entry got which label, so a label with the same name that you added
+        /// by hand to an entry AddressTeller writes is removed too when no rule produces it for that asset.
+        /// Entries AddressTeller does not write in a run (no rule matches, a conflict, a rule error) are not
+        /// touched. No label is removed in a run where a rule's <c>Configure()</c> failed or a declared folder
+        /// is missing, or from an asset for which any rule threw (a label the failing rule would have produced
+        /// is not visible then). Which labels count as AddressTeller's is fixed from the ledger as it was when
+        /// the run started, so a label first written during the run is never removed in that same run. If the
+        /// ledger cannot be written, no label is removed and the run reports
+        /// <see cref="ValidationStatus.LabelLedgerWriteFailed"/>. <see cref="MaxStaleRemovalsPerRun"/> does not
+        /// limit label removals. Each removal is logged individually as a warning. The label definition itself is left
+        /// in Addressables; use Tools/AddressTeller/Remove Unused Managed Labels to delete definitions nobody uses.
+        /// Default: false. When off, an entry that carries such a label is reported once per asset as
+        /// <see cref="ValidationStatus.StaleManagedLabelKept"/> (a non-blocking notice) by the full-scan
+        /// paths (<c>ValidateAll</c> and dry-run previews) so the change is visible before you opt in.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
+        public static bool RemoveStaleManagedLabels
+        {
+            get => AddressTellerSettingsAsset.Current._removeStaleManagedLabels;
+            set => AddressTellerSettingsAsset.Mutate(data => data._removeStaleManagedLabels = value);
         }
 
         /// <summary>
@@ -51,7 +76,7 @@ namespace AddressTeller.Editor
         /// It does not apply to the Apply All and Apply with Validate menu items (their confirmation dialog
         /// shows the number of removals before anything is applied) or to following up on a deleted asset.
         /// </summary>
-        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file).</exception>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
         public static int MaxStaleRemovalsPerRun
         {
             get => AddressTellerSettingsAsset.Current._maxStaleRemovalsPerRun;
@@ -66,7 +91,7 @@ namespace AddressTeller.Editor
         /// When false (default), the automatic ApplyAll normally triggered on import by AssetPostprocessor
         /// is not performed. This does not affect manual execution from Tools/AddressTeller/Apply All.
         /// </summary>
-        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file).</exception>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
         public static bool PostprocessEnabled
         {
             get => AddressTellerSettingsAsset.Current._postprocessEnabled;
@@ -86,7 +111,7 @@ namespace AddressTeller.Editor
         /// Setting this to an empty or whitespace-only string normalizes it to
         /// <see cref="DefaultSnapshotFolder"/> before saving, rather than saving the empty value.
         /// </summary>
-        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file).</exception>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
         public static string SnapshotFolder
         {
             get => AddressTellerSettingsAsset.Current._snapshotFolder;
@@ -146,7 +171,7 @@ namespace AddressTeller.Editor
         /// proceeding with a destructive operation with no Undo Last Apply backing (see the apply flow
         /// used by <c>Tools/AddressTeller/Apply All</c>).
         /// </summary>
-        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file).</exception>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
         public static bool AutoSnapshotBeforeApplyAll
         {
             get => AddressTellerSettingsAsset.Current._autoSnapshotBeforeApplyAll;
@@ -157,7 +182,7 @@ namespace AddressTeller.Editor
         /// Number of automatic snapshots (under SnapshotFolder/Auto) to retain. Older files beyond this
         /// count are removed when a new one is saved. Minimum value is 1. Default: 10.
         /// </summary>
-        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file).</exception>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
         public static int AutoSnapshotRetention
         {
             get => AddressTellerSettingsAsset.Current._autoSnapshotRetention;
@@ -176,7 +201,7 @@ namespace AddressTeller.Editor
         /// On Validate/Predict (dry-run), even when this is on, the group is not actually created; it is
         /// only reported as <see cref="ValidationStatus.GroupWillBeCreated"/>.
         /// </summary>
-        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file).</exception>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
         public static bool AutoCreateMissingGroups
         {
             get => AddressTellerSettingsAsset.Current._autoCreateMissingGroups;
@@ -209,7 +234,7 @@ namespace AddressTeller.Editor
         /// Value returned by <see cref="AddressTellerPostprocessor.GetPostprocessOrder"/>.
         /// Controls AssetPostprocessor execution order; smaller values run earlier.
         /// </summary>
-        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file).</exception>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
         public static int PostprocessOrder
         {
             get => AddressTellerSettingsAsset.Current._postprocessOrder;
@@ -217,7 +242,7 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>Enables or disables the given rule class.</summary>
-        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file).</exception>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
         public static void SetRuleEnabled(string ruleClassFullName, bool enabled)
         {
             AddressTellerSettingsAsset.Mutate(data =>

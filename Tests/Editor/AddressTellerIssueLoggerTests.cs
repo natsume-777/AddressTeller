@@ -67,6 +67,36 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void LogAll_StaleManagedLabelKept_LogsSingleSummaryInfo()
+        {
+            var issues = new List<ValidationResult>
+            {
+                Make(ValidationStatus.StaleManagedLabelKept, "entry 1"),
+                Make(ValidationStatus.StaleManagedLabelKept, "entry 2"),
+            };
+
+            // 除去を OFF のまま運用している間は毎回出続けるため、UnmatchedEntryKept と同じく個別ではなく
+            // 件数だけの1行サマリ（Info）にする。
+            LogAssert.Expect(LogType.Log, new Regex("StaleManagedLabelKept: 2 entries carry"));
+
+            AddressTellerIssueLogger.LogAll(issues);
+
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void LogAll_SingleStaleManagedLabelKept_UsesSingularWordsInSummary()
+        {
+            var issues = new List<ValidationResult> { Make(ValidationStatus.StaleManagedLabelKept, "entry 1") };
+
+            LogAssert.Expect(LogType.Log, new Regex("StaleManagedLabelKept: 1 entry carries"));
+
+            AddressTellerIssueLogger.LogAll(issues);
+
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
         public void LogAll_NoUnmatchedEntryKept_DoesNotLogSummary()
         {
             var issues = new List<ValidationResult> { Make(ValidationStatus.GroupNotFound, "missing group") };

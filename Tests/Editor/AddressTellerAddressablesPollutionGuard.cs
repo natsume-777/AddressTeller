@@ -35,6 +35,12 @@ namespace AddressTeller.Editor.Tests
         private byte[] _addressTellerSettingsBytesBefore;
         private string _addressTellerSettingsTempOverridePath;
 
+        // ProjectSettings/AddressTellerLabelLedger.json も設定ファイルと同じ扱い（Apply がラベルを書くたびに
+        // 更新されるため、隔離しないと多くのテストが本番の台帳へ書いてしまう）。
+        private string _labelLedgerPath;
+        private byte[] _labelLedgerBytesBefore;
+        private string _labelLedgerTempOverridePath;
+
         [OneTimeSetUp]
         public void CaptureBaselineAndDisablePostprocessor()
         {
@@ -73,6 +79,16 @@ namespace AddressTeller.Editor.Tests
                 Path.GetTempPath(), $"AddressTellerSettings_PollutionGuard_{Guid.NewGuid():N}.json");
             AddressTellerSettingsAsset.FilePathOverride = _addressTellerSettingsTempOverridePath;
             AddressTellerSettingsAsset.ResetInMemoryState();
+
+            // ラベル台帳も同様に、本番のバイト列を退避してから一時ファイルへ切り替える。
+            _labelLedgerPath = AddressTellerLabelLedger.AbsoluteFilePath;
+            _labelLedgerBytesBefore = File.Exists(_labelLedgerPath)
+                ? File.ReadAllBytes(_labelLedgerPath)
+                : null;
+            _labelLedgerTempOverridePath = Path.Combine(
+                Path.GetTempPath(), $"AddressTellerLabelLedger_PollutionGuard_{Guid.NewGuid():N}.json");
+            AddressTellerLabelLedger.FilePathOverride = _labelLedgerTempOverridePath;
+            AddressTellerLabelLedger.ResetInMemoryState();
         }
 
         [OneTimeTearDown]
@@ -94,6 +110,20 @@ namespace AddressTeller.Editor.Tests
 
             AddressTellerSettingsAsset.FilePathOverride = null;
             AddressTellerSettingsAsset.ResetInMemoryState();
+
+            try
+            {
+                if (File.Exists(_labelLedgerTempOverridePath))
+                    File.Delete(_labelLedgerTempOverridePath);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[AddressTeller] テスト用のラベル台帳一時パスの削除に失敗した " +
+                    $"('{_labelLedgerTempOverridePath}'): {ex.Message}");
+            }
+
+            AddressTellerLabelLedger.FilePathOverride = null;
+            AddressTellerLabelLedger.ResetInMemoryState();
 
             var settingsPolluted = CheckAndRestore(
                 AddressableAssetSettingsDefaultObject.Settings,
@@ -124,10 +154,12 @@ namespace AddressTeller.Editor.Tests
             }
 
             var addressTellerSettingsPolluted = CheckAndRestoreAddressTellerSettingsFile();
+            var labelLedgerPolluted = CheckAndRestoreFile(
+                _labelLedgerPath, _labelLedgerBytesBefore, "ProjectSettings/AddressTellerLabelLedger.json");
 
             var addressablesPolluted = settingsPolluted || sortSettingsPolluted || groupsPolluted;
 
-            if (addressablesPolluted || addressTellerSettingsPolluted)
+            if (addressablesPolluted || addressTellerSettingsPolluted || labelLedgerPolluted)
             {
                 var causes = new List<string>();
                 if (addressablesPolluted)
@@ -138,6 +170,10 @@ namespace AddressTeller.Editor.Tests
                 if (addressTellerSettingsPolluted)
                 {
                     causes.Add("ProjectSettings/AddressTellerSettings.json の内容");
+                }
+                if (labelLedgerPolluted)
+                {
+                    causes.Add("ProjectSettings/AddressTellerLabelLedger.json の内容");
                 }
 
                 var message = "EditMode テストが" + string.Join(" または ", causes) + "を変更した。" +
@@ -153,6 +189,12 @@ namespace AddressTeller.Editor.Tests
                 {
                     message += " ProjectSettings/AddressTellerSettings.json はベースラインへ復元済み。" +
                         "AddressTellerSettingsAsset.FilePathOverride を切り替えずに本番パスへ直接書き込んでいる" +
+                        "テストクラスがないか確認せよ。";
+                }
+                if (labelLedgerPolluted)
+                {
+                    message += " ProjectSettings/AddressTellerLabelLedger.json はベースラインへ復元済み。" +
+                        "AddressTellerLabelLedger.FilePathOverride を切り替えずに本番パスへ直接書き込んでいる" +
                         "テストクラスがないか確認せよ。";
                 }
 
@@ -201,43 +243,47 @@ namespace AddressTeller.Editor.Tests
         /// </summary>
         /// <returns>ベースラインとバイト列が一致しなかった場合 true。</returns>
         private bool CheckAndRestoreAddressTellerSettingsFile()
+            => CheckAndRestoreFile(_addressTellerSettingsPath, _addressTellerSettingsBytesBefore, "ProjectSettings/AddressTellerSettings.json");
+
+        /// <summary>
+        /// <see cref="CheckAndRestoreAddressTellerSettingsFile"/> の本体。<paramref name="path"/> のファイルを
+        /// <paramref name="bytesBefore"/>（null は不在）と比較し、差分があれば書き戻す。ラベル台帳にも同じ安全網を使う。
+        /// </summary>
+        private static bool CheckAndRestoreFile(string path, byte[] bytesBefore, string displayName)
         {
             byte[] bytesAfter;
             try
             {
-                bytesAfter = File.Exists(_addressTellerSettingsPath)
-                    ? File.ReadAllBytes(_addressTellerSettingsPath)
+                bytesAfter = File.Exists(path)
+                    ? File.ReadAllBytes(path)
                     : null;
             }
             catch (Exception ex)
             {
-                Debug.LogError("[AddressTeller] ProjectSettings/AddressTellerSettings.json の読み取りに失敗した: " +
-                    $"{ex.Message}");
+                Debug.LogError($"[AddressTeller] {displayName} の読み取りに失敗した: {ex.Message}");
                 return true;
             }
 
-            if (BytesEqual(bytesAfter, _addressTellerSettingsBytesBefore))
+            if (BytesEqual(bytesAfter, bytesBefore))
                 return false;
 
-            Debug.LogWarning("[AddressTeller] EditMode テストの実行により ProjectSettings/AddressTellerSettings.json " +
-                "が変更されたため、ベースラインに復元します。");
+            Debug.LogWarning($"[AddressTeller] EditMode テストの実行により {displayName} が変更されたため、ベースラインに復元します。");
 
             try
             {
-                if (_addressTellerSettingsBytesBefore == null)
+                if (bytesBefore == null)
                 {
-                    if (File.Exists(_addressTellerSettingsPath))
-                        File.Delete(_addressTellerSettingsPath);
+                    if (File.Exists(path))
+                        File.Delete(path);
                 }
                 else
                 {
-                    File.WriteAllBytes(_addressTellerSettingsPath, _addressTellerSettingsBytesBefore);
+                    File.WriteAllBytes(path, bytesBefore);
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError("[AddressTeller] ProjectSettings/AddressTellerSettings.json の復元処理自体が失敗した: " +
-                    $"{ex.Message}");
+                Debug.LogError($"[AddressTeller] {displayName} の復元処理自体が失敗した: {ex.Message}");
             }
 
             return true;

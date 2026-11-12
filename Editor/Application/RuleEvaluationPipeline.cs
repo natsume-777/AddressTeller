@@ -339,6 +339,11 @@ namespace AddressTeller.Editor
                     || prediction.Validation.Status == ValidationStatus.GroupWillBeCreated
                     || prediction.Validation.Status == ValidationStatus.UnmatchedEntryKept)
                     issues.Add(prediction.Validation);
+
+                // RemoveStaleManagedLabels が OFF のとき、ON なら外されるラベルがあることの通知（IsOk=true）。
+                // Validation（Apply の結果そのもの）とは別に、同じ資産について追加で報告する。
+                if (prediction.Notice != null)
+                    issues.Add(prediction.Notice);
             }
 
             // キャンセル時は完了通知を呼ばない（中断したのに「完了」を通知すると意味的に矛盾するため）。

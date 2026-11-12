@@ -200,6 +200,7 @@ SchemaVersion                             (System.Int32)
 | `_postprocessOrder` | `int` | `1000` |
 | `_disabledRuleClassNames` | `string[]` | 空 |
 | `_maxStaleRemovalsPerRun` | `int` | `0`（無制限） |
+| `_removeStaleManagedLabels` | `bool` | `false` |
 | `_marker` | `string` | 内部専用、利用者が設定するものではない（後述） |
 
 これらのキーをリネームすることは禁止です。`JsonUtility` は、JSON に対応するキーが無いフィールドをその C# の初期化子の値のまま残すため、リネームすると、既に `AddressTellerSettings.json` をコミット済みのすべてのプロジェクトで、該当設定がエラーも警告もなく既定値へ黙って戻ってしまいます。キーの既定値の変更は**メジャー**（破壊的）変更です。明示的に設定していないプロジェクトの挙動が変わるためです。
@@ -208,6 +209,8 @@ SchemaVersion                             (System.Int32)
 
 Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバイダーパス `Project/AddressTeller` で登録）は保証対象**外**です。レイアウト・項目順序・説明文は自由に変更されえます。
 
+**ラベル台帳。** AddressTeller は `ProjectSettings/AddressTellerLabelLedger.json`（`Editor/Application/AddressTellerLabelLedger.cs`）も永続化します。設定ファイルと一緒にバージョン管理に含めることを想定しています。AddressTeller が書いたラベルの名前をすべて記録するファイルで、`AddressTellerSettings.RemoveStaleManagedLabels` が AddressTeller 自身のラベルとそれ以外を見分けるのに使います。トップレベルのキーは `_marker`（`string`、内部専用、設定ファイルと同じ役割）と `labels`（`string[]`、ラベル名を Ordinal 順に、重複なしで並べたもの）で、リネーム禁止の規則も同じです。ファイルが無い場合は空の台帳として扱われ、エラーではありません。ファイルが存在するのに読めない、または認識可能な `_marker` が無い場合は、壊れた設定ファイルと同じ扱いになります。修正または削除されるまで AddressTeller は実行を拒否し、該当する `AddressTellerService` / `AddressTellerSnapshotService` の入口は、メッセージに台帳を示す単一の `ValidationStatus.SettingsUnavailable` を返します。台帳が増えるのは AddressTeller がラベルを書いたときだけで、`Tools/AddressTeller/Remove Unused Managed Labels...` がラベル定義を削除したときに減ります。2つのブランチが両方変更してマージ衝突した場合は、両側の名前の和集合を取って解消してください。ファイルを削除しても安全です（名前を忘れると除去が減るだけです）。ランはラベルを書いた名前を、ランの最後に1回だけ、その時点のディスク上の内容とマージして記録します。その書き込みが失敗した場合、そのランは `ValidationStatus.LabelLedgerWriteFailed` を報告します。
+
 ### 8. メニューパス
 
 `Editor/EntryPoints/` 配下の全 `[MenuItem]` パス:
@@ -215,6 +218,7 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 - `Tools/AddressTeller/Apply All`
 - `Tools/AddressTeller/Preview Group...`
 - `Tools/AddressTeller/Clear All Addresses & Labels...`
+- `Tools/AddressTeller/Remove Unused Managed Labels...`
 - `Tools/AddressTeller/Validate`
 - `Tools/AddressTeller/Apply with Validate`
 - `Tools/AddressTeller/Snapshot/Save Snapshot`
@@ -233,7 +237,7 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 - **Order**: `Order` の昇順で評価されます。評価順序の同値タイブレークはルールクラスの完全修飾型名（Ordinal）で決定的に行われます。`Order` はアドレス競合を解決する優先順位も兼ねており（下記の**競合**を参照）、値が小さい方が勝ちます。クラス間で `Order` が重複していると警告が出ます。同じ `Order` の2ルールが同一アセットに対してともにアドレスを発行すると競合するためです。
 - **競合**: 同一アセットに対して2件以上のマッチしたルールが `Address()` を呼んだ場合、`Order` が最小の候補が勝ちそのアドレスが書き込まれます。`Order` がより大きい候補は単に採用されません。競合（`ValidationStatus.ConflictingAddress`）——そのアセットへのアドレス・ラベルとも書き込まれない（アドレスだけでなく、そのアセットへの書き込み自体がスキップされる）——になるのは、*Order が最小*の候補が2件以上で同点だった場合のみです。
 - **例外と勝者の優先度**: 単独の勝者候補が確定した後（同点なし）、勝者以下の `Order`（アドレスを産出しうるルール、`AddressSelector != null`）に例外があった場合、そのアセットには一切書き込みが行われません——勝者のアドレスも、マッチした他のルールのラベルも書かれず、その例外を送出したルールの `RuleError` と合わせて `ValidationStatus.BlockedByRuleError` が報告されます。純粋に優先度がより低い（Order がより大きい）ルールの例外は勝者の書き込みに影響しません。ラベルのみルール（`AddressSelector == null`）の例外は、その `Order` に関わらず `BlockedByRuleError` を発生させません——勝者候補を争う立場にそもそも無いためです。詳しい説明は [Writing Rules: Evaluation Rules and Behavior](writing-rules.ja.md#評価ルールと挙動) を参照してください。
-- **ラベルは勝者ルールに従う**: アセットに書き込まれるラベルは、勝ったアドレスルールのラベルと、マッチしたラベルのみのルール（`AnyGroup()`、および `Address()` を呼ばない `Group()` ルール）すべてのラベルです。`Order` で負けたアドレスルールのラベルは書き込まれません。勝者を決められない場合（`ConflictingAddress`）や書き込みがブロックされる場合（`BlockedByRuleError`）は、ラベルも一切書き込まれません。ラベルの書き込みは加算のみで、既存エントリがどのグループに属していても（所有権を問わず）行われます。マッチしなくなったルールによってラベルが暗黙に削除されることはありません（唯一ラベルを削除するのは `CleanupStaleEntries` によるエントリ全体の削除です）。
+- **ラベルは勝者ルールに従う**: アセットに書き込まれるラベルは、勝ったアドレスルールのラベルと、マッチしたラベルのみのルール（`AnyGroup()`、および `Address()` を呼ばない `Group()` ルール）すべてのラベルです。`Order` で負けたアドレスルールのラベルは書き込まれません。勝者を決められない場合（`ConflictingAddress`）や書き込みがブロックされる場合（`BlockedByRuleError`）は、ラベルも一切書き込まれません。ラベルの書き込みは加算のみで、既存エントリがどのグループに属していても（所有権を問わず）行われます。マッチしなくなったルールが、既定ではそのラベルを削除することはありません。ラベルを削除するオプトインの経路は2つです: `CleanupStaleEntries`（エントリ全体の削除）と `RemoveStaleManagedLabels`（AddressTeller が書き込むエントリから、名前がラベル台帳にあり、かつそのアセットのルールがもう出さないラベルを外す）。
 - **`Where()` / `Address()` / `IncludeFolders()` の単回呼び出し制約**: 同一ルールチェーン上でこれらのいずれかを2回呼び出すと `InvalidOperationException` を投げます。
 - **`GroupDefault()` の解決**: `Configure()` 実行時ではなく評価時に `AddressableAssetSettings.DefaultGroup` から解決されるため、DefaultGroup のリネームに自動的に追従します。
 - **フォルダ**: ルールが `IncludeFolders()` で明示的に opt-in しない限り、フォルダ資産はそのルールの `Where()` に一切渡りません（Predicate 自体が呼ばれません）。ファイルを前提に書かれた既存ルールが、広めの `Where` 条件で意図せずフォルダにマッチしてしまうことを防ぐためです。
@@ -247,9 +251,9 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 
 **メンバー追加がコンパイルを壊さずに実行時の挙動を壊しうる理由**: `default` アームの無い `switch` 文は、認識していない新しいenum値に対してもコンパイル・実行ができてしまいます。ただ何もしない（あるいは周辺コード次第でフォールスルーする）だけで、これは呼び出し元が見たことのないステータスに対してはたいてい誤った挙動です。追加をパッチではなくマイナーとして扱うのはこのためです。ビルドは失敗しないものの、CHANGELOGで可視化され、これらの型を網羅的に `switch` しているコードの持ち主に検討してもらうことを意図しています。
 
-具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress`、`SettingsUnavailable`、`UnmatchedEntryKept`、`BlockedByRuleError`、`DuplicateAssetEntry`、`DeclaredFolderMissing`、`DeclaredFolderCaseMismatch`、`StaleRemovalLimitExceeded`、`AssetTypeUnresolved` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
+具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress`、`SettingsUnavailable`、`UnmatchedEntryKept`、`BlockedByRuleError`、`DuplicateAssetEntry`、`DeclaredFolderMissing`、`DeclaredFolderCaseMismatch`、`StaleRemovalLimitExceeded`、`AssetTypeUnresolved`、`StaleManagedLabelKept`、`LabelLedgerWriteFailed` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
 
-`SettingsUnavailable` は、設定ファイル（`ProjectSettings/AddressTellerSettings.json`）が読み込めなかった場合に、結果リストの唯一のエントリとして返されます。`Context` は `RuleConfigureFailed`・`DuplicateAddress`・`DuplicateAssetEntry` と同様 null です（特定の1アセットに関するものではないため）。
+`SettingsUnavailable` は、設定ファイル（`ProjectSettings/AddressTellerSettings.json`）またはラベル台帳（`ProjectSettings/AddressTellerLabelLedger.json`）が読み込めなかった場合に、結果リストの唯一のエントリとして返されます。`Context` は `RuleConfigureFailed`・`DuplicateAddress`・`DuplicateAssetEntry` と同様 null です（特定の1アセットに関するものではないため）。
 
 `UnmatchedEntryKept` は、`CleanupStaleEntries` が OFF のときに `ValidateAll` と `BuildPredictedSnapshot` の全呼び出し元が報告する、書き込みを止めない通知専用ステータス（`IsOk` は常に true）です。`CleanupStaleEntries` が ON なら削除されていたはずの所有グループ内エントリ——どのルールにもマッチしなくなったもの、またはパスが Addressables のエントリとして構造的に無効なもの（[適用と運用](operations.ja.md#project-settings) 参照）——を示し、設定を ON にする前にその影響範囲を確認できるようにするためのものです。`Context` は「どのルールにもマッチしなくなった」場合は常に設定されます。「パスが構造的に無効」な場合はベストエフォートで設定されます——パスが Addressables のエントリとして無効（拡張子除外・`Editor` フォルダ等）というだけで、AssetDatabase 上のアセット自体が解決できないとは限らないためです——本当に解決できない場合のみ null になります（`RuleConfigureFailed` や `DuplicateAddress` と同様）。このステータスは `ApplyAll` 自体（`AddressTellerPostprocessor` によるインポートごとの差分適用を含む）からは一切生成されません——上記の `ValidateAll` と `BuildPredictedSnapshot` からのみ現れます。
 
@@ -264,6 +268,10 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 `StaleRemovalLimitExceeded`（`IsOk=false`、`IsBlocking=true`）は、`AddressTellerService.ApplyAll`——したがって import 時の自動適用（`AddressTellerPostprocessor`）と `ApplyAllCLI` / `ApplyWithValidateCLI`——で、1回のランが `AddressTellerSettings.MaxStaleRemovalsPerRun` を超える数のエントリを削除しようとしたときに報告されます。件数には、どのルールにもマッチしなくなったエントリと、パスが Addressables のエントリとして構造的に無効なエントリの両方を数えます。超過したときは（超過分だけでなく）全件を削除せず、件数・上限・先頭数件のパスを含むメッセージの結果を1件返します。アドレスとラベルは通常どおり書き込まれます。`Context` は `DeclaredFolderMissing` と同様 null（特定の1アセットに紐づかないため）で、報告されると `ApplyAllCLI` / `ApplyWithValidateCLI` は終了コード 2 になります。この上限は `Apply All` / `Apply with Validate` のメニュー項目（確認ダイアログが削除件数を見せてから適用するため）と、資産自体の削除への追従（`RemoveEntriesForDeletedAssets`）には適用されません。設定の既定は 0（無制限）で、負の値は 0 として扱われます。このステータスは `ApplyAll` でのみ生成され、`ValidateAll` や `BuildPredictedSnapshot` は生成しないため、dry-run は見送られる削除を予測しません。`ApplyAllCLI` / `ApplyWithValidateCLI` が書き出すレポートでは、このステータスが Issues に載り（JUnit 出力では failure になります）、見送られた削除は Removed の drift から除かれます。
 
 `AssetTypeUnresolved`（`IsOk=true`）は、GUID はあるが `AssetDatabase.GetMainAssetTypeAtPath` で型を解決できなかったアセット（たとえばスクリプトが欠落している ScriptableObject）についての、ブロッキングでない通知です。アセットの文脈を構築するには型が必要なため、そのアセットにはどのルールも評価できずそのランではスキップされます。この通知は、それを黙って無マッチにせず見えるようにするものです。そのアセットの既存エントリは、stale エントリ掃除でも削除されません。型がないと文脈を構築できないため `Context` は null で、メッセージにアセットのパスが入ります。`ApplyAll`・`ValidateAll`・`BuildPredictedSnapshot` のいずれでも生成されます。アセットですらないパス（GUID なし）は報告されません。何も止めません。
+
+`StaleManagedLabelKept`（`IsOk=true`）は、`RemoveStaleManagedLabels` が OFF のときに `ValidateAll` と `BuildPredictedSnapshot` の全呼び出し元が報告する、ブロッキングでない通知です。AddressTeller が書き込むエントリに、AddressTeller が過去に書いた（名前がラベル台帳にある）が、そのアセットのルールがもう出さないラベルが付いており、設定が ON なら外されることを示します。アセットごとに1件報告され、`Context` は設定され、メッセージにラベルが並びます。設定が ON のときは何も報告されず、除去は dry-run の差分に変更されたエントリとして現れます。`UnmatchedEntryKept` と同様、`ApplyAll` 自体（アセットの import ごとの増分適用を含む）からは生成されません。何も止めません。
+
+`LabelLedgerWriteFailed`（`IsOk=false`、`IsBlocking=true`）は、`AddressTellerService.ApplyAll` がラベルを書いたものの、その名前をラベル台帳に記録できなかった場合（たとえばファイルがバージョン管理で read-only）に報告されます。ラベルはエントリに書かれており、AddressTeller のものとしてまだ記録されていないだけなので、後のランが記録するまで `RemoveStaleManagedLabels` はそれらを外しません。除去自体は、ラン開始時の台帳に基づくため影響を受けません。`Context` は特定の1アセットに関するものではないため null で、報告されると `ApplyAllCLI` / `ApplyWithValidateCLI` は終了コード 2 になります。生成するのは `ApplyAll` だけです。
 
 **今後の `ValidationStatus` メンバーに対する重大度の方針**: 各ステータスは「`IsOk=false` かつ `IsBlocking=true`」（`IsOk=false` として数えられ、かつ Apply を中止させる問題）か、「`IsOk=true`」（通知であり、問題として扱われない）のどちらか一方の重大度に固定します。`DuplicateAddress` だけが唯一の例外であり、今後もこの位置づけのまま変わりません——その `IsOk` は `ValidationResult.HasWritableDuplicate` に依存し、`IsBlocking` は `IsOk` の値に関わらず常に false です（単独では書き込みを止めないため。正確な規則は `ValidationResult.IsBlocking` と `HasWritableDuplicate` のXMLドキュメントを参照）。`DuplicateAddress` より後に追加するメンバーで、2つ目の「`IsOk=false` だが `IsBlocking=false`」や「`IsOk` がステータス自身以外の何かに依存する」ケースを持ち込んではならず、上記2つの単純な重大度のどちらかを選ぶこと。
 

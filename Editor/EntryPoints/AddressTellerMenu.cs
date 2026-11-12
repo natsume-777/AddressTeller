@@ -386,7 +386,10 @@ namespace AddressTeller.Editor
             // （README クイックスタート手順3）であり、コンソールのサマリ1行だけでは中身が見えない。errorCount が
             // 0 でもこれが1件以上あれば結果ウィンドウを開き、個別の内容を確認できるようにする。
             var unmatchedEntryKeptCount = issues.Count(i => i.Status == ValidationStatus.UnmatchedEntryKept);
-            if (errorCount == 0 && unmatchedEntryKeptCount == 0)
+            // StaleManagedLabelKept（RemoveStaleManagedLabels を ON にしたら何のラベルが外れるか）も同じ理由で
+            // 結果ウィンドウを開く対象にする。
+            var staleManagedLabelKeptCount = issues.Count(i => i.Status == ValidationStatus.StaleManagedLabelKept);
+            if (errorCount == 0 && unmatchedEntryKeptCount == 0 && staleManagedLabelKeptCount == 0)
             {
                 Debug.Log($"[AddressTeller] Validate completed: {issues.Count} notice(s) (no issues).");
                 return;
@@ -394,9 +397,15 @@ namespace AddressTeller.Editor
 
             if (errorCount == 0)
             {
+                var including = new List<string>();
+                if (unmatchedEntryKeptCount > 0)
+                    including.Add($"{unmatchedEntryKeptCount} entr{(unmatchedEntryKeptCount == 1 ? "y" : "ies")} " +
+                        "that would be removed if Remove unmatched entries were on");
+                if (staleManagedLabelKeptCount > 0)
+                    including.Add($"{staleManagedLabelKeptCount} entr{(staleManagedLabelKeptCount == 1 ? "y" : "ies")} " +
+                        "with labels that would be removed if Remove stale managed labels were on");
                 Debug.Log($"[AddressTeller] Validate completed: {issues.Count} notice(s) (no issues), " +
-                    $"including {unmatchedEntryKeptCount} entr{(unmatchedEntryKeptCount == 1 ? "y" : "ies")} " +
-                    "that would be removed if Remove unmatched entries were on.");
+                    $"including {string.Join(" and ", including)}.");
             }
             else
             {

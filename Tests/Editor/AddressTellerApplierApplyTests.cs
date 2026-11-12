@@ -11,7 +11,7 @@ namespace AddressTeller.Editor.Tests
     /// AddressTellerApplier.Apply の Skipped 時クリーンアップ挙動を、
     /// ディスクに保存しない一時的な AddressableAssetSettings 上で検証する。
     /// </summary>
-    public class AddressTellerApplierApplyTests
+    public class AddressTellerApplierApplyTests : LabelLedgerIsolatedFixture
     {
         private AddressableAssetSettings _settings;
         private AddressableAssetGroup _managedGroup;

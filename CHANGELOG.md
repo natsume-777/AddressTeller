@@ -43,6 +43,28 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   missing). No rule can be evaluated for it, so it used to be skipped silently (and an existing entry for it
   is not removed by stale entry cleanup); `ApplyAll`, `ValidateAll`, and
   `BuildPredictedSnapshot` now report it as a non-blocking notice naming the asset path.
+- `AddressTellerSettings.RemoveStaleManagedLabels` (JSON key `_removeStaleManagedLabels`, default `false`;
+  "Remove stale managed labels" in Project Settings): when `Apply All` writes an entry, it removes the labels
+  AddressTeller itself wrote earlier that no rule produces for that asset any more, instead of leaving them on
+  the entry forever. "AddressTeller wrote it" is decided by a new label ledger,
+  `ProjectSettings/AddressTellerLabelLedger.json`, which records the name of every label AddressTeller writes
+  (meant to be version-controlled with the settings file); a label whose name is not in the ledger is never
+  touched. The ledger holds names only, so a same-named label you added by hand to an entry AddressTeller writes
+  is removed too when no rule produces it for that asset. Each removal is logged as a warning; the
+  `Apply All` menu item's automatic snapshot can restore them. The label definitions stay in Addressables;
+  the new `Tools/AddressTeller/Remove Unused Managed Labels...` menu item (with a confirmation dialog) deletes
+  the ones that are in the ledger and used by no entry. The dry-run shows the removals as changed entries.
+  While the setting is off, `ValidationStatus.StaleManagedLabelKept` (`IsOk=true`, `Context` is set) reports,
+  once per asset, a label that would be removed; `ValidateAll` and `BuildPredictedSnapshot` produce it, not
+  `ApplyAll`. A ledger that exists but cannot be read is handled like a broken settings file: AddressTeller
+  refuses to run, and the service entry points return `ValidationStatus.SettingsUnavailable` naming the ledger.
+  The ledger is created by the first `Apply All` that writes a label, whether or not the setting is on. No label is
+  removed in a run where a rule's `Configure()` failed or a declared folder is missing, or from an asset for
+  which a rule threw; which names count as AddressTeller's is fixed when the run starts, and the run records
+  its labels in the ledger once at the end. If that write fails, `ValidationStatus.LabelLedgerWriteFailed`
+  (`IsOk=false`, `IsBlocking=true`, `Context` is null) is reported instead of aborting the run. The `Apply All`
+  confirmation dialog shows how many entries would lose labels; `MaxStaleRemovalsPerRun` does not limit them.
+  See [Apply & Operations: Project Settings](Documentation~/operations.md#project-settings).
 - Rule unit tests can now ask what a set of rules decides for an asset, not just what one rule's `Configure()`
   registered. `RuleInspector.Evaluate(rules, context)` returns a `RuleOutcome` (`Kind`, `GroupName`,
   `UsesDefaultGroup`, `Address`, `Labels`, `WinningRule`, `Messages`) using the same winner selection and label
@@ -73,7 +95,8 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   higher-priority rule had taken over. Now the labels of an address rule that loses on `Order` are not
   written. Labels of label-only rules are still written whenever they match, regardless of which address
   rule wins; no label is written when the asset is a conflict (`ConflictingAddress`) or blocked by a rule
-  error (`BlockedByRuleError`), as before. Labels already on an entry are still never removed. If you relied
+  error (`BlockedByRuleError`), as before. Labels already on an entry are still not removed by default (see
+  `AddressTellerSettings.RemoveStaleManagedLabels` above for the opt-in). If you relied
   on a broad rule's label appearing on assets that another rule won, move that label into a separate
   `AnyGroup()` rule. Labels that an earlier `Apply All` already put on an entry are not stripped. The Explain window now marks a losing rule's labels as not
   applied. See [Design Decisions: Labels Follow the Winning Rule](Documentation~/design-decisions.md#labels-follow-the-winning-rule).

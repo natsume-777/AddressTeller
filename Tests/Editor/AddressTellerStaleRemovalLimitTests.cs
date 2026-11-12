@@ -14,7 +14,7 @@ namespace AddressTeller.Editor.Tests
     /// 全件見送られる。公開 API の ApplyAll（Postprocessor の増分適用・CLI を含む）に適用し、メニューの確認
     /// ダイアログ経路が使う ApplyAllConfirmed にだけ適用しない。
     /// </summary>
-    public class AddressTellerStaleRemovalLimitTests
+    public class AddressTellerStaleRemovalLimitTests : LabelLedgerIsolatedFixture
     {
         private const string TestRootFolder = "Assets/_AddressTellerTestTemp";
         private const string StubFolder = TestRootFolder + "/StaleRemovalLimit";

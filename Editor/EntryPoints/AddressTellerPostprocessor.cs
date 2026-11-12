@@ -195,7 +195,9 @@ namespace AddressTeller.Editor
         private static bool IsLogOnceIssue(ValidationResult issue)
             => issue.Status == ValidationStatus.DeclaredFolderMissing
                 || issue.Status == ValidationStatus.DeclaredFolderCaseMismatch
-                || issue.Status == ValidationStatus.StaleRemovalLimitExceeded;
+                || issue.Status == ValidationStatus.StaleRemovalLimitExceeded
+                // 台帳が書けないままだと import のたびに同じ内容で返ってくる。
+                || issue.Status == ValidationStatus.LabelLedgerWriteFailed;
 
         /// <summary>
         /// <paramref name="declaredFolderIssues"/> を今回ログすべきかどうかを判定し、

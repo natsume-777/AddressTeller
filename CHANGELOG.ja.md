@@ -42,6 +42,26 @@
   `AssetDatabase.GetMainAssetTypeAtPath` で型を解決できないアセット（たとえば依存するスクリプトの欠落）。
   どのルールも評価できないため従来は黙ってスキップされていた（既存エントリも stale 掃除では削除されない）が、`ApplyAll`・`ValidateAll`・
   `BuildPredictedSnapshot` がアセットのパスを示す、ブロッキングでない通知として報告するようになった。
+- `AddressTellerSettings.RemoveStaleManagedLabels`（JSON キー `_removeStaleManagedLabels`、既定 `false`。
+  Project Settings の「Remove stale managed labels」）: `Apply All` がエントリを書き込むとき、AddressTeller
+  自身が過去に書いたラベルのうち、そのアセットに対してどのルールももう出さないものを、エントリに残し続けずに
+  外す。「AddressTeller が書いたもの」は新設のラベル台帳 `ProjectSettings/AddressTellerLabelLedger.json` で
+  判定する。台帳は AddressTeller が書いたラベルの名前をすべて記録するファイルで（設定ファイルと一緒にバージョン
+  管理する想定）、台帳に名前が無いラベルには触れない。台帳が持つのは名前だけなので、AddressTeller が書き込む
+  エントリに利用者が手で付けた同名のラベルも、どのルールもそのアセットに出していなければ外れる。除去は
+  1件ごとに Warning を出し、`Apply All` メニューの自動スナップショットで元に戻せる。ラベルの定義は Addressables に
+  残る。新設のメニュー `Tools/AddressTeller/Remove Unused Managed Labels...`（確認ダイアログ付き）は、台帳にあり
+  どのエントリも使っていない定義を削除する。dry-run は除去を変更されたエントリとして示す。設定が OFF の間は、
+  外されるラベルを `ValidationStatus.StaleManagedLabelKept`（`IsOk=true`、`Context` あり）として資産ごとに
+  1件報告する（`ValidateAll` と `BuildPredictedSnapshot` が出し、`ApplyAll` は出さない）。台帳が存在するのに
+  読めない場合は、壊れた設定ファイルと同じ扱いで、AddressTeller は実行を拒否し、サービスの入口は台帳を名指しした
+  `ValidationStatus.SettingsUnavailable` を返す。台帳は、設定が OFF でも、ラベルを書いた最初の `Apply All` で
+  作られる。ルールの `Configure()` が失敗した、または宣言フォルダが欠落しているランでは、またルールが例外を
+  投げたアセットからは、ラベルを外さない。どの名前を AddressTeller のものとみなすかはラン開始時点で固定され、
+  ランは書いたラベルをランの最後に1回だけ台帳へ記録する。その書き込みが失敗した場合は、ランを中断せず
+  `ValidationStatus.LabelLedgerWriteFailed`（`IsOk=false`、`IsBlocking=true`、`Context` は null）を報告する。
+  `Apply All` の確認ダイアログは、ラベルを失うエントリの数を示す。`MaxStaleRemovalsPerRun` はラベルの除去には効かない。
+  [Apply と運用: Project Settings](Documentation~/operations.ja.md#project-settings) を参照。
 - ルールの単体テストで、1 つのルールの `Configure()` が登録した内容だけでなく、ルール集合があるアセットに
   何を決めるかを確かめられるようになった。`RuleInspector.Evaluate(rules, context)` は、`Apply`・`Validate`・
   dry-run と同じ勝者決定とラベルの規則で `RuleOutcome`（`Kind`・`GroupName`・`UsesDefaultGroup`・`Address`・
@@ -72,7 +92,8 @@
   アセットにも付いていた。今後は `Order` で負けたアドレスルールのラベルは書き込まれない。ラベルのみの
   ルールのラベルは、どのアドレスルールが勝つかに関わらずマッチすれば書き込まれる。競合
   （`ConflictingAddress`）やルール例外によるブロック（`BlockedByRuleError`）のアセットにはこれまでどおり
-  ラベルは一切書き込まれない。エントリに既にあるラベルが削除されないことも変わらない。広い側のルールの
+  ラベルは一切書き込まれない。エントリに既にあるラベルが既定では削除されないことも変わらない
+  （オプトインは上の `AddressTellerSettings.RemoveStaleManagedLabels` を参照）。広い側のルールの
   ラベルが、別のルールが勝ったアセットにも付くことに依存していた場合は、そのラベルを別の `AnyGroup()`
   ルールに移すこと。過去の `Apply All` で既にエントリに付いたラベルは剥がされない。Explain ウィンドウは、負けたルールのラベルを
   「適用されない」と表示するようになった。

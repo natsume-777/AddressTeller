@@ -582,7 +582,7 @@ namespace AddressTeller.Editor.Tests
     /// 食い違わないことを固定する回帰テスト。両者は勝者決定と最終ラベル合成を同じ Core の実装で行うが、
     /// 一方だけが将来別の判定を持ち込んでも検知できるよう、同じルール・同じアセットで突き合わせる。
     /// </summary>
-    public class RuleInspectorDryRunConsistencyTests
+    public class RuleInspectorDryRunConsistencyTests : LabelLedgerIsolatedFixture
     {
         private const string DefaultGroupName = "DefaultGroupForTest";
 

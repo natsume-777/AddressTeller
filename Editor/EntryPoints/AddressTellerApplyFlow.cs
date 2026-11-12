@@ -38,6 +38,14 @@ namespace AddressTeller.Editor
             dryRun.Diff.IsEmpty && !dryRun.Issues.Any(i => !i.IsOk);
 
         /// <summary>
+        /// dry-run の Changed のうち、適用前にあったラベルが適用後に無くなるエントリの数
+        /// （<see cref="AddressTellerSettings.RemoveStaleManagedLabels"/> による除去）。Predict はこの設定以外で
+        /// ラベルを減らさない（エントリごとの削除は Removed 側）。
+        /// </summary>
+        internal static int CountEntriesLosingLabels(DryRunResult dryRun)
+            => dryRun.Diff.Changed.Count(c => c.Before.Labels.Except(c.After.Labels).Any());
+
+        /// <summary>
         /// dry-run で差分・問題点を計算し、確認ダイアログを経て Apply を実行する。
         /// validateFirst が true の場合は先に ValidateAll を行い、問題があれば中止する。
         /// </summary>
@@ -91,6 +99,10 @@ namespace AddressTeller.Editor
             var message = $"Added: {dryRun.Diff.Added.Count} / Changed: {dryRun.Diff.Changed.Count}";
             if (dryRun.Diff.Removed.Count > 0)
                 message += $" / ⚠ Removed: {dryRun.Diff.Removed.Count}";
+            // ラベルの除去は Changed に含まれるが、エントリごと消える Removed と同様に取り消しにくい操作なので別に示す。
+            var labelRemovalCount = CountEntriesLosingLabels(dryRun);
+            if (labelRemovalCount > 0)
+                message += $" / ⚠ Entries losing labels: {labelRemovalCount}";
             if (errorIssueCount > 0)
                 message += $" / Issues: {errorIssueCount}";
             if (noticeIssueCount > 0)

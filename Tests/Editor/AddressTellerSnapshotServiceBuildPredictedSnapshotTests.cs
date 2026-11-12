@@ -12,7 +12,7 @@ namespace AddressTeller.Editor.Tests
     /// スタブルール（<see cref="StubRule"/>）を渡すことで、dev プロジェクトの実ルール・実アセットへの
     /// 依存を排除する。テスト対象アセットは一時フォルダ Assets/_AddressTellerTestTemp 配下に作成する。
     /// </summary>
-    public class AddressTellerSnapshotServiceBuildPredictedSnapshotTests
+    public class AddressTellerSnapshotServiceBuildPredictedSnapshotTests : LabelLedgerIsolatedFixture
     {
         private const string TestRootFolder = "Assets/_AddressTellerTestTemp";
         private const string StubFolder = TestRootFolder + "/Stub";

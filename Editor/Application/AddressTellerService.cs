@@ -239,6 +239,10 @@ namespace AddressTeller.Editor
                 var pathList = paths as IList<string> ?? paths.ToList();
                 var total = pathList.Count;
 
+                // ラベル台帳の記録をラン単位にする: 除去判定の管理済み集合はここで固定し、このランで書くラベル名は
+                // ラン末尾（EndRun）でまとめて台帳ファイルへ書く。
+                AddressTellerLabelLedger.BeginRun();
+
                 var cancelled = false;
                 for (var i = 0; i < total; i++)
                 {
@@ -263,7 +267,7 @@ namespace AddressTeller.Editor
                     var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
                     RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.AutoCreateMissingGroups);
+                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.AutoCreateMissingGroups, suspendStaleCleanup);
                     // GroupWillBeCreated は IsOk=true（グループ自動作成が成功した）だが、
                     // 「作成された」ことを提示するため issues に情報として積む。
                     if (!result.IsOk || result.Status == ValidationStatus.GroupWillBeCreated)
@@ -275,6 +279,12 @@ namespace AddressTeller.Editor
                     if (cleanupStale && result.Status == ValidationStatus.Skipped && resolution.Errors.Count == 0)
                         staleRemovals.AddUnmatched(AddressTellerApplier.FindStaleManagedEntry(ctx.Guid, settings, setup.OwnedGroups));
                 }
+
+                // 書いたラベル名を台帳へ記録する。書けなかった場合は例外でランを中断せず、blocking な結果として報告する
+                // （キャンセル時も、そこまでに書いたラベルは記録する）。
+                var ledgerError = AddressTellerLabelLedger.EndRun();
+                if (ledgerError != null)
+                    issues.Add(new ValidationResult(null, ValidationStatus.LabelLedgerWriteFailed, ledgerError));
 
                 // キャンセル時は削除を一切行わない（途中までの走査結果で「無マッチ」「無効パス」を確定させない。
                 // 書き込みは処理済みアセット分が完了済み＝部分適用のままで、巻き戻さないのは従来どおり）。
@@ -306,6 +316,9 @@ namespace AddressTeller.Editor
             }
             finally
             {
+                // 例外でループを抜けた場合に、ラン状態（固定した管理済み集合）を残さないための後始末。
+                // 正常経路では EndRun 済みで、ここでは何もしない。
+                AddressTellerLabelLedger.EndRun();
                 s_isApplying = false;
             }
         }

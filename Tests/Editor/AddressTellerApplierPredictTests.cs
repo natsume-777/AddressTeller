@@ -11,7 +11,7 @@ namespace AddressTeller.Editor.Tests
     /// ディスクに保存しない一時的な AddressableAssetSettings 上で検証する。
     /// Validate / Apply と1対1で対応する分岐を網羅する。
     /// </summary>
-    public class AddressTellerApplierPredictTests
+    public class AddressTellerApplierPredictTests : LabelLedgerIsolatedFixture
     {
         private AddressableAssetSettings _settings;
         private AddressableAssetGroup _managedGroup;

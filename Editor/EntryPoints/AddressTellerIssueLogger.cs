@@ -17,6 +17,8 @@ namespace AddressTeller.Editor
         /// 埋め尽くしてしまう。<see cref="ValidationStatus.AssetTypeUnresolved"/> も、スクリプト欠落のアセットが多数あると
         /// 同様にコンソールを埋めるため、件数だけの1行サマリ（Warning）にまとめる。意図的に CleanupStaleEntries を OFF のまま運用しているプロジェクトでは毎回この
         /// 通知が出続けることになるため、Warning ではなく Info にして、意図した運用を阻害しないようにしている。
+        /// <see cref="ValidationStatus.StaleManagedLabelKept"/> も、除去を OFF のまま運用している間は毎回出続けうる
+        /// ため、<see cref="ValidationStatus.UnmatchedEntryKept"/> と同じく件数だけの1行サマリ（Info）にまとめる。
         /// <see cref="ValidationStatus.BlockedByRuleError"/> も同じ理由（1つのルール例外が多数のアセットに
         /// 波及しうるため）で個別には出さず件数だけの1行サマリにまとめるが、こちらは実際の問題（IsOk=false）
         /// のため LogError にする。個別の内容は Result Window（<see cref="AddressTellerResultWindow"/>）と
@@ -27,9 +29,16 @@ namespace AddressTeller.Editor
             var unmatchedEntryKeptCount = 0;
             var blockedByRuleErrorCount = 0;
             var assetTypeUnresolvedCount = 0;
+            var staleManagedLabelKeptCount = 0;
 
             foreach (var issue in issues)
             {
+                if (issue.Status == ValidationStatus.StaleManagedLabelKept)
+                {
+                    staleManagedLabelKeptCount++;
+                    continue;
+                }
+
                 if (issue.Status == ValidationStatus.AssetTypeUnresolved)
                 {
                     assetTypeUnresolvedCount++;
@@ -57,6 +66,14 @@ namespace AddressTeller.Editor
                 Debug.Log($"[AddressTeller] UnmatchedEntryKept: {unmatchedEntryKeptCount} entr{(isSingle ? "y" : "ies")} " +
                     $"would be removed by Remove unmatched entries if it were on, and {(isSingle ? "is" : "are")} being " +
                     "kept as-is. Run Validate to see the individual entries in the Result Window, or inspect a JSON/JUnit report.");
+            }
+
+            if (staleManagedLabelKeptCount > 0)
+            {
+                var isSingle = staleManagedLabelKeptCount == 1;
+                Debug.Log($"[AddressTeller] StaleManagedLabelKept: {staleManagedLabelKeptCount} entr{(isSingle ? "y carries" : "ies carry")} " +
+                    "label(s) AddressTeller wrote earlier that no rule produces now; Remove stale managed labels would remove them if it were on. " +
+                    "Run Validate to see the individual entries in the Result Window, or inspect a JSON/JUnit report.");
             }
 
             if (assetTypeUnresolvedCount > 0)

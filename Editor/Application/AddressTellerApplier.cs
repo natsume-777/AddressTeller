@@ -35,12 +35,20 @@ namespace AddressTeller.Editor
         /// <summary>Action が Remove のときのみ意味を持つ、削除元のグループ名。</summary>
         public string RemovedFromGroup { get; }
 
-        public ApplyPrediction(PredictedAction action, ValidationResult validation, SnapshotEntry predictedEntry, string removedFromGroup)
+        /// <summary>
+        /// この資産について追加で報告する通知（<see cref="ValidationStatus.StaleManagedLabelKept"/>）。無ければ null。
+        /// <see cref="Validation"/> は Apply の結果そのもの（Ok 等）のままにし、通知は別に持つ
+        /// ——両方が同時に成り立つため、Validation の Status へは畳み込めない。
+        /// </summary>
+        public ValidationResult Notice { get; }
+
+        public ApplyPrediction(PredictedAction action, ValidationResult validation, SnapshotEntry predictedEntry, string removedFromGroup, ValidationResult notice = null)
         {
             Action = action;
             Validation = validation;
             PredictedEntry = predictedEntry;
             RemovedFromGroup = removedFromGroup;
+            Notice = notice;
         }
     }
 
@@ -206,6 +214,12 @@ namespace AddressTeller.Editor
         /// 成功すればそのまま書き込みを続行する。失敗した場合は <see cref="ValidationStatus.GroupCreationFailed"/>
         /// を返し書き込みは行わない。
         /// </param>
+        /// <param name="suspendLabelRemoval">
+        /// true の場合、<see cref="AddressTellerSettings.RemoveStaleManagedLabels"/> が ON でもラベルを外さない
+        /// （<see cref="EvaluationSetup.SuspendsStaleCleanup"/> を渡す。Configure() の失敗や宣言フォルダの欠落があると、
+        /// 本来出るはずのラベルが評価結果に現れず、必要なラベルまで「不要」に見えるため）。加算は従来どおり行う。
+        /// 評価中にルール例外（<c>resolution.Errors</c>）があったアセットでも、同じ理由で外さない。
+        /// </param>
         /// <remarks>
         /// どのルールにもマッチしなくなった（Skipped な）アセットのエントリはここでは削除しない。削除は
         /// 呼び出し側（<see cref="AddressTellerService"/>）が <see cref="FindStaleManagedEntry"/> で削除予定に積み、
@@ -216,7 +230,8 @@ namespace AddressTeller.Editor
             AddressResolution resolution,
             AddressableAssetSettings settings,
             ICollection<string> existingGroupNames,
-            bool autoCreateMissingGroups = false)
+            bool autoCreateMissingGroups = false,
+            bool suspendLabelRemoval = false)
         {
             var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups, out var winner);
 
@@ -242,11 +257,7 @@ namespace AddressTeller.Editor
                     // AddressTeller 独自の方針。Addressables 本体の SetLabel 自体は ReadOnly を
                     // 検査しないため、このガードが無ければ書き込めてしまう。
                     // 勝者がいない経路なので、書くのはラベル専用エントリ由来のラベルだけ。
-                    foreach (var label in WinnerSelector.ComposeFinalLabels(resolution, null))
-                    {
-                        settings.AddLabel(label);
-                        existingEntry.SetLabel(label, true);
-                    }
+                    WriteLabels(settings, existingEntry, WinnerSelector.ComposeFinalLabels(resolution, null), CanRemoveLabels(resolution, suspendLabelRemoval));
                 }
                 return result;
             }
@@ -323,13 +334,68 @@ namespace AddressTeller.Editor
             entry.SetAddress(winner.Address);
 
             // 最終ラベル = ラベル専用エントリのラベル ∪ 勝者候補のラベル。負けた候補のラベルは付けない。
-            foreach (var label in WinnerSelector.ComposeFinalLabels(resolution, winner))
+            WriteLabels(settings, entry, WinnerSelector.ComposeFinalLabels(resolution, winner), CanRemoveLabels(resolution, suspendLabelRemoval));
+
+            return result;
+        }
+
+        /// <summary>
+        /// 書き込み対象エントリへ最終ラベル集合を書く。台帳（<see cref="AddressTellerLabelLedger"/>）へは
+        /// エントリへ書く前に記録する（書いたのに台帳に無い、という状態を作らないため）。
+        /// <see cref="AddressTellerSettings.RemoveStaleManagedLabels"/> が ON のときは、エントリ上のラベルのうち
+        /// 台帳にあり最終ラベル集合に無いものを外し、1件ごとに Warning を出す。台帳に無いラベルには触れない。
+        /// </summary>
+        private static void WriteLabels(AddressableAssetSettings settings, AddressableAssetEntry entry, IReadOnlyCollection<string> finalLabels, bool allowRemoval)
+        {
+            AddressTellerLabelLedger.Record(finalLabels);
+
+            foreach (var label in finalLabels)
             {
                 settings.AddLabel(label);
                 entry.SetLabel(label, true);
             }
 
-            return result;
+            if (!allowRemoval || !AddressTellerSettings.RemoveStaleManagedLabels) return;
+
+            // entry.labels は SetLabel で変更されるため、列挙しながら外せない。FindStaleManagedLabels が先に別リストへ集める。
+            var stale = FindStaleManagedLabels(entry.labels, finalLabels);
+            if (stale == null) return;
+
+            foreach (var label in stale)
+            {
+                UnityEngine.Debug.LogWarning($"[AddressTeller] Removing stale managed label: guid={entry.guid}, group='{entry.parentGroup?.Name}', path='{entry.AssetPath}', label='{label}' (written by AddressTeller earlier, no longer produced by any rule for this asset).");
+                entry.SetLabel(label, false);
+            }
+        }
+
+        /// <summary>
+        /// このアセットでラベルの除去を行ってよいか。評価にルール例外がある（本来出るラベルが現れていない可能性がある）、
+        /// 呼び出し側が停止を指示した（Configure() 失敗・宣言フォルダ欠落）の
+        /// いずれでもないこと。stale エントリ削除を止める条件と揃えてある。台帳に書けるかどうかは条件に含めない
+        /// （除去はラン開始時の台帳だけに基づくので、記録の成否と独立。Predict とも食い違わない）。
+        /// </summary>
+        private static bool CanRemoveLabels(AddressResolution resolution, bool suspendLabelRemoval)
+            => !suspendLabelRemoval && resolution.Errors.Count == 0;
+
+        /// <summary>
+        /// エントリ上のラベルのうち、台帳にあり（AddressTeller が書いたことがある）、かつ最終ラベル集合に無いものを
+        /// Ordinal 順で返す（ログ・メッセージを決定的にするため）。該当が無ければ null（毎アセット呼ばれるため
+        /// リストを作らない）。Apply と Predict が同じ判定を共有する。
+        /// </summary>
+        internal static List<string> FindStaleManagedLabels(HashSet<string> entryLabels, IReadOnlyCollection<string> finalLabels)
+        {
+            List<string> stale = null;
+            foreach (var label in entryLabels)
+            {
+                if (!AddressTellerLabelLedger.IsManaged(label)) continue;
+                if (finalLabels.Contains(label)) continue;
+                stale ??= new List<string>();
+                stale.Add(label);
+            }
+
+            // ラベル名は互いに異なるため、Ordinal 比較のソートで順序は一意に決まる。
+            stale?.Sort(StringComparer.Ordinal);
+            return stale;
         }
 
         /// <summary>
@@ -357,6 +423,9 @@ namespace AddressTeller.Editor
             bool suspendStaleCleanup = false)
         {
             var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups, out var candidate);
+
+            // Apply 側の CanRemoveLabels と同じ条件（ラベルの除去・除去通知を止める）。
+            var allowLabelRemoval = !suspendStaleCleanup && resolution.Errors.Count == 0;
 
             if (result.Status == ValidationStatus.Skipped)
             {
@@ -395,19 +464,20 @@ namespace AddressTeller.Editor
                     return new ApplyPrediction(PredictedAction.NoOp, result, null, null);
 
                 // 既存エントリの address/group は維持しつつ、ラベルのみ既存分と最終ラベル集合（Apply 側と同じ合成）の和集合にする。
-                var labelsOnlyLabels = new HashSet<string>(WinnerSelector.ComposeFinalLabels(resolution, null));
-                foreach (var existingLabel in existingEntryForLabels.labels)
-                    labelsOnlyLabels.Add(existingLabel);
+                // RemoveStaleManagedLabels が ON なら、Apply 側が外す台帳ラベルを既存分から除く。
+                var labelsOnlyFinal = WinnerSelector.ComposeFinalLabels(resolution, null);
+                var labelsOnlyLabels = PredictEntryLabels(existingEntryForLabels, labelsOnlyFinal, allowLabelRemoval, out var labelsOnlyStale);
 
                 var labelsOnlyPredictedEntry = new SnapshotEntry
                 {
                     Guid = context.Guid,
                     Address = existingEntryForLabels.address,
                     GroupName = existingEntryForLabels.parentGroup?.Name,
-                    Labels = labelsOnlyLabels.OrderBy(l => l, StringComparer.Ordinal).ToList(),
+                    Labels = labelsOnlyLabels,
                 };
 
-                return new ApplyPrediction(PredictedAction.AddOrUpdate, result, labelsOnlyPredictedEntry, null);
+                return new ApplyPrediction(PredictedAction.AddOrUpdate, result, labelsOnlyPredictedEntry, null,
+                    BuildStaleLabelNotice(context, labelsOnlyStale));
             }
 
             if (!result.IsOk)
@@ -417,22 +487,61 @@ namespace AddressTeller.Editor
             // （同点なしの単独勝者）。
             var existingEntry = settings.FindAssetEntry(context.Guid);
 
-            // 実際の Apply は SetLabel(label, true) で加算するのみで既存ラベルを剥がさないため、
-            // 予測も既存ラベルと最終ラベル集合（Apply 側と同じ合成。負けた候補のラベルは含まない）の和集合とする。
-            var labels = new HashSet<string>(WinnerSelector.ComposeFinalLabels(resolution, candidate));
-            if (existingEntry != null)
-                foreach (var existingLabel in existingEntry.labels)
-                    labels.Add(existingLabel);
+            // 予測ラベルは、既存ラベルと最終ラベル集合（Apply 側と同じ合成。負けた候補のラベルは含まない）の和集合。
+            // RemoveStaleManagedLabels が ON なら、Apply 側が外す台帳ラベルを既存分から除く。
+            var labels = PredictEntryLabels(existingEntry, WinnerSelector.ComposeFinalLabels(resolution, candidate), allowLabelRemoval, out var staleLabels);
 
             var predictedEntry = new SnapshotEntry
             {
                 Guid = context.Guid,
                 Address = candidate.Address,
                 GroupName = candidate.GroupName,
-                Labels = labels.OrderBy(l => l, StringComparer.Ordinal).ToList(),
+                Labels = labels,
             };
 
-            return new ApplyPrediction(PredictedAction.AddOrUpdate, result, predictedEntry, null);
+            return new ApplyPrediction(PredictedAction.AddOrUpdate, result, predictedEntry, null,
+                BuildStaleLabelNotice(context, staleLabels));
+        }
+
+        /// <summary>
+        /// Apply 後のエントリのラベル集合を予測する（Ordinal 順）。<see cref="WriteLabels"/> と同じ判定
+        /// （<see cref="FindStaleManagedLabels"/>）を使う: 既存ラベルと最終ラベル集合の和集合から、
+        /// <see cref="AddressTellerSettings.RemoveStaleManagedLabels"/> が ON のときだけ台帳ラベルの除去分を引く。
+        /// <paramref name="staleLabels"/> は「台帳にあり最終集合に無い」既存ラベル（OFF のとき残る通知対象）。
+        /// 該当が無ければ null。<paramref name="allowRemoval"/> が false なら除去も通知も行わない（常に null）。
+        /// <paramref name="existingEntry"/> が null なら既存ラベルは無い。
+        /// </summary>
+        private static List<string> PredictEntryLabels(AddressableAssetEntry existingEntry, IReadOnlyCollection<string> finalLabels, bool allowRemoval, out List<string> staleLabels)
+        {
+            var labels = new HashSet<string>(finalLabels);
+            staleLabels = null;
+
+            if (existingEntry != null)
+            {
+                if (allowRemoval)
+                    staleLabels = FindStaleManagedLabels(existingEntry.labels, finalLabels);
+                foreach (var existingLabel in existingEntry.labels)
+                    labels.Add(existingLabel);
+                if (staleLabels != null && AddressTellerSettings.RemoveStaleManagedLabels)
+                    foreach (var stale in staleLabels)
+                        labels.Remove(stale);
+            }
+
+            return labels.OrderBy(l => l, StringComparer.Ordinal).ToList();
+        }
+
+        /// <summary>
+        /// 除去が OFF のとき、ON なら外されるラベルがあることを知らせる通知を作る。ON なら実際に外すので通知は不要
+        /// （Diff の Changed に現れる）。該当が無ければ null。
+        /// </summary>
+        private static ValidationResult BuildStaleLabelNotice(AssetContext context, List<string> staleLabels)
+        {
+            if (staleLabels == null || AddressTellerSettings.RemoveStaleManagedLabels) return null;
+
+            return new ValidationResult(
+                context,
+                ValidationStatus.StaleManagedLabelKept,
+                $"'{context.Path}' carries label(s) [{string.Join(", ", staleLabels)}] that AddressTeller wrote earlier but no rule produces for it now; they would be removed if Remove stale managed labels were on.");
         }
 
         /// <summary>

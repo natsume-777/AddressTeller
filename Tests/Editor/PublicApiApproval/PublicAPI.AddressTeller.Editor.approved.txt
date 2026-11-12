@@ -103,6 +103,7 @@ static class AddressTeller.Editor.AddressTellerSettings
   Property static System.Int32 MaxStaleRemovalsPerRun { get; set; }
   Property static System.Boolean PostprocessEnabled { get; set; }
   Property static System.Int32 PostprocessOrder { get; set; }
+  Property static System.Boolean RemoveStaleManagedLabels { get; set; }
   Property static System.String SnapshotFolder { get; set; }
 
 sealed class AddressTeller.Editor.AddressTellerSnapshot
@@ -249,12 +250,14 @@ enum AddressTeller.Editor.ValidationStatus
   EnumMember GroupNotFound = 4
   EnumMember GroupWillBeCreated = 7
   EnumMember InvalidAddress = 5
+  EnumMember LabelLedgerWriteFailed = 22
   EnumMember LabelsOnly = 2
   EnumMember Ok = 0
   EnumMember RuleConfigureFailed = 10
   EnumMember RuleError = 6
   EnumMember SettingsUnavailable = 13
   EnumMember Skipped = 1
+  EnumMember StaleManagedLabelKept = 21
   EnumMember StaleRemovalLimitExceeded = 19
   EnumMember UnmatchedEntryKept = 14
 

@@ -65,7 +65,7 @@ namespace AddressTeller.Editor
         internal const string MarkerValue = "addressteller-settings-v1";
 
         /// <summary>
-        /// 保存対象の POCO。現在10個（設定9個 + マーカー1個）。増減した場合は
+        /// 保存対象の POCO。現在11個（設定10個 + マーカー1個）。増減した場合は
         /// Documentation~/operations.md/.ja.md の設定一覧表、Documentation~/compatibility.md/.ja.md の
         /// JSON キー表、Tests/Editor/AddressTellerSettingsPersistenceTests.cs のフィールド数 assert を
         /// 同時に更新すること。
@@ -91,6 +91,11 @@ namespace AddressTeller.Editor
 
             // 0 = 無制限。1回のランで stale 削除が超えてはならない件数（Postprocessor と CLI の非対話経路のみ）。
             [SerializeField] internal int _maxStaleRemovalsPerRun = 0;
+
+            // 既定 OFF。ON にすると、書き込み対象エントリ上の「ラベル台帳（AddressTellerLabelLedger）にある」かつ
+            // 「最終ラベル集合に無い」ラベルを外す。台帳にあるラベル名は同名の手付けラベルと区別できないため、
+            // 自動で外す操作は利用者が明示的に選ぶものとして OFF にした。
+            [SerializeField] internal bool _removeStaleManagedLabels = false;
 
             // マーカー。初期化子を持たせない（クラス remarks 参照）。
             [SerializeField] internal string _marker;
@@ -260,6 +265,24 @@ namespace AddressTeller.Editor
         /// </summary>
         internal static SettingsGateResult EnsureLoaded()
         {
+            // 設定ファイルに加えて、ラベル台帳（AddressTellerLabelLedger）もこのゲートで一緒に検証する。
+            // 台帳は Apply がラベルを書くたびに更新され、除去の根拠にもなるため、壊れていれば設定ファイルが
+            // 壊れているときと同じく全入口（メニュー・CLI・Postprocessor・サービス層）で止める。
+            // 台帳が壊れている場合の失敗理由は台帳のもの。
+            var result = LoadSettingsFile();
+            if (!result.Success) return result;
+
+            var ledger = AddressTellerLabelLedger.EnsureLoaded();
+            return ledger.Success ? result : ledger;
+        }
+
+        /// <summary>
+        /// <see cref="EnsureLoaded"/> のうち、設定ファイル自体だけを読み込む段（台帳は見ない）。壊れたファイルの
+        /// 復旧（<see cref="TryRecoverFromBrokenFile"/>）と、Project Settings が「壊れているのは設定ファイルか
+        /// 台帳か」を見分けるために使う。
+        /// </summary>
+        internal static SettingsGateResult LoadSettingsFile()
+        {
             // AbsoluteFilePath は Application.dataPath から組み立てるライブラリ内部完結の値であり、
             // FilePathOverride も内部のテスト専用シームで利用者入力ではないため、
             // ここを利用者向けエラーに変換する防御は設けない（万一の異常はスタックトレースの方が
@@ -397,6 +420,7 @@ namespace AddressTeller.Editor
             _postprocessOrder = source._postprocessOrder,
             _disabledRuleClassNames = new List<string>(source._disabledRuleClassNames),
             _maxStaleRemovalsPerRun = source._maxStaleRemovalsPerRun,
+            _removeStaleManagedLabels = source._removeStaleManagedLabels,
             _marker = source._marker,
         };
 
@@ -430,7 +454,9 @@ namespace AddressTeller.Editor
             // *後*にこの再判定を行う——EnsureLoaded はファイル不在でも Success=true を返す
             // （「ファイル不在＝既定値」で正常扱い）ため、先に判定してしまうとファイルが無い場合まで
             // 「復旧不要」として誤って true を返してしまう。
-            if (EnsureLoaded())
+            // 台帳の不具合は対象外（設定ファイルだけを見る）。台帳が壊れているだけのときに、正常な設定ファイルを
+            // 退避して既定値に戻してしまわないため。
+            if (LoadSettingsFile())
             {
                 error = null;
                 return true;

@@ -99,7 +99,9 @@ namespace AddressTeller.Editor
         /// on disk but either could not be read (a filesystem-level error) or does not look like an
         /// AddressTeller settings file (its content could not be parsed, or the file was not written by
         /// AddressTeller). A missing file is not an error case and does not produce this status; it is
-        /// treated as "use default settings" instead. Returned as the sole entry of the result list by the
+        /// treated as "use default settings" instead. The same applies to the label ledger
+        /// (ProjectSettings/AddressTellerLabelLedger.json), where a missing file means an empty ledger and an
+        /// unreadable or unrecognized one is reported with this status. Returned as the sole entry of the result list by the
         /// affected API; no other evaluation is attempted. <see cref="ValidationResult.Context"/> is null
         /// for this status, the same as <see cref="RuleConfigureFailed"/> and <see cref="DuplicateAddress"/>,
         /// since it is not about one specific asset.
@@ -214,6 +216,26 @@ namespace AddressTeller.Editor
         /// the message names the asset path.
         /// </summary>
         AssetTypeUnresolved = 20,
+        /// <summary>
+        /// An entry AddressTeller would write carries a label that AddressTeller itself wrote earlier (its name is in
+        /// the label ledger) but that the asset's rules no longer produce, and it was left in place because
+        /// <see cref="AddressTellerSettings.RemoveStaleManagedLabels"/> is off. This is a non-blocking notice
+        /// (<see cref="ValidationResult.IsOk"/> is always true) that makes visible, before you opt in, which
+        /// labels would be removed. It is reported by the full-scan paths (<c>ValidateAll</c> and
+        /// <c>BuildPredictedSnapshot</c>, so also the Validate menu item and the dry-run previews), not by
+        /// <c>ApplyAll</c>. <see cref="ValidationResult.Context"/> is set to the asset; the message lists the labels.
+        /// </summary>
+        StaleManagedLabelKept = 21,
+        /// <summary>
+        /// <c>AddressTellerService.ApplyAll</c> wrote labels but could not record their names in the label ledger
+        /// (ProjectSettings/AddressTellerLabelLedger.json) — for example because the file is read-only under version
+        /// control. The labels themselves were written as usual; they are simply not remembered as AddressTeller's, so
+        /// <see cref="AddressTellerSettings.RemoveStaleManagedLabels"/> will not remove them until a later run records
+        /// them (removal itself rests on the ledger as it was when the run started, so it is not affected). A blocking
+        /// problem (<see cref="ValidationResult.IsOk"/> is false), so <c>ApplyAllCLI</c> / <c>ApplyWithValidateCLI</c>
+        /// exit with code 2. <see cref="ValidationResult.Context"/> is null, since it is not about one specific asset.
+        /// </summary>
+        LabelLedgerWriteFailed = 22,
     }
 
     /// <summary>
@@ -222,8 +244,9 @@ namespace AddressTeller.Editor
     /// <see cref="ValidationStatus.DuplicateAddress"/>, <see cref="ValidationStatus.SettingsUnavailable"/>,
     /// <see cref="ValidationStatus.DeclaredFolderMissing"/>, <see cref="ValidationStatus.DeclaredFolderCaseMismatch"/>,
     /// <see cref="ValidationStatus.StaleRemovalLimitExceeded"/>,
+    /// <see cref="ValidationStatus.LabelLedgerWriteFailed"/>,
     /// <see cref="ValidationStatus.AssetTypeUnresolved"/>,
-    /// or <see cref="ValidationStatus.DuplicateAssetEntry"/> — the first six are not tied to a single asset,
+    /// or <see cref="ValidationStatus.DuplicateAssetEntry"/> — the first seven are not tied to a single asset,
     /// <see cref="ValidationStatus.AssetTypeUnresolved"/> is about one asset but no context can be built for it
     /// (its message names the asset path), and the last is detected before any per-asset evaluation runs
     /// (its message identifies the asset by GUID instead). For <see cref="ValidationStatus.UnmatchedEntryKept"/> it is always
@@ -269,6 +292,8 @@ namespace AddressTeller.Editor
         // 通知であり、書き込みも削除も止めない（IsOk = true）。
         // AssetTypeUnresolved は型が解決できず AssetContext を構築できないアセットを評価対象から外したことの
         // 通知であり、ほかのアセットの書き込みも削除も止めない（IsOk = true）。
+        // StaleManagedLabelKept は RemoveStaleManagedLabels OFF 時、ON なら外されるはずだったラベルが残って
+        // いることの通知であり、書き込みも削除も行わない（IsOk = true）。
         // DuplicateAddress は書き込みを止めない報告専用ステータスだが、重複の当事者に「このランで
         // AddressTeller 自身が書くアドレス」が含まれるかどうかで重大度を分ける。含まれれば利用者のルールで
         // 直せる問題なので Error（IsOk = false）、含まれなければ AddressTeller に直す手立てが無い既存の状態
@@ -279,7 +304,8 @@ namespace AddressTeller.Editor
         /// <see cref="ValidationStatus.GroupWillBeCreated"/>, or
         /// <see cref="ValidationStatus.UnmatchedEntryKept"/>, or
         /// <see cref="ValidationStatus.DeclaredFolderCaseMismatch"/>, or
-        /// <see cref="ValidationStatus.AssetTypeUnresolved"/> — i.e. this result does not represent a
+        /// <see cref="ValidationStatus.AssetTypeUnresolved"/>, or
+        /// <see cref="ValidationStatus.StaleManagedLabelKept"/> — i.e. this result does not represent a
         /// problem. Also true for <see cref="ValidationStatus.DuplicateAddress"/> when
         /// <see cref="HasWritableDuplicate"/> is false (AddressTeller cannot resolve it itself, so it is
         /// reported as a notice rather than a blocking problem).
@@ -289,6 +315,7 @@ namespace AddressTeller.Editor
             || Status == ValidationStatus.UnmatchedEntryKept
             || Status == ValidationStatus.DeclaredFolderCaseMismatch
             || Status == ValidationStatus.AssetTypeUnresolved
+            || Status == ValidationStatus.StaleManagedLabelKept
             || (Status == ValidationStatus.DuplicateAddress && !HasWritableDuplicate);
 
         /// <summary>

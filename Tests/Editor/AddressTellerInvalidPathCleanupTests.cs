@@ -18,7 +18,7 @@ namespace AddressTeller.Editor.Tests
     /// 再現できるため。実在しないアセットの GUID（AssetPath が空文字になるケース）は、このクリーンアップの
     /// 対象外であることを別途検証する。
     /// </summary>
-    public class AddressTellerInvalidPathCleanupTests
+    public class AddressTellerInvalidPathCleanupTests : LabelLedgerIsolatedFixture
     {
         private const string TestRootFolder = "Assets/_AddressTellerTestTemp";
         private const string StubFolder = TestRootFolder + "/InvalidPathCleanup";

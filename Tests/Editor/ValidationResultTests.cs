@@ -59,6 +59,26 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void LabelLedgerWriteFailed_IsBlocking()
+        {
+            var result = new ValidationResult(null, ValidationStatus.LabelLedgerWriteFailed, "cannot write");
+
+            Assert.IsFalse(result.IsOk);
+            Assert.IsTrue(result.IsBlocking);
+        }
+
+        [Test]
+        public void StaleManagedLabelKept_IsOkTrue_NotBlocking()
+        {
+            // IsOk=true な通知ステータス。RemoveStaleManagedLabels が OFF の間、ON なら外されるラベルが
+            // 残っていることを知らせるだけで、書き込みも削除も伴わない。
+            var result = new ValidationResult(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.StaleManagedLabelKept, "kept");
+
+            Assert.IsTrue(result.IsOk);
+            Assert.IsFalse(result.IsBlocking);
+        }
+
+        [Test]
         public void DuplicateAddress_HasWritableDuplicateFalse_IsOkTrue_NotBlocking()
         {
             var result = new ValidationResult(null, ValidationStatus.DuplicateAddress, "duplicate", hasWritableDuplicate: false);

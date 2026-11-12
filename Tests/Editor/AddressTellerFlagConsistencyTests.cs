@@ -16,7 +16,7 @@ namespace AddressTeller.Editor.Tests
     /// 評価はその委譲先の内部で行われる（CLI 入口自身は AddressTellerSettings.* の値で分岐しない）。
     /// そのため、フラグ評価そのものはここでの委譲先（Service側）テストでカバーする。
     /// </summary>
-    public class AddressTellerFlagConsistencyTests
+    public class AddressTellerFlagConsistencyTests : LabelLedgerIsolatedFixture
     {
         private const string TestRootFolder = "Assets/_AddressTellerTestTemp";
         private const string StubFolder = TestRootFolder + "/FlagConsistency";
