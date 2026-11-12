@@ -203,6 +203,17 @@ namespace AddressTeller.Editor
         /// <see cref="ValidationResult.Context"/> is null, since this is not about one specific asset.
         /// </summary>
         StaleRemovalLimitExceeded = 19,
+        /// <summary>
+        /// An asset has a GUID but <c>AssetDatabase.GetMainAssetTypeAtPath</c> could not resolve its type
+        /// (for example, a ScriptableObject whose script is missing). Building an <see cref="AssetContext"/>
+        /// requires the asset's type, so no rule can be evaluated for it; it is skipped for that run, and this non-blocking
+        /// notice (<see cref="ValidationResult.IsOk"/> is always true) reports it instead of leaving the
+        /// asset silently unmatched. It is reported by <c>ApplyAll</c>, <c>ValidateAll</c> and
+        /// <c>BuildPredictedSnapshot</c>. Paths that are not assets at all (no GUID) are not reported.
+        /// <see cref="ValidationResult.Context"/> is null, since no <see cref="AssetContext"/> can be built;
+        /// the message names the asset path.
+        /// </summary>
+        AssetTypeUnresolved = 20,
     }
 
     /// <summary>
@@ -211,9 +222,11 @@ namespace AddressTeller.Editor
     /// <see cref="ValidationStatus.DuplicateAddress"/>, <see cref="ValidationStatus.SettingsUnavailable"/>,
     /// <see cref="ValidationStatus.DeclaredFolderMissing"/>, <see cref="ValidationStatus.DeclaredFolderCaseMismatch"/>,
     /// <see cref="ValidationStatus.StaleRemovalLimitExceeded"/>,
-    /// or <see cref="ValidationStatus.DuplicateAssetEntry"/> — the first six are not tied to a single asset, and
-    /// the last is detected before any per-asset evaluation runs (its message identifies the asset by GUID
-    /// instead). For <see cref="ValidationStatus.UnmatchedEntryKept"/> it is always
+    /// <see cref="ValidationStatus.AssetTypeUnresolved"/>,
+    /// or <see cref="ValidationStatus.DuplicateAssetEntry"/> — the first six are not tied to a single asset,
+    /// <see cref="ValidationStatus.AssetTypeUnresolved"/> is about one asset but no context can be built for it
+    /// (its message names the asset path), and the last is detected before any per-asset evaluation runs
+    /// (its message identifies the asset by GUID instead). For <see cref="ValidationStatus.UnmatchedEntryKept"/> it is always
     /// set for the "no longer matched" case, and set on a best-effort basis (null only when genuinely
     /// unresolvable) for the "structurally invalid path" case — see that status's XML doc.
     /// </summary>
@@ -254,6 +267,8 @@ namespace AddressTeller.Editor
         // ことの通知であり、書き込みも削除も行わない（IsOk = true）。
         // DeclaredFolderCaseMismatch は宣言フォルダが大小文字だけ違う（マッチは大小文字無視なので動く）ことの
         // 通知であり、書き込みも削除も止めない（IsOk = true）。
+        // AssetTypeUnresolved は型が解決できず AssetContext を構築できないアセットを評価対象から外したことの
+        // 通知であり、ほかのアセットの書き込みも削除も止めない（IsOk = true）。
         // DuplicateAddress は書き込みを止めない報告専用ステータスだが、重複の当事者に「このランで
         // AddressTeller 自身が書くアドレス」が含まれるかどうかで重大度を分ける。含まれれば利用者のルールで
         // 直せる問題なので Error（IsOk = false）、含まれなければ AddressTeller に直す手立てが無い既存の状態
@@ -263,7 +278,8 @@ namespace AddressTeller.Editor
         /// <see cref="ValidationStatus.Skipped"/>, <see cref="ValidationStatus.LabelsOnly"/>,
         /// <see cref="ValidationStatus.GroupWillBeCreated"/>, or
         /// <see cref="ValidationStatus.UnmatchedEntryKept"/>, or
-        /// <see cref="ValidationStatus.DeclaredFolderCaseMismatch"/> — i.e. this result does not represent a
+        /// <see cref="ValidationStatus.DeclaredFolderCaseMismatch"/>, or
+        /// <see cref="ValidationStatus.AssetTypeUnresolved"/> — i.e. this result does not represent a
         /// problem. Also true for <see cref="ValidationStatus.DuplicateAddress"/> when
         /// <see cref="HasWritableDuplicate"/> is false (AddressTeller cannot resolve it itself, so it is
         /// reported as a notice rather than a blocking problem).
@@ -272,6 +288,7 @@ namespace AddressTeller.Editor
             || Status == ValidationStatus.LabelsOnly || Status == ValidationStatus.GroupWillBeCreated
             || Status == ValidationStatus.UnmatchedEntryKept
             || Status == ValidationStatus.DeclaredFolderCaseMismatch
+            || Status == ValidationStatus.AssetTypeUnresolved
             || (Status == ValidationStatus.DuplicateAddress && !HasWritableDuplicate);
 
         /// <summary>

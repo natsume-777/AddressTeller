@@ -38,6 +38,11 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   The `Apply All` / `Apply with Validate` menu items (their confirmation dialog shows the removals first) and the
   follow-up for deleted assets are not limited. The CLI report lists the status under Issues and leaves the
   held-back removals out of the Removed drift. See [Apply & Operations: Project Settings](Documentation~/operations.md#project-settings).
+- `ValidationStatus.AssetTypeUnresolved` (`IsOk=true`, `Context` is null): an asset has a GUID but
+  `AssetDatabase.GetMainAssetTypeAtPath` could not resolve its type (for example, a script it depends on is
+  missing). No rule can be evaluated for it, so it used to be skipped silently (and an existing entry for it
+  is not removed by stale entry cleanup); `ApplyAll`, `ValidateAll`, and
+  `BuildPredictedSnapshot` now report it as a non-blocking notice naming the asset path.
 
 ### Changed
 

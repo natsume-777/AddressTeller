@@ -252,8 +252,12 @@ namespace AddressTeller.Editor
 
                     if (AssetFilter.ShouldExcludeByPath(path, setup.ConfigFolder)) continue;
 
-                    var ctx = RuleEvaluationPipeline.BuildContext(path);
-                    if (ctx == null) continue;
+                    var ctx = RuleEvaluationPipeline.BuildContext(path, out var typeUnresolved);
+                    if (ctx == null)
+                    {
+                        if (typeUnresolved != null) issues.Add(typeUnresolved);
+                        continue;
+                    }
                     if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;
 
                     var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);

@@ -236,6 +236,7 @@ sealed class AddressTeller.Editor.ValidationResult
   Property AddressTeller.Editor.ValidationStatus Status { get; }
 
 enum AddressTeller.Editor.ValidationStatus
+  EnumMember AssetTypeUnresolved = 20
   EnumMember BlockedByRuleError = 15
   EnumMember ConflictingAddress = 3
   EnumMember DeclaredFolderCaseMismatch = 18

@@ -38,6 +38,10 @@
   （確認ダイアログが先に削除内容を見せる）と資産削除への追従には上限は適用されない。CLI のレポートでは
   このステータスが Issues に載り、見送られた削除は Removed の drift から除かれる。
   [Apply と運用: Project Settings](Documentation~/operations.ja.md#project-settings) を参照。
+- `ValidationStatus.AssetTypeUnresolved`（`IsOk=true`、`Context` は null）: GUID はあるが
+  `AssetDatabase.GetMainAssetTypeAtPath` で型を解決できないアセット（たとえば依存するスクリプトの欠落）。
+  どのルールも評価できないため従来は黙ってスキップされていた（既存エントリも stale 掃除では削除されない）が、`ApplyAll`・`ValidateAll`・
+  `BuildPredictedSnapshot` がアセットのパスを示す、ブロッキングでない通知として報告するようになった。
 
 ### Changed
 

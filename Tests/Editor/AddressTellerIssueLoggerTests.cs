@@ -152,5 +152,22 @@ namespace AddressTeller.Editor.Tests
 
             LogAssert.NoUnexpectedReceived();
         }
+
+        [Test]
+        public void LogAll_AssetTypeUnresolved_LogsSingleSummaryWarning()
+        {
+            var issues = new List<ValidationResult>
+            {
+                Make(ValidationStatus.AssetTypeUnresolved, "Assets/A.asset"),
+                Make(ValidationStatus.AssetTypeUnresolved, "Assets/B.asset"),
+            };
+
+            // スクリプト欠落のアセットが多数あるとコンソールを埋めるため、個別ログはせず件数だけの1行サマリにする。
+            LogAssert.Expect(LogType.Warning, new Regex("AssetTypeUnresolved: 2 assets could not be evaluated"));
+
+            AddressTellerIssueLogger.LogAll(issues);
+
+            LogAssert.NoUnexpectedReceived();
+        }
     }
 }

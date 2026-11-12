@@ -14,7 +14,8 @@ namespace AddressTeller.Editor
         /// issues の各要素を IsOk に応じて振り分けてログ出力する。<see cref="ValidationStatus.UnmatchedEntryKept"/>
         /// は個別には出さず件数だけの1行サマリ（Debug.Log/Info）にまとめる——CleanupStaleEntries が OFF の間、
         /// 所有グループの無マッチ・無効パスエントリ全件が毎回この通知になり得るため、件数次第ではコンソールを
-        /// 埋め尽くしてしまう。意図的に CleanupStaleEntries を OFF のまま運用しているプロジェクトでは毎回この
+        /// 埋め尽くしてしまう。<see cref="ValidationStatus.AssetTypeUnresolved"/> も、スクリプト欠落のアセットが多数あると
+        /// 同様にコンソールを埋めるため、件数だけの1行サマリ（Warning）にまとめる。意図的に CleanupStaleEntries を OFF のまま運用しているプロジェクトでは毎回この
         /// 通知が出続けることになるため、Warning ではなく Info にして、意図した運用を阻害しないようにしている。
         /// <see cref="ValidationStatus.BlockedByRuleError"/> も同じ理由（1つのルール例外が多数のアセットに
         /// 波及しうるため）で個別には出さず件数だけの1行サマリにまとめるが、こちらは実際の問題（IsOk=false）
@@ -25,9 +26,16 @@ namespace AddressTeller.Editor
         {
             var unmatchedEntryKeptCount = 0;
             var blockedByRuleErrorCount = 0;
+            var assetTypeUnresolvedCount = 0;
 
             foreach (var issue in issues)
             {
+                if (issue.Status == ValidationStatus.AssetTypeUnresolved)
+                {
+                    assetTypeUnresolvedCount++;
+                    continue;
+                }
+
                 if (issue.Status == ValidationStatus.UnmatchedEntryKept)
                 {
                     unmatchedEntryKeptCount++;
@@ -49,6 +57,15 @@ namespace AddressTeller.Editor
                 Debug.Log($"[AddressTeller] UnmatchedEntryKept: {unmatchedEntryKeptCount} entr{(isSingle ? "y" : "ies")} " +
                     $"would be removed by Remove unmatched entries if it were on, and {(isSingle ? "is" : "are")} being " +
                     "kept as-is. Run Validate to see the individual entries in the Result Window, or inspect a JSON/JUnit report.");
+            }
+
+            if (assetTypeUnresolvedCount > 0)
+            {
+                var isSingle = assetTypeUnresolvedCount == 1;
+                Debug.LogWarning($"[AddressTeller] AssetTypeUnresolved: {assetTypeUnresolvedCount} asset{(isSingle ? "" : "s")} " +
+                    $"could not be evaluated because {(isSingle ? "its" : "their")} type could not be resolved " +
+                    "(for example, a missing script). Run Validate to see the individual assets in the Result Window, " +
+                    "or inspect a JSON/JUnit report.");
             }
 
             if (blockedByRuleErrorCount > 0)

@@ -296,8 +296,12 @@ namespace AddressTeller.Editor
 
                 if (AssetFilter.ShouldExcludeByPath(path, setup.ConfigFolder)) continue;
 
-                var ctx = BuildContext(path);
-                if (ctx == null) continue;
+                var ctx = BuildContext(path, out var typeUnresolved);
+                if (ctx == null)
+                {
+                    if (typeUnresolved != null) issues.Add(typeUnresolved);
+                    continue;
+                }
                 if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder)) continue;
 
                 var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
@@ -361,15 +365,44 @@ namespace AddressTeller.Editor
 
         /// <summary>パスから AssetContext を構築する。</summary>
         public static AssetContext BuildContext(string path)
+            => BuildContext(path, out _);
+
+        /// <summary>
+        /// パスから AssetContext を構築する。null を返す理由が「型が解決できなかった」場合に限り、
+        /// <paramref name="typeUnresolved"/> に <see cref="ValidationStatus.AssetTypeUnresolved"/> の通知を返す。
+        /// GUID が空（アセットとして存在しないパス）の場合は従来どおり null のみで、通知は返さない。
+        /// </summary>
+        public static AssetContext BuildContext(string path, out ValidationResult typeUnresolved)
+            => BuildContext(path, p => AssetDatabase.AssetPathToGUID(p), p => AssetDatabase.GetMainAssetTypeAtPath(p), p => AssetDatabase.IsValidFolder(p), out typeUnresolved);
+
+        /// <summary>
+        /// <see cref="BuildContext(string, out ValidationResult)"/> の本体。AssetDatabase への依存を引数で
+        /// 差し替えられるようにしてあるのは、型が解決できない実アセットを用意せずに分岐を単体テストするため。
+        /// </summary>
+        internal static AssetContext BuildContext(
+            string path,
+            Func<string, string> guidOf,
+            Func<string, Type> typeOf,
+            Func<string, bool> isValidFolder,
+            out ValidationResult typeUnresolved)
         {
-            var guid = AssetDatabase.AssetPathToGUID(path);
+            typeUnresolved = null;
+            var guid = guidOf(path);
             if (string.IsNullOrEmpty(guid)) return null;
-            var type = AssetDatabase.GetMainAssetTypeAtPath(path);
-            if (type == null) return null;
+            var type = typeOf(path);
+            if (type == null)
+            {
+                // GUID はあるのに型が引けないアセット（依存スクリプトの欠落など）。無言で飛ばさず通知する。
+                typeUnresolved = new ValidationResult(
+                    null,
+                    ValidationStatus.AssetTypeUnresolved,
+                    $"The type of asset '{path}' could not be resolved (AssetDatabase.GetMainAssetTypeAtPath returned null), so no rule was evaluated for it. A script the asset depends on may be missing.");
+                return null;
+            }
             // フォルダのメインアセット型は必ず DefaultAsset なので、その場合だけ IsValidFolder を呼ぶ。
             // プロジェクト全アセットのループから毎回 AssetDatabase を叩かないための絞り込みで、
             // DefaultAsset でないパスがフォルダになることはないため取りこぼしは生じない。
-            var isFolder = type == typeof(DefaultAsset) && AssetDatabase.IsValidFolder(path);
+            var isFolder = type == typeof(DefaultAsset) && isValidFolder(path);
             return new AssetContext(guid, path, type, isFolder);
         }
 

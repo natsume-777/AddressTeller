@@ -115,6 +115,17 @@ namespace AddressTeller.Editor
                 return container;
             }
 
+            // 型が解決できず評価できなかったアセット（AssetTypeUnresolved）は評価詳細を持たない。
+            // 通知のメッセージだけを結論行として出す。
+            if (explanation.Explanation == null)
+            {
+                var unresolvedLabel = new Label("Conclusion: " + (explanation.Validation?.Message ?? string.Empty));
+                unresolvedLabel.AddToClassList("at-conclusion");
+                unresolvedLabel.AddToClassList("at-conclusion--warning");
+                foldout.Add(unresolvedLabel);
+                return container;
+            }
+
             // 結論行
             var (text, cssClass) = DescribeConclusion(explanation.Validation, explanation.Explanation.Resolution, explanation.Winner);
             var conclusionLabel = new Label("Conclusion: " + text);

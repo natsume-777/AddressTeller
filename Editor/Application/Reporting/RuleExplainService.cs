@@ -109,8 +109,15 @@ namespace AddressTeller.Editor
                     continue;
                 }
 
-                var ctx = RuleEvaluationPipeline.BuildContext(path);
-                if (ctx == null) continue;
+                var ctx = RuleEvaluationPipeline.BuildContext(path, out var typeUnresolved);
+                if (ctx == null)
+                {
+                    // 型未解決のアセットは評価できないが、無言で落とさず通知を1行の結果として返す
+                    // （評価詳細は無いので Explanation は null、Validation に通知を載せる）。
+                    if (typeUnresolved != null)
+                        results.Add(new AssetExplanation(path, isExcluded: false, explanation: null, validation: typeUnresolved));
+                    continue;
+                }
 
                 if (AssetFilter.ShouldExclude(ctx, setup.ConfigFolder))
                 {
