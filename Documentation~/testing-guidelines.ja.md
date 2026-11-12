@@ -25,5 +25,7 @@ AddressTeller のテスト（EditMode）を書く・レビューする際に守�
 - **グループ生成は静的変更イベントを発火させない**: テスト内でグループを作成する際は `postEvent: false` を指定し、Addressables の静的変更イベントを発火させない。
 - **テストアセンブリ全体の汚染検出ガードを壊さない**: 各テストアセンブリには `AddressTellerAddressablesPollutionGuard`（`[SetUpFixture]`、`Tests/Editor/AddressTellerAddressablesPollutionGuard.cs`）が常設されており、実行前後で本番 Addressables 設定のシリアライズ状態を比較し、差分があれば失敗する。新規テストを追加する際はこのガードを壊さないこと（非永続設定の使用・後始末を徹底する）。
 - **設定の永続化を触るテストは、他のテストへ影響を漏らさない**: 設定ファイルを直接操作するテストは、まず `AddressTellerSettingsAsset.FilePathOverride`（テスト専用シーム）でテスト専用の一時パスへ切り替え、`TearDown` で `FilePathOverride` を元の値へ戻し `AddressTellerSettingsAsset.ResetInMemoryState()` を呼び、作成した一時ファイルを削除すること。`AddressTellerAddressablesPollutionGuard` がテストアセンブリ全体でこのシームを一時パスへ切り替え、終了後に本番ファイルのバイト列をそのまま復元する安全網を備えているが、個々のテストはそれだけに頼らず、自分専用の一時パスを使い後始末まで行うこと。
+- **ルール評価の振る舞いは `RuleInspector.Evaluate`/`Verify` でテストし、dry-run との一致を保つ**: どのルールが勝つか、どのラベルが書かれるか、何を競合とみなすか、といったテストは、勝者決定をテスト内で再実装せず、期待値表で `RuleInspector`（`Tests/Editor/RuleInspectorEvaluateTests.cs`）を駆動すること。同じファイルの `RuleInspectorDryRunConsistencyTests` が、同じルール・同じアセットで `RuleInspector.Evaluate` と `AddressTellerApplier.Predict` を突き合わせている。新しい種類の結果を足すときは、それを引き起こすアセットをこの突き合わせに加える。
+- **テスト内で差し替えた静的なシームは必ず戻す**: テスト内で差し替えた静的なシーム（`FolderGuidResolver.Resolver` など）は `finally`/`TearDown` で必ず戻すこと。
 
 EditMode テスト実行時、環境要因で2件 skip となるのが正常な状態。

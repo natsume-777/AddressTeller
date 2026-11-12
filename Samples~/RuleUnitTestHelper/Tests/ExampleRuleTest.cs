@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using AddressTeller;
+using AddressTeller.Testing;
 
 namespace AddressTellerSamples
 {
@@ -56,9 +57,8 @@ namespace AddressTellerSamples
         }
 
         // A rule that targets the project's default Addressables group instead of a named group.
-        // The resulting entry's GroupName carries an unresolved sentinel until the real evaluation
-        // pipeline resolves it, so check it with RuleTestHelper.IsUnresolvedDefaultGroup() rather
-        // than comparing against a hard-coded string.
+        // The default group's real name is only known inside a Unity project, so the outcome reports
+        // UsesDefaultGroup instead of a group name.
         private sealed class GroupDefaultRule : AddressRuleBase
         {
             public override void Configure(IAddressRuleBuilder rules)
@@ -69,61 +69,83 @@ namespace AddressTellerSamples
             }
         }
 
+        // A broad rule that loses to LocalExampleRules (higher Order value = lower priority) for the assets
+        // both match. Used below to show how rules interact.
+        private sealed class CatchAllDemoRules : AddressRuleBase
+        {
+            public override int Order => 100;
+
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("Fallback")
+                    .Where(ctx => ctx.Path.StartsWith("Assets/Demo/"))
+                    .Address(ctx => "demo/" + ctx.FileNameWithoutExtension)
+                    .Label("demo");
+
+                // A label-only rule: its labels are written whichever address rule wins.
+                rules.AnyGroup()
+                    .Where(ctx => ctx.Extension == ".prefab")
+                    .Label("prefab");
+            }
+        }
+
+        // The expectation table: one row per asset, listing what the rule should decide for it.
+        // Properties left unset are not checked. A row with only a path and a type expects that no rule matches.
+        private static IEnumerable<TestCaseData> ExpectationTable()
+        {
+            yield return Row(new RuleExpectation("Assets/Demo/Characters/Hero.prefab", typeof(GameObject))
+            {
+                Group = "MyGroup",
+                Address = "Hero",
+                Labels = new[] { "character", "humanoid" },
+            });
+            yield return Row(new RuleExpectation("Assets/Demo/Items/Sword.prefab", typeof(GameObject))
+            {
+                Group = "MyGroup",
+                Address = "Sword",
+                Labels = new[] { "item" },
+            });
+            // A texture in the characters folder: the rule only accepts GameObjects.
+            yield return Row(new RuleExpectation("Assets/Demo/Characters/HeroTex.png", typeof(Texture2D)));
+        }
+
+        // SetName makes each row show up in the Test Runner under its asset path.
+        private static TestCaseData Row(RuleExpectation expectation)
+            => new TestCaseData(expectation).SetName(expectation.Path);
+
         private LocalExampleRules _rule;
 
         [SetUp]
         public void SetUp() => _rule = new LocalExampleRules();
+
+        [TestCaseSource(nameof(ExpectationTable))]
+        public void Rule_DecidesWhatTheTableExpects(RuleExpectation expectation)
+        {
+            // Verify returns a message per failing row instead of asserting, so the package does not
+            // depend on NUnit. An empty list means the row passed.
+            var failures = RuleTestHelper.Verify(_rule, new[] { expectation });
+
+            CollectionAssert.IsEmpty(failures);
+        }
+
+        [Test]
+        public void Evaluate_ReportsTheDecisionInDetail()
+        {
+            var ctx = RuleTestHelper.For("Assets/Demo/Characters/Hero.prefab", typeof(GameObject));
+
+            var outcome = RuleTestHelper.Evaluate(_rule, ctx);
+
+            Assert.AreEqual(RuleOutcomeKind.Address, outcome.Kind);
+            Assert.AreEqual("MyGroup", outcome.GroupName);
+            Assert.AreEqual("Hero", outcome.Address);
+            CollectionAssert.AreEquivalent(new[] { "character", "humanoid" }, outcome.Labels);
+        }
 
         [Test]
         public void Collect_Returns_TwoEntries()
         {
             var entries = RuleTestHelper.Collect(_rule);
             Assert.AreEqual(2, entries.Count);
-        }
-
-        [Test]
-        public void CharacterPrefab_MatchesFirstEntry_WithExpectedGroupAndAddress()
-        {
-            var ctx = RuleTestHelper.For("Assets/Demo/Characters/Hero.prefab", typeof(GameObject));
-            var entries = RuleTestHelper.Collect(_rule);
-
-            var matched = FindFirst(entries, ctx);
-            Assert.IsNotNull(matched, "No entry matched the character prefab.");
-            Assert.AreEqual("MyGroup", matched.GroupName);
-            Assert.AreEqual("Hero", matched.AddressSelector?.Invoke(ctx));
-        }
-
-        [Test]
-        public void CharacterPrefab_HasLabels_CharacterAndHumanoid()
-        {
-            var ctx = RuleTestHelper.For("Assets/Demo/Characters/Hero.prefab", typeof(GameObject));
-            var entries = RuleTestHelper.Collect(_rule);
-            var matched = FindFirst(entries, ctx);
-
-            Assert.IsNotNull(matched);
-            var labels = EvalLabels(matched, ctx);
-            CollectionAssert.Contains(labels, "character");
-            CollectionAssert.Contains(labels, "humanoid");
-        }
-
-        [Test]
-        public void ItemPrefab_MatchesSecondEntry_WithItemLabel()
-        {
-            var ctx = RuleTestHelper.For("Assets/Demo/Items/Sword.prefab", typeof(GameObject));
-            var entries = RuleTestHelper.Collect(_rule);
-
-            var matched = FindFirst(entries, ctx);
-            Assert.IsNotNull(matched, "No entry matched the item prefab.");
-            CollectionAssert.Contains(EvalLabels(matched, ctx), "item");
-        }
-
-        [Test]
-        public void Texture_DoesNotMatchAnyEntry()
-        {
-            var ctx = RuleTestHelper.For("Assets/Demo/Characters/HeroTex.png", typeof(Texture2D));
-            var entries = RuleTestHelper.Collect(_rule);
-
-            Assert.IsNull(FindFirst(entries, ctx), "A texture should not match LocalExampleRules.");
         }
 
         [Test]
@@ -146,39 +168,59 @@ namespace AddressTellerSamples
         }
 
         [Test]
-        public void ConfigAsset_MatchesGroupDefaultRule_GroupNameIsUnresolvedDefaultGroup()
+        public void ConfigAsset_MatchesGroupDefaultRule_ReportsUsesDefaultGroup()
         {
             var ctx = RuleTestHelper.For("Assets/Demo/Config/Settings.asset", typeof(ScriptableObject));
-            var entries = RuleTestHelper.Collect(new GroupDefaultRule());
 
-            var matched = FindFirst(entries, ctx);
-            Assert.IsNotNull(matched, "No entry matched the config asset.");
-            // Demonstrates the convention of always routing a group name through DisplayGroupName()
-            // when printing it, since the raw sentinel used by GroupDefault() is not itself legible.
-            Assert.IsTrue(RuleTestHelper.IsUnresolvedDefaultGroup(matched.GroupName),
-                $"Expected the unresolved GroupDefault() sentinel, but got '{RuleTestHelper.DisplayGroupName(matched.GroupName)}'.");
-            Assert.AreEqual("Settings", matched.AddressSelector?.Invoke(ctx));
+            var outcome = RuleTestHelper.Evaluate(new GroupDefaultRule(), ctx);
+
+            Assert.AreEqual(RuleOutcomeKind.Address, outcome.Kind);
+            Assert.IsTrue(outcome.UsesDefaultGroup);
+            Assert.AreEqual("Settings", outcome.Address);
         }
 
-        // ctx.IsFolder かつ entry.IncludesFolders が false のエントリは Predicate を呼ばずスキップする。
-        // 本番の評価パイプライン（RuleEvaluator）と同じ判定であり、IncludeFolders() を宣言していない
-        // ルールの Predicate がフォルダ用に書かれていない前提を壊さないようにするため。
-        private static AddressRuleEntry FindFirst(IReadOnlyList<AddressRuleEntry> entries, AssetContext ctx)
+        [Test]
+        public void ConfigAsset_GroupDefaultRule_CanBeExpectedInATable()
         {
-            foreach (var e in entries)
+            var failures = RuleTestHelper.Verify(new GroupDefaultRule(), new[]
             {
-                if (ctx.IsFolder && !e.IncludesFolders) continue;
-                if (e.Predicate(ctx)) return e;
-            }
-            return null;
+                new RuleExpectation("Assets/Demo/Config/Settings.asset", typeof(ScriptableObject))
+                {
+                    UsesDefaultGroup = true,
+                    Address = "Settings",
+                },
+            });
+
+            CollectionAssert.IsEmpty(failures);
         }
 
-        private static List<string> EvalLabels(AddressRuleEntry entry, AssetContext ctx)
+        [Test]
+        public void SeveralRules_LowerOrderWins_AndOnlyTheWinnersLabelsAreKept()
         {
-            var result = new List<string>();
-            foreach (var selector in entry.LabelSelectors)
-                result.Add(selector(ctx));
-            return result;
+            // Pass every rule class whose interaction you want to test; they are evaluated together,
+            // the way AddressTeller evaluates all of your project's rules for one asset.
+            var rules = new AddressRuleBase[] { _rule, new CatchAllDemoRules() };
+
+            var failures = RuleInspector.Verify(rules, new[]
+            {
+                // LocalExampleRules (Order 0) beats the catch-all (Order 100). "demo" is the loser's label
+                // and is not written; "prefab" comes from the label-only rule and always is.
+                new RuleExpectation("Assets/Demo/Characters/Hero.prefab", typeof(GameObject))
+                {
+                    Group = "MyGroup",
+                    Address = "Hero",
+                    Labels = new[] { "character", "humanoid", "prefab" },
+                },
+                // Only the catch-all matches here.
+                new RuleExpectation("Assets/Demo/Audio/Theme.wav", typeof(AudioClip))
+                {
+                    Group = "Fallback",
+                    Address = "demo/Theme",
+                    Labels = new[] { "demo" },
+                },
+            });
+
+            CollectionAssert.IsEmpty(failures);
         }
     }
 }

@@ -8,7 +8,7 @@ package's own evaluation pipeline — including `Where()`/`Address()` throwing `
 when called a second time on the same group. Note that the *handling* of that exception is intentionally
 different here: the package's own evaluation pipeline catches it per-rule and skips the failing rule while
 continuing the rest of evaluation, whereas `RuleTestHelper.Collect(rule)` lets it propagate unchanged so a
-misused builder call fails the test directly (see step 3 below).
+misused builder call fails the test directly (see step 4 below).
 
 ## How to use
 
@@ -18,20 +18,31 @@ misused builder call fails the test directly (see step 3 below).
    Asmdef references are not transitive, so if you go the "new asmdef" route, also add an
    explicit reference to `AddressTeller.Core` — otherwise types like `AssetContext` and
    `AddressRuleBase` won't be visible.
-3. Use `RuleTestHelper.For(...)` to create `AssetContext` instances and
-   `RuleTestHelper.Collect(rule)` to inspect the entries produced by `Configure()`.
-   Any exception thrown by `Configure()` propagates out of `Collect(rule)` unchanged, so a
+3. Write an expectation table: one `RuleExpectation` row per asset, listing what your rule should decide for
+   it (`Group`, `Address`, `Labels`; properties you leave unset are not checked, and a row with only a path and a
+   type expects that no rule matches; a row with only `Labels` accepts any match; set `Kind` to expect
+   `LabelsOnly`, `Conflict`, `InvalidAddress` or `BlockedByRuleError`). Feed the table to NUnit with `[TestCaseSource]` and check each row with
+   `RuleTestHelper.Verify(rule, new[] { row })`, which returns one message per failing row (an empty list means
+   it passed). `ExampleRuleTest` shows the whole pattern. To test how several rule classes interact, pass them
+   all to `RuleInspector.Verify`: they are evaluated together with the same winner selection and label rules
+   AddressTeller uses when applying (lowest `Order` wins; only the winner's labels and the labels of label-only
+   rules are written).
+4. For details beyond the table, use `RuleTestHelper.Evaluate(rule, ctx)`, which returns a `RuleOutcome`
+   (`Kind`, `GroupName`, `Address`, `Labels`, `WinningRule`, `Messages`). Use `RuleTestHelper.For(...)` to create
+   the `AssetContext`, and `RuleTestHelper.Collect(rule)` to inspect the entries `Configure()` registered.
+   Any exception thrown by `Configure()` propagates out of `Evaluate`, `Verify` and `Collect` unchanged, so a
    misused builder call fails the test directly instead of being silently swallowed.
-4. If a rule uses `GroupDefault()`, check `RuleTestHelper.IsUnresolvedDefaultGroup(entry.GroupName)` rather than
-   comparing against a hard-coded string — the real sentinel value is an internal implementation
-   detail of the package. When you need to show a group name in an assertion message or log output, pass it
-   through `RuleTestHelper.DisplayGroupName(entry.GroupName)` first — the raw sentinel contains unprintable
-   control characters that would otherwise show up garbled in a failed test's output.
-5. If you build your own evaluation loop over the collected entries and pass it a folder `AssetContext`
-   (`IsFolder == true`), check `entry.IncludesFolders` before calling `entry.Predicate(ctx)` — see
-   `ExampleRuleTest.FindFirst` for the exact check. A rule only sees folders if its `Configure()` called
-   `IncludeFolders()`; the production evaluation pipeline skips `Predicate` entirely otherwise, and a helper
-   loop that skips this check can call a rule's `Predicate` with a folder it was never written to handle.
+5. If a rule uses `GroupDefault()`, the outcome reports `UsesDefaultGroup` instead of a group name (the
+   project's real default group is only known inside Unity); a table row can expect it with
+   `UsesDefaultGroup = true`. Likewise, whether a named group actually exists is not checked here. If you
+   inspect collected entries directly, use `RuleTestHelper.IsUnresolvedDefaultGroup(entry.GroupName)` rather
+   than comparing against a hard-coded string, and pass group names through
+   `RuleTestHelper.DisplayGroupName(entry.GroupName)` before printing them — the raw sentinel contains
+   unprintable control characters.
+6. A folder `AssetContext` (`IsFolder == true`) is only seen by rules whose `Configure()` called
+   `IncludeFolders()`; `Evaluate` and `Verify` apply that rule the same way the production pipeline does
+   (set `IsFolder = true` on the row). If you write your own loop over collected entries instead, check
+   `entry.IncludesFolders` before calling `entry.Predicate(ctx)`.
 
 ## Requirements
 

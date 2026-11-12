@@ -109,7 +109,7 @@ AddressTeller moves rule definitions into C# code to provide:
 
 - **Unlimited expressiveness** — path parsing, external data loading, any C# logic
 - **Clean diffs** — no `.asset` files to manage, just code
-- **Full IDE support** — autocomplete, refactoring, and unit tests as ordinary C#
+- **Full IDE support** — autocomplete, refactoring, and unit tests as ordinary C# (see [Testing your rules](Documentation~/writing-rules.md#testing))
 
 Data-driven configurations are also supported by choosing the loading strategy freely in code.
 

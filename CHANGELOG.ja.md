@@ -42,6 +42,17 @@
   `AssetDatabase.GetMainAssetTypeAtPath` で型を解決できないアセット（たとえば依存するスクリプトの欠落）。
   どのルールも評価できないため従来は黙ってスキップされていた（既存エントリも stale 掃除では削除されない）が、`ApplyAll`・`ValidateAll`・
   `BuildPredictedSnapshot` がアセットのパスを示す、ブロッキングでない通知として報告するようになった。
+- ルールの単体テストで、1 つのルールの `Configure()` が登録した内容だけでなく、ルール集合があるアセットに
+  何を決めるかを確かめられるようになった。`RuleInspector.Evaluate(rules, context)` は、`Apply`・`Validate`・
+  dry-run と同じ勝者決定とラベルの規則で `RuleOutcome`（`Kind`・`GroupName`・`UsesDefaultGroup`・`Address`・
+  `Labels`・`WinningRule`・`Messages`）を返す。`RuleOutcomeKind` は `None`・`Address`・`LabelsOnly`・
+  `Conflict`・`InvalidAddress`・`BlockedByRuleError`。`RuleInspector.Verify(rules, expectations)` は
+  `RuleExpectation` の表（`Path`・`Type`・`IsFolder`・`Kind`・`Group`・`UsesDefaultGroup`・`Address`・
+  `Labels`。未設定の項目は検査しない）を検査し、食い違った行ごとにメッセージを返す（全部合格なら空）。
+  アサートせずメッセージを返すので、`AddressTeller.Core` はテストフレームワークに依存しない。グループの実在と
+  プロジェクトの既定グループ名は検査の対象外。`Configure()` が例外を投げた場合は `Collect` と同じく呼び出し元へ
+  伝播する。`Rule Unit Test Helper` サンプルは、期待値表で駆動するテストに置き換わった。
+  [ルールの書き方: テスト](Documentation~/writing-rules.ja.md#テスト)を参照。
 
 ### Changed
 

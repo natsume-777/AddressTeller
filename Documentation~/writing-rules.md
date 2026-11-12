@@ -170,7 +170,27 @@ rules.Group("Bundles")
 
 ## Testing
 
-Unit-test `AddressRuleBase` subclasses in isolation using the public `RuleInspector` API (namespace `AddressTeller.Testing`, requires reference to `AddressTeller.Core` assembly) and the `Rule Unit Test Helper` sample. `RuleInspector.Collect()` retrieves the rule entries defined by `Configure()` without a live Addressables project; you supply test fixtures and verify rule behavior. For detailed usage examples and NUnit integration patterns, import **Rule Unit Test Helper** from the Package Manager's Samples tab and refer to the bundled README.
+Unit-test `AddressRuleBase` subclasses without a live Addressables project using the public `RuleInspector` API (namespace `AddressTeller.Testing`, requires reference to the `AddressTeller.Core` assembly) and the `Rule Unit Test Helper` sample.
+
+The recommended way is an expectation table: one `RuleExpectation` row per asset, listing what the rules should decide for it, checked with `RuleInspector.Verify`.
+
+```csharp
+var failures = RuleInspector.Verify(new AddressRuleBase[] { new CharacterRules() }, new[]
+{
+    new RuleExpectation("Assets/Characters/Hero.prefab", typeof(GameObject))
+        { Group = "Characters", Address = "Hero", Labels = new[] { "character" } },
+    new RuleExpectation("Assets/Characters/Hero.png", typeof(Texture2D)),   // matches nothing
+});
+CollectionAssert.IsEmpty(failures);   // NUnit; every failing row is printed at once
+```
+
+- `Verify` returns one message per failing row (empty when all pass) instead of asserting, so the package does not depend on a test framework. Properties you leave unset on a row are not checked; leaving everything unset expects that no rule matches, and setting only `Labels` accepts any match (an address or label-only rules). Set `Kind` to tell `LabelsOnly` from `Address`, or to expect a `Conflict`, `InvalidAddress`, or `BlockedByRuleError` (a row expecting `BlockedByRuleError` does not fail on the exceptions that block the winner). Each failure message starts with the row number and the asset path, and a row whose expectations contradict each other is reported as such.
+- Pass every rule class whose interaction you want to test. They are evaluated together, with the same winner selection and label rules as `Apply`, `Validate`, and the dry run: the lowest `Order` wins, and only the winner's labels plus the labels of label-only rules are reported.
+- `RuleInspector.Evaluate(rules, context)` returns the full `RuleOutcome` for one asset (kind, group, address, labels, winning rule, messages) when you want to assert on details.
+- `RuleInspector.Collect()` returns the entries a single rule's `Configure()` registered, for tests of the rule's shape.
+- Not covered, because there is no Addressables project: whether the winning rule's group exists, and the real name of the default group (`GroupDefault()` is reported as `UsesDefaultGroup`). An exception thrown by `Configure()` propagates to the test; an exception thrown by a condition or selector is reported in `Messages` (and fails the `Verify` row).
+
+For a complete example, import **Rule Unit Test Helper** from the Package Manager's Samples tab and refer to the bundled README.
 
 ## Evaluation Rules and Behavior
 

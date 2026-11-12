@@ -43,6 +43,17 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   missing). No rule can be evaluated for it, so it used to be skipped silently (and an existing entry for it
   is not removed by stale entry cleanup); `ApplyAll`, `ValidateAll`, and
   `BuildPredictedSnapshot` now report it as a non-blocking notice naming the asset path.
+- Rule unit tests can now ask what a set of rules decides for an asset, not just what one rule's `Configure()`
+  registered. `RuleInspector.Evaluate(rules, context)` returns a `RuleOutcome` (`Kind`, `GroupName`,
+  `UsesDefaultGroup`, `Address`, `Labels`, `WinningRule`, `Messages`) using the same winner selection and label
+  rules as `Apply`, `Validate`, and the dry run; `RuleOutcomeKind` is `None`, `Address`, `LabelsOnly`,
+  `Conflict`, `InvalidAddress`, or `BlockedByRuleError`. `RuleInspector.Verify(rules, expectations)` checks a
+  table of `RuleExpectation` rows (`Path`, `Type`, `IsFolder`, `Kind`, `Group`, `UsesDefaultGroup`, `Address`,
+  `Labels`; unset properties are not checked) and returns one message per failing row, empty when all pass. It
+  returns messages instead of asserting, so `AddressTeller.Core` still needs no test framework. Group existence
+  and the project's default group name are outside what it can check. A `Configure()` that throws propagates, as with
+  `Collect`. The `Rule Unit Test Helper` sample now drives its tests from an expectation table. See
+  [Writing Rules: Testing](Documentation~/writing-rules.md#testing).
 
 ### Changed
 

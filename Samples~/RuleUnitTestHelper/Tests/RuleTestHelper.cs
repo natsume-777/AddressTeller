@@ -56,5 +56,20 @@ namespace AddressTellerSamples
         /// this check can call into a rule's Predicate with a folder it was never written to handle.
         /// </summary>
         public static IReadOnlyList<AddressRuleEntry> Collect(AddressRuleBase rule) => RuleInspector.Collect(rule);
+
+        /// <summary>
+        /// Evaluates a single rule against <paramref name="context"/> and returns the verdict AddressTeller itself
+        /// would reach (winner, conflict, labels only, or no match). Delegates to <see cref="RuleInspector.Evaluate"/>;
+        /// pass several rules to <see cref="RuleInspector.Evaluate"/> directly to test how they interact.
+        /// </summary>
+        public static RuleOutcome Evaluate(AddressRuleBase rule, AssetContext context)
+            => RuleInspector.Evaluate(new[] { rule }, context);
+
+        /// <summary>
+        /// Checks a table of expectations against a single rule and returns one message per failing row
+        /// (empty when every row passes). Delegates to <see cref="RuleInspector.Verify"/>.
+        /// </summary>
+        public static IReadOnlyList<string> Verify(AddressRuleBase rule, IEnumerable<RuleExpectation> table)
+            => RuleInspector.Verify(new[] { rule }, table);
     }
 }

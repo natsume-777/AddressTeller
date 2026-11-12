@@ -170,7 +170,27 @@ rules.Group("Bundles")
 
 ## テスト
 
-`AddressRuleBase` のサブクラスを単体テストするには、公開 API の `RuleInspector`（名前空間 `AddressTeller.Testing`、`AddressTeller.Core` アセンブリへの参照が必要）と「Rule Unit Test Helper」サンプルを使用します。`RuleInspector.Collect()` は `Configure()` で定義されたルールエントリを取り出します（ライブな Addressables プロジェクト不要）。あとはテストでフィクスチャを用意し、ルール動作を検証します。詳しい使い方と NUnit 統合パターンは、Package Manager の Samples タブから「Rule Unit Test Helper」をインポートし、同梱の README を参照してください。
+`AddressRuleBase` のサブクラスは、Addressables プロジェクトなしで、公開 API の `RuleInspector`（名前空間 `AddressTeller.Testing`、`AddressTeller.Core` アセンブリへの参照が必要）と「Rule Unit Test Helper」サンプルを使って単体テストできます。
+
+推奨は期待値表です。アセット 1 つにつき `RuleExpectation` を 1 行書き、ルールがそのアセットに何を決めるべきかを並べて、`RuleInspector.Verify` で検査します。
+
+```csharp
+var failures = RuleInspector.Verify(new AddressRuleBase[] { new CharacterRules() }, new[]
+{
+    new RuleExpectation("Assets/Characters/Hero.prefab", typeof(GameObject))
+        { Group = "Characters", Address = "Hero", Labels = new[] { "character" } },
+    new RuleExpectation("Assets/Characters/Hero.png", typeof(Texture2D)),   // どのルールにもマッチしない
+});
+CollectionAssert.IsEmpty(failures);   // NUnit。失敗した行がまとめて表示される
+```
+
+- `Verify` はアサートせず、食い違った行ごとにメッセージを返します（全部合格なら空）。そのためパッケージはテストフレームワークに依存しません。行で未設定の項目は検査されず、すべて未設定なら「どのルールにもマッチしない」を期待し、`Labels` だけを指定すると「何かにマッチする」（アドレスまたはラベル専用ルール）を受け入れます。`LabelsOnly` と `Address` を区別したいとき、または `Conflict`・`InvalidAddress`・`BlockedByRuleError` を期待するときは `Kind` を指定します（`BlockedByRuleError` を期待する行は、勝者を止めた例外では失敗しません）。失敗メッセージは行番号とアセットのパスで始まり、期待どうしが矛盾する行はその旨が報告されます。
+- 相互作用をテストしたいルールクラスをすべて渡してください。`Apply`・`Validate`・dry-run と同じ勝者決定とラベルの規則で一緒に評価されます。最も小さい `Order` が勝ち、報告されるラベルは勝者のラベルとラベル専用ルールのラベルだけです。
+- 詳細を検査したいときは、`RuleInspector.Evaluate(rules, context)` が 1 アセット分の `RuleOutcome`（種別・グループ・アドレス・ラベル・勝ったルール・メッセージ）を返します。
+- `RuleInspector.Collect()` は、1 つのルールの `Configure()` が登録したエントリを返します。ルールの形のテスト用です。
+- Addressables プロジェクトが無いため検査できないのは、勝ったルールのグループが実在するかと、既定グループの実名です（`GroupDefault()` は `UsesDefaultGroup` として報告されます）。`Configure()` が投げた例外はテストへ伝播します。条件やセレクタが投げた例外は `Messages` に報告され、`Verify` ではその行が失敗します。
+
+完全な例は、Package Manager の Samples タブから「Rule Unit Test Helper」をインポートし、同梱の README を参照してください。
 
 ## 評価ルールと挙動
 
