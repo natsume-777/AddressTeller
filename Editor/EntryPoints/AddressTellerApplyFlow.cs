@@ -203,9 +203,8 @@ namespace AddressTeller.Editor
             // （このクラス自体が CLI 非対応であることはクラス冒頭のコメントの通り）。
             using (var progress = new EditorProgressReporter("AddressTeller - Apply All"))
             {
-                issues = rules != null
-                    ? AddressTellerService.ApplyAll(paths, settings, progress, rules)
-                    : AddressTellerService.ApplyAll(paths, settings, progress);
+                // 確認ダイアログで削除件数を見せた上での実行なので、stale 削除の件数上限は適用しない。
+                issues = AddressTellerService.ApplyAllConfirmed(paths, settings, progress, rules);
                 wasCancelled = progress.WasCancelled;
             }
 

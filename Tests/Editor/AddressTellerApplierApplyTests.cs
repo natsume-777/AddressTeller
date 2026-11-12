@@ -88,72 +88,43 @@ namespace AddressTeller.Editor.Tests
             new HashSet<string> { _managedGroup.Name, _otherGroup.Name };
 
         [Test]
-        public void Skipped_AssetInManagedGroup_RemovesEntry()
+        public void Skipped_AssetInManagedGroup_ApplyDoesNotRemoveEntry()
         {
+            // 無マッチの削除はラン末尾にまとめて実行するため（件数上限で全件見送れるように）、Apply 自体は
+            // Skipped でもエントリに触れない。削除予定への登録は呼び出し側が FindStaleManagedEntry で行う。
             AddressTellerSettings.CleanupStaleEntries = true;
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
-            var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups);
+            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames());
 
             Assert.AreEqual(ValidationStatus.Skipped, result.Status);
-            Assert.IsNull(_settings.FindAssetEntry("guid-managed"));
+            Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
         }
 
         [Test]
-        public void Skipped_AssetInUnmanagedGroup_KeepsEntry()
+        public void FindStaleManagedEntry_EntryInManagedGroup_ReturnsEntry()
         {
-            AddressTellerSettings.CleanupStaleEntries = true;
+            var entry = _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
+            var managedGroups = new HashSet<string> { _managedGroup.Name };
+
+            Assert.AreSame(entry, AddressTellerApplier.FindStaleManagedEntry("guid-managed", _settings, managedGroups));
+        }
+
+        [Test]
+        public void FindStaleManagedEntry_EntryInUnmanagedGroup_ReturnsNull()
+        {
             _settings.CreateOrMoveEntry("guid-other", _otherGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-other"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups);
-
-            Assert.AreEqual(ValidationStatus.Skipped, result.Status);
-            Assert.IsNotNull(_settings.FindAssetEntry("guid-other"));
+            Assert.IsNull(AddressTellerApplier.FindStaleManagedEntry("guid-other", _settings, managedGroups));
         }
 
         [Test]
-        public void Skipped_CleanupDisabled_KeepsEntry()
+        public void FindStaleManagedEntry_NoEntry_ReturnsNull()
         {
-            AddressTellerSettings.CleanupStaleEntries = false;
-            _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups);
-
-            Assert.AreEqual(ValidationStatus.Skipped, result.Status);
-            Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
-        }
-
-        [Test]
-        public void Skipped_WithRuleErrors_KeepsEntry()
-        {
-            AddressTellerSettings.CleanupStaleEntries = true;
-            _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
-            var managedGroups = new HashSet<string> { _managedGroup.Name };
-            var resolution = EmptyResolution(new RuleEvaluationError("MyRule", "boom", order: 0, canProduceAddress: true));
-
-            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), resolution, _settings, ExistingGroupNames(), managedGroups);
-
-            Assert.AreEqual(ValidationStatus.Skipped, result.Status);
-            Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
-        }
-
-        [Test]
-        public void Skipped_WithConfigureFailures_KeepsEntry()
-        {
-            // 他のルールの Configure() が例外を送出した実行では、managedGroups が
-            // 「失敗したルールが本来担当していたグループを別のルールがたまたま宣言していただけ」の
-            // 可能性があり信頼できないため、Skipped でも削除してはならない。
-            AddressTellerSettings.CleanupStaleEntries = true;
-            _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
-            var managedGroups = new HashSet<string> { _managedGroup.Name };
-
-            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), EmptyResolution(), _settings, ExistingGroupNames(), managedGroups, suspendStaleCleanup: true);
-
-            Assert.AreEqual(ValidationStatus.Skipped, result.Status);
-            Assert.IsNotNull(_settings.FindAssetEntry("guid-managed"));
+            Assert.IsNull(AddressTellerApplier.FindStaleManagedEntry("guid-unknown", _settings, managedGroups));
         }
 
         [Test]
@@ -161,7 +132,7 @@ namespace AddressTeller.Editor.Tests
         {
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-new"), LabelsOnlyResolution("tag"), _settings, ExistingGroupNames(), managedGroups);
+            var result = AddressTellerApplier.Apply(Ctx("guid-new"), LabelsOnlyResolution("tag"), _settings, ExistingGroupNames());
 
             Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
             Assert.IsNull(_settings.FindAssetEntry("guid-new"));
@@ -183,7 +154,7 @@ namespace AddressTeller.Editor.Tests
             Assert.IsFalse(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly ではない。");
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames());
 
             Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
             var updated = _settings.FindAssetEntry("guid-managed");
@@ -208,7 +179,7 @@ namespace AddressTeller.Editor.Tests
                 new HashSet<string> { "newLabel" },
                 new[] { new RuleEvaluationError("FailingAddressRule", "boom", order: 0, canProduceAddress: true) });
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), resolution, _settings, ExistingGroupNames(), managedGroups);
+            var result = AddressTellerApplier.Apply(Ctx("guid-managed"), resolution, _settings, ExistingGroupNames());
 
             Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
             var updated = _settings.FindAssetEntry("guid-managed");
@@ -231,7 +202,7 @@ namespace AddressTeller.Editor.Tests
             Assert.IsFalse(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly ではない。");
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+            var result = AddressTellerApplier.Apply(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames());
 
             Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
             var updated = _settings.FindAssetEntry("guid-other");
@@ -252,7 +223,7 @@ namespace AddressTeller.Editor.Tests
             entry.ReadOnly = false;
             Assert.IsFalse(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly ではない。");
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), new HashSet<string>());
+            var result = AddressTellerApplier.Apply(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames());
 
             Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
             var updated = _settings.FindAssetEntry("guid-other");
@@ -270,7 +241,7 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(entry.ReadOnly, "このテストの前提: 既存エントリは ReadOnly。");
             var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-            var result = AddressTellerApplier.Apply(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+            var result = AddressTellerApplier.Apply(Ctx("guid-other"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames());
 
             Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
             var updated = _settings.FindAssetEntry("guid-other");
@@ -295,7 +266,7 @@ namespace AddressTeller.Editor.Tests
                 Assert.IsTrue(readOnlyGroup.ReadOnly, "このテストの前提: グループは ReadOnly。");
                 var managedGroups = new HashSet<string> { _managedGroup.Name };
 
-                var result = AddressTellerApplier.Apply(Ctx("guid-readonly-group"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames(), managedGroups);
+                var result = AddressTellerApplier.Apply(Ctx("guid-readonly-group"), LabelsOnlyResolution("newLabel"), _settings, ExistingGroupNames());
 
                 Assert.AreEqual(ValidationStatus.LabelsOnly, result.Status);
                 var updated = _settings.FindAssetEntry("guid-readonly-group");
@@ -403,7 +374,7 @@ namespace AddressTeller.Editor.Tests
             Assert.DoesNotThrow(() =>
                 result = AddressTellerApplier.Apply(
                     Ctx("guid-missing-group"), OneCandidateResolution("GroupNotInSettings", "SomeAddress"),
-                    _settings, existingGroupNames, managedGroups));
+                    _settings, existingGroupNames));
 
             Assert.AreEqual(ValidationStatus.GroupNotFound, result.Status);
             Assert.IsNull(_settings.FindAssetEntry("guid-missing-group"));
@@ -613,7 +584,7 @@ namespace AddressTeller.Editor.Tests
 
             var result = AddressTellerApplier.Apply(
                 Ctx("guid-unresolvable"), OneCandidateResolution(_managedGroup.Name, "SomeAddress"),
-                _settings, ExistingGroupNames(), managedGroups);
+                _settings, ExistingGroupNames());
 
             Assert.AreEqual(ValidationStatus.EntryRejectedByAddressables, result.Status);
             Assert.IsNull(_settings.FindAssetEntry("guid-unresolvable"),

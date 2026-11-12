@@ -200,53 +200,28 @@ namespace AddressTeller.Editor
         /// 作成したグループ名を追加する（同じインスタンスをループの全アセットで使い回すことで、
         /// 2件目以降の同名グループ対象アセットで重複した GroupWillBeCreated 警告・重複 EnsureGroup 呼び出しを防ぐ）。
         /// </param>
-        /// <param name="ownedGroups">
-        /// AddressTeller のいずれかのルールが Address() を宣言しているグループ名の集合（AddressTeller が
-        /// 削除の権限を持つグループ）。指定された場合、どのルールにもマッチしなくなった（Skipped な）
-        /// アセットがこの中のグループに属していれば、<see cref="AddressTellerSettings.CleanupStaleEntries"/>
-        /// が true のときエントリを削除する。
-        /// </param>
         /// <param name="autoCreateMissingGroups">
         /// <see cref="AddressTellerSettings.AutoCreateMissingGroups"/> の値。true の場合、未存在グループを
         /// <see cref="AddressTellerGroupFactory.EnsureGroup"/> で DefaultGroup から複製して作成し、
         /// 成功すればそのまま書き込みを続行する。失敗した場合は <see cref="ValidationStatus.GroupCreationFailed"/>
         /// を返し書き込みは行わない。
         /// </param>
-        /// <param name="suspendStaleCleanup">
-        /// このランで stale クリーンアップ（無マッチ判定に基づくエントリ削除）を止める場合に true
-        /// （<see cref="EvaluationSetup.SuspendsStaleCleanup"/>）。次のどちらかのときに true になる。
-        /// ・1件以上のルールの Configure() が例外を送出した（<see cref="EvaluationSetup.ConfigureFailures"/>）。
-        ///   ownedGroups は「失敗したルールが担当していたグループを、たまたま他のルールが宣言していたため残っただけ」
-        ///   の可能性があり信頼できず、失敗したルールが担当していたエントリを誤って削除しかねない。
-        /// ・宣言フォルダが実在しないルールがある（<see cref="ValidationStatus.DeclaredFolderMissing"/>）。
-        ///   そのルールが何にもマッチしないだけで、本来は対象のエントリが「無マッチ」に見えている可能性がある。
-        /// true の場合、このアセットが Skipped でも stale クリーンアップは行わない。
-        /// </param>
+        /// <remarks>
+        /// どのルールにもマッチしなくなった（Skipped な）アセットのエントリはここでは削除しない。削除は
+        /// 呼び出し側（<see cref="AddressTellerService"/>）が <see cref="FindStaleManagedEntry"/> で削除予定に積み、
+        /// ラン末尾に <see cref="StaleRemovalPlan"/> としてまとめて実行する（件数上限で全件見送れるようにするため）。
+        /// </remarks>
         public static ValidationResult Apply(
             AssetContext context,
             AddressResolution resolution,
             AddressableAssetSettings settings,
             ICollection<string> existingGroupNames,
-            IReadOnlyCollection<string> ownedGroups = null,
-            bool autoCreateMissingGroups = false,
-            bool suspendStaleCleanup = false)
+            bool autoCreateMissingGroups = false)
         {
             var result = Validate(context, resolution, existingGroupNames, autoCreateMissingGroups, out var winner);
 
             if (result.Status == ValidationStatus.Skipped)
-            {
-                // ルール例外(resolution.Errors)・ルール構成例外・宣言フォルダ欠落(suspendStaleCleanup)いずれかがあった場合、
-                // 「全ルールが正常評価された上でマッチ0件」とは言えないため、クリーンアップは行わない
-                // (ルールのバグで誤ってエントリを削除しないようにする)。
-                if (resolution.Errors.Count == 0 && !suspendStaleCleanup
-                    && ownedGroups != null && AddressTellerSettings.CleanupStaleEntries)
-                {
-                    // 削除されたエントリは RemoveStaleEntryIfManaged 側で個別に Warning ログ済みのため、
-                    // ここでは戻り値（削除内容）を意図的に破棄する。
-                    _ = RemoveStaleEntryIfManaged(context.Guid, settings, ownedGroups);
-                }
                 return result;
-            }
 
             if (result.Status == ValidationStatus.LabelsOnly)
             {
@@ -369,7 +344,8 @@ namespace AddressTeller.Editor
         /// となり（IsOk=true）、AddOrUpdate として予測される（実際の作成は行わない）。
         /// </param>
         /// <param name="suspendStaleCleanup">
-        /// <see cref="Apply"/> の同名パラメータと同じ意図。true の場合、stale クリーンアップ（Remove の予測）を行わない。
+        /// このランで stale クリーンアップを止める場合に true（<see cref="EvaluationSetup.SuspendsStaleCleanup"/>。
+        /// Configure() の失敗、または宣言フォルダの欠落があるとき）。true の場合、stale クリーンアップ（Remove の予測）を行わない。
         /// </param>
         public static ApplyPrediction Predict(
             AssetContext context,
@@ -466,8 +442,13 @@ namespace AddressTeller.Editor
         /// ルール評価を伴わない（資産が既に存在しない）削除専用のエントリポイント。
         /// </summary>
         /// <param name="suspendStaleCleanup">
-        /// <see cref="Apply"/> の同名パラメータと同じ意図。true の場合、削除を行わない。
+        /// このランで stale クリーンアップを止める場合に true（<see cref="EvaluationSetup.SuspendsStaleCleanup"/>）。
+        /// Configure() の失敗（ownedGroups が信頼できない）か宣言フォルダの欠落（エントリが「無マッチ」に
+        /// 見えているだけの可能性）のどちらかがあるとき true になり、その場合は削除を行わない。
         /// </param>
+        /// <remarks>
+        /// 資産自体の削除への追従であり、<see cref="AddressTellerSettings.MaxStaleRemovalsPerRun"/> の対象外。
+        /// </remarks>
         /// <returns>削除を実行した場合はその内容。削除しなかった場合は null。</returns>
         public static ClearedEntry? RemoveEntryForDeletedAsset(
             string guid,
@@ -479,7 +460,23 @@ namespace AddressTeller.Editor
             if (!AddressTellerSettings.CleanupStaleEntries) return null;
             if (suspendStaleCleanup) return null;
 
-            return RemoveStaleEntryIfManaged(guid, settings, ownedGroups);
+            var entry = FindStaleManagedEntry(guid, settings, ownedGroups);
+            return entry == null ? null : StaleRemovalPlan.RemoveNoMatchingRuleEntry(settings, entry);
+        }
+
+        /// <summary>
+        /// <paramref name="guid"/> のエントリが AddressTeller の所有するグループに属していれば返す（書き込みは行わない）。
+        /// 所有していないグループ（ユーザーが手動で登録したエントリ等）のエントリや、エントリが無い場合は null。
+        /// </summary>
+        internal static AddressableAssetEntry FindStaleManagedEntry(
+            string guid,
+            AddressableAssetSettings settings,
+            IReadOnlyCollection<string> ownedGroups)
+        {
+            var entry = settings.FindAssetEntry(guid);
+            if (entry?.parentGroup == null) return null;
+            if (!ownedGroups.Contains(entry.parentGroup.Name)) return null;
+            return entry;
         }
 
         /// <summary>
@@ -498,7 +495,7 @@ namespace AddressTeller.Editor
         /// 誤って消してしまう。資産が本当に削除された場合の追従は <see cref="RemoveEntryForDeletedAsset"/>
         /// （GUID の削除通知を起点にする別経路）に任せ、このメソッドはパスが引けているのに構造的に無効な
         /// ケースだけを対象にする。
-        /// Apply（<see cref="RemoveInvalidPathEntries"/>）と Predict（dry-run）の両方から共有する読み取り専用ステップ。
+        /// Apply（<see cref="StaleRemovalPlan"/> への登録）と Predict（dry-run）の両方から共有する読み取り専用ステップ。
         /// </summary>
         internal static List<AddressableAssetEntry> FindInvalidPathManagedEntries(
             AddressableAssetSettings settings,
@@ -522,61 +519,6 @@ namespace AddressTeller.Editor
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// <see cref="FindInvalidPathManagedEntries"/> が見つけたエントリを実際に削除する。
-        /// 既存の stale クリーンアップ（<see cref="RemoveStaleEntryIfManaged"/>）と同じく、削除ごとに個別の
-        /// Warning ログを出す。呼び出し側で <see cref="AddressTellerSettings.CleanupStaleEntries"/> と
-        /// Configure() 失敗・宣言フォルダ欠落の有無（suspendStaleCleanup 相当）を判定してから呼ぶこと（このメソッド自体は
-        /// 判定を行わない）。
-        /// </summary>
-        /// <returns>削除したエントリの一覧（削除が無ければ空リスト）。</returns>
-        internal static List<ClearedEntry> RemoveInvalidPathEntries(
-            AddressableAssetSettings settings,
-            IReadOnlyCollection<string> ownedGroups,
-            string configFolder)
-        {
-            var targets = FindInvalidPathManagedEntries(settings, ownedGroups, configFolder);
-            var cleared = new List<ClearedEntry>(targets.Count);
-
-            foreach (var entry in targets)
-            {
-                var groupName = entry.parentGroup?.Name ?? "";
-                var labels = entry.labels.OrderBy(l => l, StringComparer.Ordinal).ToList();
-                cleared.Add(new ClearedEntry(entry.guid, entry.address, groupName, labels));
-
-                Debug.LogWarning($"[AddressTeller] Removing stale entry: guid={entry.guid}, group='{groupName}', address='{entry.address}', path='{entry.AssetPath}', labels=[{string.Join(", ", labels)}] (path is not valid for an Addressables entry).");
-                settings.RemoveAssetEntry(entry.guid);
-            }
-
-            return cleared;
-        }
-
-        /// <summary>
-        /// 既存のエントリが AddressTeller の所有するグループに属している場合のみ削除する。
-        /// 所有していないグループ（ユーザーが手動で登録したエントリ等）には触れない。
-        /// </summary>
-        /// <returns>削除を実行した場合はその内容。削除しなかった場合は null。</returns>
-        private static ClearedEntry? RemoveStaleEntryIfManaged(
-            string guid,
-            AddressableAssetSettings settings,
-            IReadOnlyCollection<string> ownedGroups)
-        {
-            var entry = settings.FindAssetEntry(guid);
-            if (entry?.parentGroup == null) return null;
-            if (!ownedGroups.Contains(entry.parentGroup.Name)) return null;
-
-            var cleared = new ClearedEntry(
-                guid,
-                entry.address,
-                entry.parentGroup.Name,
-                entry.labels.OrderBy(l => l, StringComparer.Ordinal).ToList());
-
-            Debug.LogWarning($"[AddressTeller] Removing stale entry: guid={guid}, group='{entry.parentGroup.Name}', address='{entry.address}' (no longer matched by any rule).");
-            settings.RemoveAssetEntry(guid);
-
-            return cleared;
         }
     }
 }

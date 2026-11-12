@@ -226,6 +226,21 @@ namespace AddressTeller.Editor
             container.Add(cleanupToggle);
             container.Add(MakeDescription("Automatically removes assets that no longer match any rule from groups managed by AddressTeller. The entry itself is deleted, so both the address and labels (in Addressables) are lost. Off by default; recommended as the third step of adoption, once you know which groups your rules own — turn it on and run Apply All from the menu right afterward. While off, an entry that would be removed is instead reported as a non-blocking UnmatchedEntryKept notice."));
 
+            // isDelayed: フォーカスが外れる/Enter が押されるまで値の変更を通知しない。
+            // キーストロークごとに ProjectSettings/*.json へ書き出すことを防ぐ。
+            var maxRemovalsField = new IntegerField("Max stale removals per run") { value = AddressTellerSettings.MaxStaleRemovalsPerRun, isDelayed = true };
+            maxRemovalsField.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () =>
+                {
+                    AddressTellerSettings.MaxStaleRemovalsPerRun = e.newValue;
+                    // セッターは負の値を 0 へ正規化する。UI 表示にも正規化後の値を反映する（retention と同じ理由）。
+                    maxRemovalsField.SetValueWithoutNotify(AddressTellerSettings.MaxStaleRemovalsPerRun);
+                },
+                () => maxRemovalsField.SetValueWithoutNotify(AddressTellerSettings.MaxStaleRemovalsPerRun)));
+            maxRemovalsField.SetEnabled(gateOk);
+            container.Add(maxRemovalsField);
+            container.Add(MakeDescription("Safety valve for \"Remove unmatched entries\": if one run of ApplyAll (including the automatic apply on import, ApplyAllCLI, and ApplyWithValidateCLI) would remove more entries than this, it removes none of them and reports a blocking StaleRemovalLimitExceeded issue instead. 0 means unlimited (default). The Apply All and Apply with Validate menu items are not limited; their confirmation dialog shows the number of removals first."));
+
             var autoCreateToggle = new Toggle("Auto-create missing groups") { value = AddressTellerSettings.AutoCreateMissingGroups };
             autoCreateToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(
                 () => AddressTellerSettings.AutoCreateMissingGroups = e.newValue,

@@ -114,8 +114,10 @@ namespace AddressTeller.Editor
                 // 宣言フォルダの検査結果（欠落・大小文字違い）は、直らない限り import のたびに同じ内容で返ってくる。
                 // 重複エントリ検出と同じく、内容が変わらない間は最初の1回だけログする（フルスキャン系の
                 // Menu・CLI は従来どおり毎回 LogAll で出す）。個別の内容は ValidateAll 等の結果側で常に得られる。
-                var declaredFolderIssues = issues.Where(IsDeclaredFolderIssue).ToList();
-                AddressTellerIssueLogger.LogAll(issues.Where(i => !IsDeclaredFolderIssue(i)).ToList());
+                // 停止中の stale 削除の件数上限超過（StaleRemovalLimitExceeded）も、対処するまで同じ内容で
+                // 返り続けるので同じ扱いにする。
+                var declaredFolderIssues = issues.Where(IsLogOnceIssue).ToList();
+                AddressTellerIssueLogger.LogAll(issues.Where(i => !IsLogOnceIssue(i)).ToList());
                 LogDeclaredFolderIssuesOnce(declaredFolderIssues);
 
                 if (deletedAssets.Length > 0)
@@ -190,9 +192,10 @@ namespace AddressTeller.Editor
         /// </summary>
         internal static string s_lastLoggedDeclaredFolderSignature;
 
-        private static bool IsDeclaredFolderIssue(ValidationResult issue)
+        private static bool IsLogOnceIssue(ValidationResult issue)
             => issue.Status == ValidationStatus.DeclaredFolderMissing
-                || issue.Status == ValidationStatus.DeclaredFolderCaseMismatch;
+                || issue.Status == ValidationStatus.DeclaredFolderCaseMismatch
+                || issue.Status == ValidationStatus.StaleRemovalLimitExceeded;
 
         /// <summary>
         /// <paramref name="declaredFolderIssues"/> を今回ログすべきかどうかを判定し、

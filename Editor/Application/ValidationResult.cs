@@ -190,6 +190,19 @@ namespace AddressTeller.Editor
         /// <see cref="DeclaredFolderMissing"/>.
         /// </summary>
         DeclaredFolderCaseMismatch = 18,
+        /// <summary>
+        /// A run of <c>AddressTellerService.ApplyAll</c> (the automatic apply on import, <c>ApplyAllCLI</c> and
+        /// <c>ApplyWithValidateCLI</c> included; not the Apply All menu items) would have removed more entries than
+        /// <see cref="AddressTellerSettings.MaxStaleRemovalsPerRun"/> allows, so it removed none of them. The
+        /// count covers both entries whose asset no longer matches any rule and entries whose path is no
+        /// longer valid for an Addressables entry, all of which are held back together. The message gives
+        /// the number of entries, the limit, and the first few paths. Nothing else is affected: addresses and
+        /// labels are still written as usual. To proceed, review the removals (Apply All from the menu shows
+        /// them in its confirmation dialog) and either run the apply from the menu, or raise or clear the
+        /// limit. Being blocking, it makes <c>ApplyAllCLI</c> / <c>ApplyWithValidateCLI</c> exit with code 2.
+        /// <see cref="ValidationResult.Context"/> is null, since this is not about one specific asset.
+        /// </summary>
+        StaleRemovalLimitExceeded = 19,
     }
 
     /// <summary>
@@ -197,7 +210,8 @@ namespace AddressTeller.Editor
     /// <see cref="Context"/> is null when <see cref="Status"/> is <see cref="ValidationStatus.RuleConfigureFailed"/>,
     /// <see cref="ValidationStatus.DuplicateAddress"/>, <see cref="ValidationStatus.SettingsUnavailable"/>,
     /// <see cref="ValidationStatus.DeclaredFolderMissing"/>, <see cref="ValidationStatus.DeclaredFolderCaseMismatch"/>,
-    /// or <see cref="ValidationStatus.DuplicateAssetEntry"/> — the first five are not tied to a single asset, and
+    /// <see cref="ValidationStatus.StaleRemovalLimitExceeded"/>,
+    /// or <see cref="ValidationStatus.DuplicateAssetEntry"/> — the first six are not tied to a single asset, and
     /// the last is detected before any per-asset evaluation runs (its message identifies the asset by GUID
     /// instead). For <see cref="ValidationStatus.UnmatchedEntryKept"/> it is always
     /// set for the "no longer matched" case, and set on a best-effort basis (null only when genuinely

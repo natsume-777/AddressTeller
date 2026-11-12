@@ -12,8 +12,9 @@ namespace AddressTeller.Editor.Tests
     /// DisabledRuleClassNames）が、ApplyAll/ValidateAll/Explain/BuildPredictedSnapshot の各エントリポイントで
     /// 一貫した分岐結果を返すことを固定する回帰テスト。
     ///
-    /// CLI（ApplyAllCLI/ApplyWithValidateCLI/CheckCLI）は引数なしの Service/Snapshot メソッドへ委譲するだけで
-    /// AddressTellerSettings.* を直接読まないため、フラグ評価そのものはここでの委譲先（Service側）テストでカバーする。
+    /// CLI（ApplyAllCLI/ApplyWithValidateCLI/CheckCLI）は Service/Snapshot メソッドへ委譲するだけで、フラグの
+    /// 評価はその委譲先の内部で行われる（CLI 入口自身は AddressTellerSettings.* の値で分岐しない）。
+    /// そのため、フラグ評価そのものはここでの委譲先（Service側）テストでカバーする。
     /// </summary>
     public class AddressTellerFlagConsistencyTests
     {

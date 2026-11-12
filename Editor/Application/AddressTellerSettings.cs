@@ -40,6 +40,29 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
+        /// Safety valve for <see cref="CleanupStaleEntries"/>: the largest number of entries a single
+        /// run of <c>AddressTellerService.ApplyAll</c> (and so the automatic apply on import and
+        /// <c>ApplyAllCLI</c> / <c>ApplyWithValidateCLI</c>) may remove. When the run would remove more than this — counting both
+        /// entries whose asset no longer matches any rule and entries whose path is no longer valid for an
+        /// Addressables entry — it removes none of them and reports one
+        /// <see cref="ValidationStatus.StaleRemovalLimitExceeded"/> (a blocking issue) instead, so a rule
+        /// mistake cannot silently wipe out a large part of the Addressables configuration. 0 (default)
+        /// means unlimited. Negative values are treated as 0.
+        /// It does not apply to the Apply All and Apply with Validate menu items (their confirmation dialog
+        /// shows the number of removals before anything is applied) or to following up on a deleted asset.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file).</exception>
+        public static int MaxStaleRemovalsPerRun
+        {
+            get => AddressTellerSettingsAsset.Current._maxStaleRemovalsPerRun;
+            set
+            {
+                var clamped = AddressTellerSettingsAsset.NormalizeMaxStaleRemovalsPerRun(value, warnIfChanged: false);
+                AddressTellerSettingsAsset.Mutate(data => data._maxStaleRemovalsPerRun = clamped);
+            }
+        }
+
+        /// <summary>
         /// When false (default), the automatic ApplyAll normally triggered on import by AssetPostprocessor
         /// is not performed. This does not affect manual execution from Tools/AddressTeller/Apply All.
         /// </summary>

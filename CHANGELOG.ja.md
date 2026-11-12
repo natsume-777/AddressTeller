@@ -28,9 +28,22 @@
   追従を含む）が止まる。`ValidationStatus.DeclaredFolderCaseMismatch`（`IsOk=true`）: 宣言フォルダが実在するが
   宣言と大小文字だけ異なる、ブロッキングでない通知。import 時の自動適用は、この検査結果をドメインリロードまで
   キャッシュし、そのフォルダ自身か上位のフォルダが作成・削除・移動・改名されたときだけ検査し直す。
+- `AddressTellerSettings.MaxStaleRemovalsPerRun`（JSON キー `_maxStaleRemovalsPerRun`、既定 `0` = 無制限。
+  Project Settings の「Remove unmatched entries」の下の「Max stale removals per run」）: stale エントリ削除の
+  安全弁。`AddressTellerService.ApplyAll` の1回のラン（import 時の自動適用、`ApplyAllCLI`、`ApplyWithValidateCLI`
+  を含む）が上限を超える数のエントリ（どのルールにも
+  マッチしなくなったエントリと、パスが構造的に無効なエントリの合計）を削除しようとしたとき、1件も削除せず、
+  件数・上限・先頭数件のパスを含む `ValidationStatus.StaleRemovalLimitExceeded`（`IsOk=false`、
+  `IsBlocking=true`、`Context` は null）を1件報告する。`Apply All` / `Apply with Validate` メニュー項目
+  （確認ダイアログが先に削除内容を見せる）と資産削除への追従には上限は適用されない。CLI のレポートでは
+  このステータスが Issues に載り、見送られた削除は Removed の drift から除かれる。
+  [Apply と運用: Project Settings](Documentation~/operations.ja.md#project-settings) を参照。
 
 ### Changed
 
+- `CleanupStaleEntries` が ON のとき、`ApplyAll` は stale エントリの削除（マッチしなくなったエントリと、
+  パスが構造的に無効なエントリ）を、アセットごとにその場で行わず、ランの最後にまとめて実行するようになった。
+  ランがキャンセルされた場合は何も削除されない。
 - **BREAKING**: `Match.InFolder` / `Match.Glob` で実在しないフォルダ（綴りの誤り、移動・削除されたフォルダ）を
   参照しているルールは、ブロッキングの問題 `ValidationStatus.DeclaredFolderMissing` として報告されるように
   なった。そのようなルールはこれまで何にもマッチしないだけだったため、該当するルールを黙って抱えていた

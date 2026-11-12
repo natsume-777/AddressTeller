@@ -65,7 +65,7 @@ namespace AddressTeller.Editor
         internal const string MarkerValue = "addressteller-settings-v1";
 
         /// <summary>
-        /// 保存対象の POCO。現在9個（設定8個 + マーカー1個）。増減した場合は
+        /// 保存対象の POCO。現在10個（設定9個 + マーカー1個）。増減した場合は
         /// Documentation~/operations.md/.ja.md の設定一覧表、Documentation~/compatibility.md/.ja.md の
         /// JSON キー表、Tests/Editor/AddressTellerSettingsPersistenceTests.cs のフィールド数 assert を
         /// 同時に更新すること。
@@ -88,6 +88,9 @@ namespace AddressTeller.Editor
             [SerializeField] internal bool _autoCreateMissingGroups = false;
             [SerializeField] internal int _postprocessOrder = AddressTellerSettings.DefaultPostprocessOrder;
             [SerializeField] internal List<string> _disabledRuleClassNames = new();
+
+            // 0 = 無制限。1回のランで stale 削除が超えてはならない件数（Postprocessor と CLI の非対話経路のみ）。
+            [SerializeField] internal int _maxStaleRemovalsPerRun = 0;
 
             // マーカー。初期化子を持たせない（クラス remarks 参照）。
             [SerializeField] internal string _marker;
@@ -114,6 +117,24 @@ namespace AddressTeller.Editor
             }
 
             return 1;
+        }
+
+        /// <summary>
+        /// <see cref="AddressTellerSettings.MaxStaleRemovalsPerRun"/> の負の値を 0（無制限）へ正規化する処理を
+        /// 1箇所に集約する。setter と設定ファイル読み込み直後（<see cref="EnsureLoaded"/>）の両方から使う
+        /// （<see cref="NormalizeAutoSnapshotRetention"/> と同じ理由）。負の値を「全削除を禁止」の意味に
+        /// 読み替えない——0 を「禁止」にしない既定（無制限）と食い違うため、あくまで 0 に丸める。
+        /// </summary>
+        internal static int NormalizeMaxStaleRemovalsPerRun(int value, bool warnIfChanged)
+        {
+            if (value >= 0) return value;
+
+            if (warnIfChanged)
+            {
+                Debug.LogWarning($"[AddressTeller] MaxStaleRemovalsPerRun in the settings file was {value}, which is below the minimum of 0. Using 0 (unlimited) instead; this load does not rewrite the file, so the value on disk stays {value} until something else saves a change to the settings.");
+            }
+
+            return 0;
         }
 
         /// <summary>
@@ -294,6 +315,7 @@ namespace AddressTeller.Editor
             // ファイルへは書き戻さない（この読み込みが副作用としてファイルを書き換えないため）。
             parsed._autoSnapshotRetention = NormalizeAutoSnapshotRetention(parsed._autoSnapshotRetention, warnIfChanged: true);
             parsed._snapshotFolder = NormalizeSnapshotFolder(parsed._snapshotFolder, warnIfChanged: true);
+            parsed._maxStaleRemovalsPerRun = NormalizeMaxStaleRemovalsPerRun(parsed._maxStaleRemovalsPerRun, warnIfChanged: true);
 
             s_data = parsed;
             s_loadedStamp = stamp;
@@ -374,6 +396,7 @@ namespace AddressTeller.Editor
             _autoCreateMissingGroups = source._autoCreateMissingGroups,
             _postprocessOrder = source._postprocessOrder,
             _disabledRuleClassNames = new List<string>(source._disabledRuleClassNames),
+            _maxStaleRemovalsPerRun = source._maxStaleRemovalsPerRun,
             _marker = source._marker,
         };
 

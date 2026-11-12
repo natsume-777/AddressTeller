@@ -257,8 +257,8 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void Skipped_WithConfigureFailures_DoesNotPredictRemove()
         {
-            // Apply の Skipped_WithConfigureFailures_KeepsEntry と対称。managedGroups が信頼できない実行では
-            // Predict も Remove を予測してはならない。
+            // ApplyAll 側（AddressTellerRuleConfigureFailureTests.ApplyAll_ConfigureFailure_DoesNotRemoveEntryOfOtherRuleSharingSameGroup）
+            // と対称。managedGroups が信頼できない実行では Predict も Remove を予測してはならない。
             AddressTellerSettings.CleanupStaleEntries = true;
             _settings.CreateOrMoveEntry("guid-managed", _managedGroup);
             var managedGroups = new HashSet<string> { _managedGroup.Name };

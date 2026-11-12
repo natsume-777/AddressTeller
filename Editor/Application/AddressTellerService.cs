@@ -117,6 +117,11 @@ namespace AddressTeller.Editor
         /// path cannot currently be resolved at all (empty <c>AssetPath</c> — e.g. an unfetched LFS
         /// pointer, an in-progress branch switch, or a missing package); a genuinely deleted asset is
         /// instead handled by <see cref="RemoveEntriesForDeletedAssets(IEnumerable{string}, AddressableAssetSettings)"/>.
+        /// Both kinds of removal are carried out together at the end of the run, not as each asset is
+        /// processed, and are skipped entirely if the run is cancelled. If
+        /// <see cref="AddressTellerSettings.MaxStaleRemovalsPerRun"/> is set and the removals would exceed it,
+        /// none are carried out and a <see cref="ValidationStatus.StaleRemovalLimitExceeded"/> result is returned
+        /// (the Apply All menu item is the exception: its confirmation dialog shows the removals first).
         /// </remarks>
         public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings = null)
         {
@@ -144,21 +149,31 @@ namespace AddressTeller.Editor
         /// rule list the caller supplies (intended for use in tests, etc.).
         /// </summary>
         public static IReadOnlyList<ValidationResult> ApplyAll(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules)
-            => ApplyAllCore(paths, settings, progress, rules, useDeclaredFolderCache: false);
+            => ApplyAllCore(paths, settings, progress, rules, useDeclaredFolderCache: false, enforceStaleRemovalLimit: true);
 
         /// <summary>
         /// Postprocessor が import のたびに呼ぶ増分適用。<see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings)"/>
         /// と同じ処理だが、ルールが宣言したフォルダの検査結果を（Postprocessor が変更されたパスで無効化しながら）
         /// ドメインリロードまでキャッシュして再利用する。公開 API の ApplyAll は常に検査し直す。
+        /// 非対話経路なので stale 削除の件数上限（<see cref="AddressTellerSettings.MaxStaleRemovalsPerRun"/>）を適用する。
         /// </summary>
         internal static IReadOnlyList<ValidationResult> ApplyAllIncremental(IEnumerable<string> paths, AddressableAssetSettings settings)
             => ApplyAllIncremental(paths, settings, CollectEnabledRulesIfSettingsLoaded());
 
         /// <summary>評価するルールを差し替えられる <see cref="ApplyAllIncremental(IEnumerable{string}, AddressableAssetSettings)"/>（テスト用）。</summary>
         internal static IReadOnlyList<ValidationResult> ApplyAllIncremental(IEnumerable<string> paths, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
-            => ApplyAllCore(paths, settings, NullProgressReporter.Instance, rules, useDeclaredFolderCache: true);
+            => ApplyAllCore(paths, settings, NullProgressReporter.Instance, rules, useDeclaredFolderCache: true, enforceStaleRemovalLimit: true);
 
-        private static IReadOnlyList<ValidationResult> ApplyAllCore(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules, bool useDeclaredFolderCache)
+        /// <summary>
+        /// メニューの確認ダイアログ（削除件数を見せて承認を得た後）から呼ぶ適用。公開 API の
+        /// <see cref="ApplyAll(IEnumerable{string}, AddressableAssetSettings, IProgressReporter, IReadOnlyList{AddressRuleBase})"/>
+        /// と同じ処理だが、stale 削除の件数上限（<see cref="AddressTellerSettings.MaxStaleRemovalsPerRun"/>）を適用しない。
+        /// rules が null のときは公開 API の rules なしオーバーロードと同じくリフレクションでルールを収集する。
+        /// </summary>
+        internal static IReadOnlyList<ValidationResult> ApplyAllConfirmed(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules)
+            => ApplyAllCore(paths, settings, progress, rules ?? CollectEnabledRulesIfSettingsLoaded(), useDeclaredFolderCache: false, enforceStaleRemovalLimit: false);
+
+        private static IReadOnlyList<ValidationResult> ApplyAllCore(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules, bool useDeclaredFolderCache, bool enforceStaleRemovalLimit)
         {
             if (s_isApplying) return Array.Empty<ValidationResult>();
             s_isApplying = true;
@@ -201,7 +216,7 @@ namespace AddressTeller.Editor
                 // グループを、別の正常なルールがたまたま宣言していたため残っただけ」の可能性があり信頼できない。
                 // 宣言フォルダが実在しないルールがある場合も、そのルールが何にもマッチしないだけで、本来は
                 // マッチするはずのエントリが「無マッチ」に見えている可能性がある。
-                // どちらもこの実行全体で stale クリーンアップ（Apply の Skipped 分岐での削除）を停止する。
+                // どちらもこの実行全体で stale クリーンアップ（無マッチ判定に基づく削除と無効パスの掃除）を停止する。
                 // 以降の suspendStaleCleanup は両方を含む（EvaluationSetup.SuspendsStaleCleanup 参照）。
                 var suspendStaleCleanup = setup.SuspendsStaleCleanup;
                 // 増分適用（useDeclaredFolderCache）で、停止の理由が宣言フォルダの欠落だけの場合は、ここでは
@@ -211,14 +226,12 @@ namespace AddressTeller.Editor
                     && !(useDeclaredFolderCache && setup.ConfigureFailures.Count == 0))
                     Debug.LogWarning($"[AddressTeller] Skipping stale entry cleanup for this run because {DescribeCleanupSuspension(setup)}.");
 
-                // 旧バージョンの AddressTeller が作成した、いまはパスが無効なエントリ（ProjectSettings/*.asset の
-                // readOnly エントリ等）を掃除する。paths（このメソッドに渡された対象アセット）には依存させない
-                // — Postprocessor 経由の差分適用では、旧エントリのパス自体は変更イベントに含まれないため、
-                // 対象を絞ると永遠に掃除されなくなってしまう。既存の stale クリーンアップと同じ所有権判定
-                // （所有グループ限定）・同じ条件（CleanupStaleEntries、Configure() 失敗時は停止）を使う。
-                // 削除は RemoveInvalidPathEntries 側で個別に Warning ログ済みのため、戻り値は破棄する。
-                if (!suspendStaleCleanup && AddressTellerSettings.CleanupStaleEntries)
-                    _ = AddressTellerApplier.RemoveInvalidPathEntries(settings, setup.OwnedGroups, setup.ConfigFolder);
+                // stale クリーンアップ（無マッチ判定に基づくエントリ削除と、無効パスエントリの掃除）はループ中に
+                // 実行せず、削除予定として staleRemovals に積み、ラン末尾でまとめて実行する。件数上限を超える場合に
+                // 全件を見送れるようにするため（一部だけ削除済みの状態で超過に気付かないようにする）。
+                // cleanupStale はラン中不変なのでループ外で1回だけ評価する。
+                var cleanupStale = AddressTellerSettings.CleanupStaleEntries && !suspendStaleCleanup;
+                var staleRemovals = new StaleRemovalPlan();
 
                 var issues = new List<ValidationResult>(setup.ConfigureFailures);
                 issues.AddRange(setup.DeclaredFolderIssues);
@@ -246,11 +259,39 @@ namespace AddressTeller.Editor
                     var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries);
                     RuleEvaluationPipeline.AddRuleErrors(ctx, resolution, issues);
 
-                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.OwnedGroups, setup.AutoCreateMissingGroups, suspendStaleCleanup);
+                    var result = AddressTellerApplier.Apply(ctx, resolution, settings, setup.ExistingGroupNames, setup.AutoCreateMissingGroups);
                     // GroupWillBeCreated は IsOk=true（グループ自動作成が成功した）だが、
                     // 「作成された」ことを提示するため issues に情報として積む。
                     if (!result.IsOk || result.Status == ValidationStatus.GroupWillBeCreated)
                         issues.Add(result);
+
+                    // ルール例外(resolution.Errors)があった場合、「全ルールが正常評価された上でマッチ0件」とは
+                    // 言えないため削除予定にしない（ルールのバグで誤ってエントリを削除しないようにする）。
+                    // Configure() 失敗・宣言フォルダ欠落は cleanupStale に織り込み済み。
+                    if (cleanupStale && result.Status == ValidationStatus.Skipped && resolution.Errors.Count == 0)
+                        staleRemovals.AddUnmatched(AddressTellerApplier.FindStaleManagedEntry(ctx.Guid, settings, setup.OwnedGroups));
+                }
+
+                // キャンセル時は削除を一切行わない（途中までの走査結果で「無マッチ」「無効パス」を確定させない。
+                // 書き込みは処理済みアセット分が完了済み＝部分適用のままで、巻き戻さないのは従来どおり）。
+                if (!cancelled && cleanupStale)
+                {
+                    // 旧バージョンの AddressTeller が作成した、いまはパスが無効なエントリ（ProjectSettings/*.asset の
+                    // readOnly エントリ等）も同じ計画に合流させる。paths（このメソッドに渡された対象アセット）には
+                    // 依存させない — Postprocessor 経由の差分適用では、旧エントリのパス自体は変更イベントに
+                    // 含まれないため、対象を絞ると永遠に掃除されなくなってしまう。既存の stale クリーンアップと
+                    // 同じ所有権判定（所有グループ限定）を使う。
+                    foreach (var invalidPathEntry in AddressTellerApplier.FindInvalidPathManagedEntries(settings, setup.OwnedGroups, setup.ConfigFolder))
+                        staleRemovals.AddInvalidPath(invalidPathEntry);
+
+                    // 上限（0 = 無制限）を超えたら全件見送り、超過をブロッキングの結果として報告する。
+                    // 適用は非対話経路（Postprocessor・CLI）のみ。メニュー経路は確認ダイアログが安全弁。
+                    var limit = enforceStaleRemovalLimit ? AddressTellerSettings.MaxStaleRemovalsPerRun : 0;
+                    if (limit > 0 && staleRemovals.Count > limit)
+                        issues.Add(staleRemovals.BuildLimitExceededResult(limit));
+                    else
+                        // 削除された各エントリは個別に Warning ログ済みのため、戻り値は意図的に破棄する。
+                        _ = staleRemovals.Execute(settings);
                 }
 
                 // キャンセル時は完了通知を呼ばない（中断したのに「完了」を通知すると意味的に矛盾するため）。

@@ -612,6 +612,25 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
+        /// 実行時にしか分からない <see cref="ValidationStatus.StaleRemovalLimitExceeded"/>（削除を全件見送った）を
+        /// dry-run 結果に合流させる。dry-run は削除を予測するが、実際には 1 件も削除していないため、
+        /// レポートの Removed drift は外し、Issues（と JUnit の failure 対象）にこの issue を加える。
+        /// 該当 issue が無ければ dry-run 結果をそのまま返す。
+        /// </summary>
+        private static DryRunResult ReflectHeldBackRemovals(DryRunResult dryRun, IReadOnlyList<ValidationResult> executionIssues)
+        {
+            var limitIssues = executionIssues.Where(i => i.Status == ValidationStatus.StaleRemovalLimitExceeded).ToList();
+            if (limitIssues.Count == 0) return dryRun;
+
+            var diff = new SnapshotDiff();
+            foreach (var added in dryRun.Diff.Added) diff.AddAdded(added);
+            foreach (var (before, after) in dryRun.Diff.Changed) diff.AddChanged(before, after);
+
+            var issues = dryRun.Issues.Concat(limitIssues).ToList();
+            return new DryRunResult(diff, issues, dryRun.GroupsToCreate, dryRun.After);
+        }
+
+        /// <summary>
         /// dry-run 結果からレポート DTO を生成し、要求されていればファイル出力する。
         /// exit code は「実行後 issues（<paramref name="executionIssues"/>）に書き込みを見送るべき問題が
         /// 含まれるか」のみで決まる（<see cref="AddressTellerReportBuilder.DetermineApplyExitCode"/>。
@@ -627,8 +646,9 @@ namespace AddressTeller.Editor
         /// <see cref="AddressTellerReportBuilder.DetermineExitCode(DryRunResult)"/> を使う）ため、
         /// ここで <see cref="AssetDatabase.SaveAssets"/> を呼んでダーティなアセットを明示的に保存する。
         /// </summary>
-        private static void ExitWithReport(DryRunResult dryRun, IReadOnlyList<ValidationResult> executionIssues, AddressTellerCliArgs cliArgs, AddressableAssetSettings settings)
+        internal static void ExitWithReport(DryRunResult dryRun, IReadOnlyList<ValidationResult> executionIssues, AddressTellerCliArgs cliArgs, AddressableAssetSettings settings)
         {
+            dryRun = ReflectHeldBackRemovals(dryRun, executionIssues);
             var exitCode = AddressTellerReportBuilder.DetermineApplyExitCode(executionIssues);
 
             if (!string.IsNullOrEmpty(cliArgs.ReportPath))

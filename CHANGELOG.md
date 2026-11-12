@@ -29,9 +29,21 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   declared folder exists but differs from the declaration only in letter case; a non-blocking notice. The
   automatic apply on import caches the check between domain reloads and re-checks a folder only when it, or a
   folder above it, is created, deleted, moved, or renamed.
+- `AddressTellerSettings.MaxStaleRemovalsPerRun` (JSON key `_maxStaleRemovalsPerRun`, default `0` = unlimited;
+  "Max stale removals per run" in Project Settings, under "Remove unmatched entries"): a safety valve for
+  stale entry removal. When a run of `AddressTellerService.ApplyAll` (the automatic apply on import,
+  `ApplyAllCLI`, and `ApplyWithValidateCLI` included) would remove more entries than the limit (entries no rule matches anymore plus entries with a structurally invalid
+  path), it removes none of them and reports one `ValidationStatus.StaleRemovalLimitExceeded`
+  (`IsOk=false`, `IsBlocking=true`, `Context` is null) with the count, the limit, and the first few paths.
+  The `Apply All` / `Apply with Validate` menu items (their confirmation dialog shows the removals first) and the
+  follow-up for deleted assets are not limited. The CLI report lists the status under Issues and leaves the
+  held-back removals out of the Removed drift. See [Apply & Operations: Project Settings](Documentation~/operations.md#project-settings).
 
 ### Changed
 
+- With `CleanupStaleEntries` on, `ApplyAll` now carries out all stale entry removals (no-longer-matched entries
+  and structurally-invalid-path entries) together at the end of the run instead of one asset at a time. If the
+  run is cancelled, nothing is removed.
 - **BREAKING**: A rule that references a folder that does not exist through `Match.InFolder` or `Match.Glob`
   (a typo, or a folder that was moved or deleted) is now reported as `ValidationStatus.DeclaredFolderMissing`,
   a blocking issue. Such a rule never matched anything before, so projects that carried one silently now see:

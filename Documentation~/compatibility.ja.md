@@ -199,6 +199,7 @@ SchemaVersion                             (System.Int32)
 | `_autoCreateMissingGroups` | `bool` | `false` |
 | `_postprocessOrder` | `int` | `1000` |
 | `_disabledRuleClassNames` | `string[]` | 空 |
+| `_maxStaleRemovalsPerRun` | `int` | `0`（無制限） |
 | `_marker` | `string` | 内部専用、利用者が設定するものではない（後述） |
 
 これらのキーをリネームすることは禁止です。`JsonUtility` は、JSON に対応するキーが無いフィールドをその C# の初期化子の値のまま残すため、リネームすると、既に `AddressTellerSettings.json` をコミット済みのすべてのプロジェクトで、該当設定がエラーも警告もなく既定値へ黙って戻ってしまいます。キーの既定値の変更は**メジャー**（破壊的）変更です。明示的に設定していないプロジェクトの挙動が変わるためです。
@@ -246,7 +247,7 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 
 **メンバー追加がコンパイルを壊さずに実行時の挙動を壊しうる理由**: `default` アームの無い `switch` 文は、認識していない新しいenum値に対してもコンパイル・実行ができてしまいます。ただ何もしない（あるいは周辺コード次第でフォールスルーする）だけで、これは呼び出し元が見たことのないステータスに対してはたいてい誤った挙動です。追加をパッチではなくマイナーとして扱うのはこのためです。ビルドは失敗しないものの、CHANGELOGで可視化され、これらの型を網羅的に `switch` しているコードの持ち主に検討してもらうことを意図しています。
 
-具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress`、`SettingsUnavailable`、`UnmatchedEntryKept`、`BlockedByRuleError`、`DuplicateAssetEntry`、`DeclaredFolderMissing`、`DeclaredFolderCaseMismatch` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
+具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress`、`SettingsUnavailable`、`UnmatchedEntryKept`、`BlockedByRuleError`、`DuplicateAssetEntry`、`DeclaredFolderMissing`、`DeclaredFolderCaseMismatch`、`StaleRemovalLimitExceeded` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
 
 `SettingsUnavailable` は、設定ファイル（`ProjectSettings/AddressTellerSettings.json`）が読み込めなかった場合に、結果リストの唯一のエントリとして返されます。`Context` は `RuleConfigureFailed`・`DuplicateAddress`・`DuplicateAssetEntry` と同様 null です（特定の1アセットに関するものではないため）。
 
@@ -259,6 +260,8 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 `DeclaredFolderMissing`（`IsOk=false`、`IsBlocking=true`）は、ルールの条件が依存すると宣言したフォルダが実在しない場合（`Match.InFolderByGuid` では GUID がフォルダに引けない場合）に報告されます。宣言は `Match.InFolder`、`Match.Glob` の固定プレフィックス、`Match.InFolderByGuid` から生じます（`AssetCondition.Folders` / `AddressRuleEntry.DeclaredFolders`）。生ラムダの条件は何も宣言せず、先頭がワイルドカードの `Match.Glob` パターンも何も宣言しません。実在しないフォルダごとに1件、宣言したルール名つきで報告されます。これがある間は、`RuleConfigureFailed` があるときと同じく、そのラン全体で stale エントリ掃除（無マッチのエントリ・無効パスのエントリ・資産削除への追従）が止まります。素の `ApplyAll` と import 時の自動適用はそれ以外を通常どおり評価・書き込みしますが、ブロッキングなので、Apply with Validate（メニュー項目と `ApplyWithValidateCLI`）は Apply 全体を中止し、`CheckCLI` / `ApplyWithValidateCLI` は終了コード 2 になります。`Context` は `RuleConfigureFailed` と同様 null です（特定の1アセットに関するものではないため）。`ApplyAll`・`ValidateAll`・`BuildPredictedSnapshot` のいずれでも生成されます（import 時の増分適用は、ドメインリロードの間は検査結果を再利用し、そのフォルダ自身か上位のフォルダが変わったときだけ検査し直します。公開の `ApplyAll` とそのほかの入口は毎回検査し直します）。[ルールの書き方: 宣言フォルダ](writing-rules.ja.md#宣言フォルダ)も参照してください。
 
 `DeclaredFolderCaseMismatch`（`IsOk=true`）は、宣言フォルダが実在するが宣言と大小文字だけ異なる場合の、ブロッキングでない通知です。フォルダの照合は大小文字を区別しないためルールは効きますが、宣言を直すよう促します。`Context` は `DeclaredFolderMissing` と同様 null です。何も止めません。
+
+`StaleRemovalLimitExceeded`（`IsOk=false`、`IsBlocking=true`）は、`AddressTellerService.ApplyAll`——したがって import 時の自動適用（`AddressTellerPostprocessor`）と `ApplyAllCLI` / `ApplyWithValidateCLI`——で、1回のランが `AddressTellerSettings.MaxStaleRemovalsPerRun` を超える数のエントリを削除しようとしたときに報告されます。件数には、どのルールにもマッチしなくなったエントリと、パスが Addressables のエントリとして構造的に無効なエントリの両方を数えます。超過したときは（超過分だけでなく）全件を削除せず、件数・上限・先頭数件のパスを含むメッセージの結果を1件返します。アドレスとラベルは通常どおり書き込まれます。`Context` は `DeclaredFolderMissing` と同様 null（特定の1アセットに紐づかないため）で、報告されると `ApplyAllCLI` / `ApplyWithValidateCLI` は終了コード 2 になります。この上限は `Apply All` / `Apply with Validate` のメニュー項目（確認ダイアログが削除件数を見せてから適用するため）と、資産自体の削除への追従（`RemoveEntriesForDeletedAssets`）には適用されません。設定の既定は 0（無制限）で、負の値は 0 として扱われます。このステータスは `ApplyAll` でのみ生成され、`ValidateAll` や `BuildPredictedSnapshot` は生成しないため、dry-run は見送られる削除を予測しません。`ApplyAllCLI` / `ApplyWithValidateCLI` が書き出すレポートでは、このステータスが Issues に載り（JUnit 出力では failure になります）、見送られた削除は Removed の drift から除かれます。
 
 **今後の `ValidationStatus` メンバーに対する重大度の方針**: 各ステータスは「`IsOk=false` かつ `IsBlocking=true`」（`IsOk=false` として数えられ、かつ Apply を中止させる問題）か、「`IsOk=true`」（通知であり、問題として扱われない）のどちらか一方の重大度に固定します。`DuplicateAddress` だけが唯一の例外であり、今後もこの位置づけのまま変わりません——その `IsOk` は `ValidationResult.HasWritableDuplicate` に依存し、`IsBlocking` は `IsOk` の値に関わらず常に false です（単独では書き込みを止めないため。正確な規則は `ValidationResult.IsBlocking` と `HasWritableDuplicate` のXMLドキュメントを参照）。`DuplicateAddress` より後に追加するメンバーで、2つ目の「`IsOk=false` だが `IsBlocking=false`」や「`IsOk` がステータス自身以外の何かに依存する」ケースを持ち込んではならず、上記2つの単純な重大度のどちらかを選ぶこと。
 
