@@ -33,9 +33,34 @@ namespace AddressTeller.Editor
         /// うち管理外同士のもの（HasWritableDuplicate=false、IsOk=true）のような通知専用の issue だけが
         /// 残っている状態は「変化なし」として扱う——AddressTeller には直しようがない既存の重複だけを理由に、
         /// 差分ゼロなのに毎回ダイアログを出してユーザーの手を止めるのは重大度分けの意図に反するため。
+        /// <see cref="ValidationStatus.UndeclaredRuleOverlap"/> は数えない——Apply All は検証しないので、この issue で
+        /// 適用は止まらず、押しても何も書き込まない Apply を確認させるだけになる（内容は <see cref="ReportDryRunNotices"/> がログする）。
         /// </summary>
         internal static bool HasNoChanges(DryRunResult dryRun) =>
-            dryRun.Diff.IsEmpty && !dryRun.Issues.Any(i => !i.IsOk);
+            dryRun.Diff.IsEmpty && !dryRun.Issues.Any(i => !i.IsOk && i.Status != ValidationStatus.UndeclaredRuleOverlap);
+
+        /// <summary>
+        /// Apply All の dry-run が計算し、確認ダイアログからは内容が見えない通知をログする。
+        /// 一致 0 件のルール・宣言フォルダ内の未登録アセットに加え、未宣言のルール重なり
+        /// （<see cref="ValidationStatus.UndeclaredRuleOverlap"/>）を個別にログし、Apply All は検証しないので強制しない旨を
+        /// Warning で 1 行添える。<paramref name="allIssuesLogged"/> が true のとき（差分なしの経路で issues 全体を
+        /// ログ済み）は、二重にならないよう個別ログを省き、重なりの Warning だけを出す。
+        /// </summary>
+        internal static void ReportDryRunNotices(DryRunResult dryRun, bool allIssuesLogged)
+        {
+            if (!allIssuesLogged)
+                AddressTellerIssueLogger.LogRuleMatchedNothing(dryRun.Issues);
+
+            var overlaps = dryRun.Issues.Where(i => i.Status == ValidationStatus.UndeclaredRuleOverlap).ToList();
+            if (overlaps.Count > 0)
+            {
+                if (!allIssuesLogged)
+                    AddressTellerIssueLogger.LogAll(overlaps);
+                Debug.LogWarning("[AddressTeller] Apply All does not validate, so it does not enforce Strict rule overlaps; the Apply proceeds either way. Use Apply with Validate to stop on an undeclared overlap.");
+            }
+
+            AddressTellerIssueLogger.LogUnmatched(dryRun.UnmatchedInDeclaredFolders, failing: false);
+        }
 
         /// <summary>
         /// dry-run の Changed のうち、適用前にあったラベルが適用後に無くなるエントリの数
@@ -90,15 +115,14 @@ namespace AddressTeller.Editor
                 // 差分は無くても通知（Warning 相当）が残っていれば、ここで報告だけはしておく。
                 if (dryRun.Issues.Count > 0)
                     AddressTellerIssueLogger.LogAll(dryRun.Issues);
-                AddressTellerIssueLogger.LogUnmatched(dryRun.UnmatchedInDeclaredFolders, failing: false);
+                ReportDryRunNotices(dryRun, allIssuesLogged: true);
                 Debug.Log("[AddressTeller] No changes detected.");
                 return;
             }
 
             // 確認ダイアログへ進む場合、dry-run の issues 全体はログしないが、ダイアログからは見えない通知
-            // （一致 0 件のルール・宣言フォルダ内の未登録アセット）だけはここで報告しておく。
-            AddressTellerIssueLogger.LogRuleMatchedNothing(dryRun.Issues);
-            AddressTellerIssueLogger.LogUnmatched(dryRun.UnmatchedInDeclaredFolders, failing: false);
+            // （一致 0 件のルール・未宣言のルール重なり・宣言フォルダ内の未登録アセット）だけはここで報告しておく。
+            ReportDryRunNotices(dryRun, allIssuesLogged: false);
 
             var errorIssueCount = dryRun.Issues.Count(i => !i.IsOk);
             var noticeIssueCount = dryRun.Issues.Count - errorIssueCount;

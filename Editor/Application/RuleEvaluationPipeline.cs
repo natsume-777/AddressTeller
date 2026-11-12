@@ -123,6 +123,12 @@ namespace AddressTeller.Editor
         /// </summary>
         public List<string> UnmatchedInDeclaredFolders { get; }
 
+        /// <summary>
+        /// 走査したアセットで見つかったルールクラス間の重なり（<see cref="RuleOverlap"/>）。設定に関係なく常に集計する。
+        /// キャンセルされたランでは、そこまでに走査した分だけ。
+        /// </summary>
+        public IReadOnlyList<RuleOverlap> Overlaps { get; }
+
         public PredictedRunState(
             AddressTellerSnapshot before,
             Dictionary<string, SnapshotEntry> afterMap,
@@ -130,7 +136,8 @@ namespace AddressTeller.Editor
             List<ValidationResult> issues,
             HashSet<string> groupsToCreate,
             bool cancelled,
-            List<string> unmatchedInDeclaredFolders = null)
+            List<string> unmatchedInDeclaredFolders = null,
+            IReadOnlyList<RuleOverlap> overlaps = null)
         {
             Before = before;
             AfterMap = afterMap;
@@ -139,6 +146,7 @@ namespace AddressTeller.Editor
             GroupsToCreate = groupsToCreate;
             Cancelled = cancelled;
             UnmatchedInDeclaredFolders = unmatchedInDeclaredFolders ?? new List<string>();
+            Overlaps = overlaps ?? Array.Empty<RuleOverlap>();
         }
     }
 
@@ -322,6 +330,10 @@ namespace AddressTeller.Editor
             var matchedAddressEntries = isFullScan ? new bool[setup.Entries.Count] : null;
             var erroredEntries = isFullScan ? new bool[setup.Entries.Count] : null;
 
+            // ルールクラス間の重なり（広いルールを狭いルールが Order で上書きしている組）の集計用。
+            // 走査したアセットだけを対象にするので、isFullScan には依らず常に集める。
+            var overlapCollector = new RuleOverlapCollector();
+
             var pathList = paths as IList<string> ?? paths.ToList();
             var total = pathList.Count;
             var cancelled = false;
@@ -348,6 +360,7 @@ namespace AddressTeller.Editor
 
                 var resolution = RuleEvaluator.Evaluate(ctx, setup.Entries, matchedAddressEntries, erroredEntries);
                 AddRuleErrors(ctx, resolution, issues);
+                overlapCollector.Add(ctx.Path, resolution);
 
                 var prediction = AddressTellerApplier.Predict(ctx, resolution, settings, setup.ExistingGroupNames, setup.OwnedGroups, setup.AutoCreateMissingGroups, suspendStaleCleanup);
 
@@ -405,8 +418,34 @@ namespace AddressTeller.Editor
             if (!cancelled)
                 progress.Report(total, total, string.Empty);
 
+            // 重なりは、キャンセルされたランでもそこまでに走査した分は事実として正しいので報告する
+            // （「一致 0 件」のような、全体を見ないと言えない主張とは違う）。
+            var overlaps = overlapCollector.ToList();
+            if (AddressTellerSettings.StrictRuleOverlaps)
+                AddUndeclaredRuleOverlapIssues(overlaps, issues);
+
             unmatchedInDeclaredFolders.Sort(StringComparer.Ordinal);
-            return new PredictedRunState(before, afterMap, writtenGuids, issues, groupsToCreate, cancelled, unmatchedInDeclaredFolders);
+            return new PredictedRunState(before, afterMap, writtenGuids, issues, groupsToCreate, cancelled, unmatchedInDeclaredFolders, overlaps);
+        }
+
+        /// <summary>
+        /// 宣言されていない重なりを、組ごとに1件の <see cref="ValidationStatus.UndeclaredRuleOverlap"/> として
+        /// <paramref name="issues"/> へ加える（<paramref name="overlaps"/> の順序のまま）。
+        /// </summary>
+        private static void AddUndeclaredRuleOverlapIssues(IReadOnlyList<RuleOverlap> overlaps, List<ValidationResult> issues)
+        {
+            foreach (var overlap in overlaps)
+            {
+                if (overlap.IsDeclared) continue;
+
+                issues.Add(new ValidationResult(
+                    null,
+                    ValidationStatus.UndeclaredRuleOverlap,
+                    $"{overlap.OverriddenRule} is overridden by {overlap.OverridingRule} on {overlap.Count} asset{(overlap.Count == 1 ? "" : "s")} " +
+                    $"(e.g. {string.Join(", ", overlap.ExamplePaths)}), but does not declare it. If the override is intended, add " +
+                    $"OverriddenBy<{overlap.OverridingRule}>() to the Group() chain of {overlap.OverriddenRule} that is overridden; " +
+                    "otherwise narrow a condition or change an Order. Assets > AddressTeller > Explain on an example path lists every rule involved."));
+            }
         }
 
         /// <summary>

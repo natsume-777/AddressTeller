@@ -89,6 +89,17 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void UndeclaredRuleOverlap_IsOkFalse_Blocking_WithoutContext()
+        {
+            // 厳格モードで止めるための問題。IsOk=false かつ IsBlocking=true（Apply with Validate と CheckCLI が止まる）。
+            var result = new ValidationResult(null, ValidationStatus.UndeclaredRuleOverlap, "overlap");
+
+            Assert.IsFalse(result.IsOk);
+            Assert.IsTrue(result.IsBlocking);
+            Assert.IsNull(result.Context);
+        }
+
+        [Test]
         public void DuplicateAddress_HasWritableDuplicateFalse_IsOkTrue_NotBlocking()
         {
             var result = new ValidationResult(null, ValidationStatus.DuplicateAddress, "duplicate", hasWritableDuplicate: false);

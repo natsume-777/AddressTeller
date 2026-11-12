@@ -29,6 +29,14 @@ namespace AddressTeller.Editor
         public List<string> Unmatched = new();
 
         /// <summary>
+        /// Pairs of rule classes whose addresses overlap (see <see cref="DryRunResult.Overlaps"/>), sorted by overridden
+        /// then overriding rule name in Ordinal order. Report-only: the list itself never affects
+        /// <see cref="AddressTellerReportSummary.ExitCode"/>. With the "Strict rule overlaps" setting on, an undeclared
+        /// overlap is also an entry of <see cref="Issues"/> (<c>UndeclaredRuleOverlap</c>), and that is what can fail a run.
+        /// </summary>
+        public List<AddressTellerReportOverlap> Overlaps = new();
+
+        /// <summary>
         /// Logical bundle distribution summary. Left <c>null</c> — never assigned a new value — when the
         /// dry-run has no <see cref="DryRunResult.After"/> (e.g. when constructed in a test), when no
         /// <see cref="UnityEditor.AddressableAssets.Settings.AddressableAssetSettings"/> was supplied to the
@@ -139,6 +147,26 @@ namespace AddressTeller.Editor
 
         /// <summary>Labels assigned to the asset.</summary>
         public List<string> Labels = new();
+    }
+
+    /// <summary>One pair of rule classes whose addresses overlap (see <see cref="RuleOverlap"/>).</summary>
+    [Serializable]
+    public sealed class AddressTellerReportOverlap
+    {
+        /// <summary>Name of the rule class whose address lost.</summary>
+        public string OverriddenRule;
+
+        /// <summary>Name of the rule class whose address won.</summary>
+        public string OverridingRule;
+
+        /// <summary>Number of assets on which the overridden rule lost to the overriding rule.</summary>
+        public int Count;
+
+        /// <summary>A few of those asset paths, the smallest in Ordinal order.</summary>
+        public List<string> ExamplePaths = new();
+
+        /// <summary>True when the overridden rule declared the override with <c>OverriddenBy&lt;TRule&gt;()</c>.</summary>
+        public bool Declared;
     }
 
     /// <summary>A single problem detected by validation.</summary>

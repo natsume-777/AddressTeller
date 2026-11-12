@@ -63,7 +63,7 @@ namespace AddressTeller
 
                     if (addressProduced)
                     {
-                        candidates.Add(new AddressCandidate(entry.GroupName, address, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order, candidateLabels));
+                        candidates.Add(new AddressCandidate(entry.GroupName, address, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order, candidateLabels, entry.OverriddenBy));
                         if (matchedAddressEntries != null) matchedAddressEntries[entryIndex] = true;
                     }
                 }
@@ -74,7 +74,7 @@ namespace AddressTeller
                     // 例外が BlockedByRuleError の判定対象から落ちないようにするため）。この候補のラベルは、
                     // 勝てば BlockedByRuleError で書き込まれず、負ければ使われないため、持たせない。
                     if (addressProduced)
-                        candidates.Add(new AddressCandidate(entry.GroupName, address, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order));
+                        candidates.Add(new AddressCandidate(entry.GroupName, address, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order, overriddenBy: entry.OverriddenBy));
 
                     var source = AddressRuleEntry.DescribeSource(entry.SourceClass, entry.Description, entry.RuleIndex);
                     errors.Add(new RuleEvaluationError(source, ex.Message, entry.Order, entry.AddressSelector != null));
@@ -150,7 +150,7 @@ namespace AddressTeller
                     }
 
                     if (addressProduced)
-                        candidates.Add(new AddressCandidate(entry.GroupName, producedAddress, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order, candidateLabels));
+                        candidates.Add(new AddressCandidate(entry.GroupName, producedAddress, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order, candidateLabels, entry.OverriddenBy));
 
                     details.Add(new RuleEvaluationDetail(
                         ruleSource, entry.GroupName, entry.Description,
@@ -160,7 +160,7 @@ namespace AddressTeller
                 {
                     // Evaluate と同じ理由で、アドレス産出後の例外でも候補は残す（ラベルは持たせない）。
                     if (addressProduced)
-                        candidates.Add(new AddressCandidate(entry.GroupName, producedAddress, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order));
+                        candidates.Add(new AddressCandidate(entry.GroupName, producedAddress, entry.SourceClass, entry.Description, entry.RuleIndex, entry.Order, overriddenBy: entry.OverriddenBy));
                     errors.Add(new RuleEvaluationError(ruleSource, ex.Message, entry.Order, entry.AddressSelector != null));
                     details.Add(new RuleEvaluationDetail(
                         ruleSource, entry.GroupName, entry.Description,

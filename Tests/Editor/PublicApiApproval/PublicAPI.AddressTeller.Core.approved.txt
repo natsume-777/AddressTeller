@@ -82,6 +82,7 @@ interface AddressTeller.IAddressRuleGroupBuilder
   Method abstract AddressTeller.IAddressRuleGroupBuilder IncludeFolders()
   Method abstract AddressTeller.IAddressRuleGroupBuilder Label(System.Func<AddressTeller.AssetContext, System.String> selector)
   Method abstract AddressTeller.IAddressRuleGroupBuilder Label(System.String label)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder OverriddenBy<TRule>()
   Method abstract AddressTeller.IAddressRuleGroupBuilder Where(AddressTeller.AssetCondition condition)
   Method abstract AddressTeller.IAddressRuleGroupBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate)
   Method abstract AddressTeller.IAddressRuleGroupBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description)
@@ -113,6 +114,13 @@ static class AddressTeller.Naming
   Method static System.Func<AddressTeller.AssetContext, System.String> FileNameWithoutExtension()
   Method static System.Func<AddressTeller.AssetContext, System.String> ParentFolderName()
   Method static System.Func<AddressTeller.AssetContext, System.String> RelativePath(System.String root)
+
+sealed class AddressTeller.RuleOverlap
+  Property System.Int32 Count { get; }
+  Property System.Collections.Generic.IReadOnlyList<System.String> ExamplePaths { get; }
+  Property System.Boolean IsDeclared { get; }
+  Property System.String OverriddenRule { get; }
+  Property System.String OverridingRule { get; }
 
 sealed class AddressTeller.Testing.RuleExpectation
   Constructor (System.String path, System.Type type)

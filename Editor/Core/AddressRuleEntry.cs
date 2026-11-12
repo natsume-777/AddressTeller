@@ -66,6 +66,13 @@ namespace AddressTeller
         /// </summary>
         internal IReadOnlyList<string> NonRecursiveFolders { get; }
 
+        /// <summary>
+        /// <c>OverriddenBy&lt;TRule&gt;()</c> で許可された、このエントリのアドレスを上書きしてよいルールクラス名
+        /// （<see cref="AddressRuleBase"/> 派生の型名。<see cref="SourceClass"/> と同じ表記）。重なりの集計が
+        /// 「宣言済みの上書き」と「未宣言の上書き」を分けるために使う。空なら何も許可していない。
+        /// </summary>
+        internal IReadOnlyList<string> OverriddenBy { get; }
+
         /// <summary>Creates an AddressRuleEntry. See the properties above for each parameter's meaning.</summary>
         public AddressRuleEntry(
             string groupName,
@@ -76,7 +83,7 @@ namespace AddressTeller
             string description = null,
             int ruleIndex = 0,
             IReadOnlyList<string> declaredFolders = null)
-            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false, order: 0, declaredFolders: declaredFolders, folderGuids: null, nonRecursiveFolders: null)
+            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false, order: 0, declaredFolders: declaredFolders, folderGuids: null, nonRecursiveFolders: null, overriddenBy: null)
         {
         }
 
@@ -96,8 +103,10 @@ namespace AddressTeller
             int order,
             IReadOnlyList<string> declaredFolders = null,
             IReadOnlyList<FolderGuidDeclaration> folderGuids = null,
-            IReadOnlyList<string> nonRecursiveFolders = null)
+            IReadOnlyList<string> nonRecursiveFolders = null,
+            IReadOnlyList<string> overriddenBy = null)
         {
+            OverriddenBy = overriddenBy ?? Array.Empty<string>();
             DeclaredFolders = AssetCondition.NormalizeFolders(declaredFolders);
             NonRecursiveFolders = AssetCondition.NormalizeFolders(nonRecursiveFolders);
             FolderGuids = folderGuids ?? Array.Empty<FolderGuidDeclaration>();
@@ -115,11 +124,11 @@ namespace AddressTeller
 
         /// <summary>グループ名だけを差し替えた複製を返す（GroupDefault() のセンチネル解決用）。</summary>
         internal AddressRuleEntry WithGroupName(string groupName)
-            => new AddressRuleEntry(groupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, DeclaredFolders, FolderGuids, NonRecursiveFolders);
+            => new AddressRuleEntry(groupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, DeclaredFolders, FolderGuids, NonRecursiveFolders, OverriddenBy);
 
         /// <summary>宣言フォルダだけを差し替えた複製を返す（GUID で宣言されたフォルダの解決結果を反映する用）。</summary>
         internal AddressRuleEntry WithDeclaredFolders(IReadOnlyList<string> declaredFolders, IReadOnlyList<string> nonRecursiveFolders)
-            => new AddressRuleEntry(GroupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, declaredFolders, FolderGuids, nonRecursiveFolders);
+            => new AddressRuleEntry(GroupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, declaredFolders, FolderGuids, nonRecursiveFolders, OverriddenBy);
 
         /// <summary>
         /// Builds an identifier string for error messages from SourceClass / Description / RuleIndex.

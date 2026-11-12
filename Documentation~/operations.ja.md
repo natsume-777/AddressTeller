@@ -82,6 +82,24 @@
 - **未登録アセット。** 宣言フォルダの配下（深さを問わず、大小文字を区別しない）にあるのに、どのルールからもアドレスもラベルも付かないアセット。`Match.InFolder(path, recursive: false)` で宣言したフォルダは直下の子だけが対象です。結果ウィンドウの `Unmatched` タブ（dry-run で1件以上あるときだけ表示。プロジェクトの一部しか見ないルール・アセット・グループのプレビューには出ません）、`json` レポートの `Unmatched[]`、JUnit レポートの `unmatched` testcase、コンソールの1行の件数で確認できます。コンソールの1行は、`CheckCLI`・`ApplyAllCLI`・`ApplyWithValidateCLI`・Apply All / Apply with Validate が、1件以上あるときに出します。フォルダ自体、ルールが例外を送出したアセット、ラベル専用ルールだけにマッチしたアセットは含まれません。`Where` が生ラムダのルールはフォルダを宣言しないため、アセットが載る原因にはなりません。報告専用で、exit code は変わりません。ただし `CheckCLI` に `-addressTellerFailOnUnmatched` を付けると、一覧が空でないとき exit code 2 になります（コンソールの1行も error になり、JUnit の testcase に `<failure>` が付きます）。
 - **一致 0 件のルール。** アドレスを付けうるルールが、プロジェクト全体の走査でどのアセットにもマッチしなかったとき、`ValidationStatus.RuleMatchedNothing`（ブロッキングでない通知）としてルールごとに1件、`Validate`・`CheckCLI`・`Apply All` / `Apply with Validate` の dry-run が報告し、これらと `ApplyAllCLI` / `ApplyWithValidateCLI` がコンソールに警告としてログします。宣言したフォルダが実在しないルールは除かれます（`DeclaredFolderMissing` が原因を示すため）。`ApplyAll` 自体、範囲指定プレビュー、`BuildPredictedSnapshot` の直接呼び出しは、プロジェクト全体を走査しないため報告しません。条件の typo や、移動したフォルダが原因であることが多いです。
 
+### ルールの重なり
+
+広いルールを狭いルールが意図して上書きする場合と、意図せずルールが重なっている場合は、結果が同じです。`Order` の小さいほうが勝ち、何も報告されません。そのため dry-run は、重なっているルールクラスの組——両方がアセットにマッチしてアドレスを出し、一方が `Order` で勝った組——を、アセット数と数件の例パス（Ordinal 順で小さいもの）つきで一覧します。結果ウィンドウの `Overlaps` タブ（1件以上あるときだけ表示。Validate の結果ウィンドウは issues だけを表示します）、`json` レポートの `Overlaps[]`、`DryRunResult.Overlaps` で確認できます。同点（`ConflictingAddress`）と、ルール例外で書き込みが止まったアセットは重なりではありません。一覧はその実行が調べたアセットが対象なので、プロジェクトの一部だけを見るプレビューには、そのアセットの間の重なりだけが載ります。下の設定が ON かどうかに関わらず作られ、exit code は変えません。
+
+意図した上書きは、上書きされる側のルールで `OverriddenBy<TRule>()` により宣言します（[ルールの書き方: ルールの重なり](writing-rules.ja.md#ルールの重なりoverriddenby)参照）。**厳格モード**（`StrictRuleOverlaps`、既定 OFF）を ON にすると、宣言されていない重なりが、ルールクラスの組ごとに1件、ブロッキングの `ValidationStatus.UndeclaredRuleOverlap` として報告されます。
+
+| エントリポイント | 厳格モードの検査 |
+|---|---|
+| `Validate`、`Apply with Validate`（Validate の段） | する——結果はエラーで、Apply with Validate は中止される |
+| `CheckCLI` | する——exit code 2 で終わり、このステータスの JUnit testcase に `<failure>` が付く |
+| `ApplyWithValidateCLI` | する——最初の Validate の段でラン全体が exit code 2 で中止される |
+| `Apply All`（メニュー） | dry-run に他の検証エラーと同じく表示される（ダイアログの issue 件数と結果ウィンドウ）。Console にも個別にログし、Apply All は強制しない旨の警告を1行添える。Apply All は先に検証しないので適用は止まらない。差分がなく、見つかったのが未宣言の重なりだけのときは、ダイアログの代わりに「変更なし」のメッセージを出す |
+| プレビュー（ルール・アセット・グループ） | する（それぞれが調べるアセットについて） |
+| `ApplyAllCLI` | しない——検証しないため。警告を1行ログし、レポートの `Issues` からこのステータスを除きます。`Overlaps[]` はすべての重なりを載せたままです |
+| import 時の自動適用 | しない——この検査を行わない |
+
+どのルールが勝つか、何が書き込まれるかは変わりません。例パスの1つで `Assets > AddressTeller > Explain` を使うと、関与したルールをすべて見られます。
+
 ### 論理バンドル分布サマリ
 
 `json` 形式のレポートには `BundleDistribution` セクションが含まれます（`JsonUtility` は大文字小文字の変換を一切行わないため、JSON のキー名は C# のフィールド名とそのまま一致します）。これは dry-run の Predict 結果（アセット→グループ/ラベル）と各グループの BundleMode（PackTogether/PackSeparately/PackTogetherByLabel）から算出した、ビルド前の論理バンドル単位の個数・分布の概算です。「ルール設計が意図せず巨大バンドル1個や数百分割を生んでいないか」を検知するための目安であり、**実 Addressables ビルドのバンドル数を一致させることを保証しません**。
@@ -105,6 +123,7 @@
 | **マッチしなくなったエントリを削除する** | **OFF** | どのルールにもマッチしなくなった所有グループ内のエントリを削除します——手動登録したエントリも削除対象になります（詳細は後述）。どのグループを所有しているか把握できてから ON にし、直後にメニューから `Apply All` を実行することを推奨します（確認ダイアログと自動スナップショットを経由させるため）。OFF の間、削除されるはずだったエントリは `ValidationStatus.UnmatchedEntryKept`（書き込みを止めない通知）として `Validate` / `Apply with Validate` / `CheckCLI` / Preview 系ウィンドウに報告され、ON にする前に影響範囲を確認できます。 |
 | 1回のランで削除できる stale エントリの上限 | `0`（無制限） | 上の設定の安全弁です。`ApplyAll` の1回のラン（インポート時の自動適用、`ApplyAllCLI`、`ApplyWithValidateCLI` を含む）がこの件数を超えて削除しようとした場合、1件も削除せず、ブロッキングの `ValidationStatus.StaleRemovalLimitExceeded` を報告します（詳細は後述）。`Apply All` / `Apply with Validate` メニュー項目には適用されません。 |
 | 不要になった管理ラベルを削除する | OFF | `Apply All` がエントリを書き込むとき、AddressTeller 自身が過去に書いた（名前がラベル台帳に記録されている）ラベルのうち、そのアセットにどのルールももう出さないものを外します。手で付けた同名のラベルも外れることがあります（後述）。OFF の間、そのようなラベルは `ValidationStatus.StaleManagedLabelKept`（書き込みを止めない通知）として `Validate` / `Apply with Validate` / `CheckCLI` / Preview 系ウィンドウに1件ずつ報告されます。 |
+| ルールの重なりを厳格に検査する | OFF | あるルールのアドレスが別のルールクラスに上書きされている（両方がアセットにマッチし、`Order` の小さいほうが勝つ）場合、上書きされる側のルールが `OverriddenBy<TRule>()` で宣言していなければ、ブロッキングの `ValidationStatus.UndeclaredRuleOverlap` として報告します。`Validate` / `Apply with Validate` / `CheckCLI` / `ApplyWithValidateCLI` / プレビューウィンドウが検査し、import 時の自動適用と `ApplyAllCLI` は検査しません。[ルールの重なり](#ルールの重なり)を参照してください。 |
 | 存在しないグループを自動作成する | OFF | ルールが参照するグループが存在しない場合、エラーにせず自動作成します。 |
 | スナップショット保存先フォルダ | `AddressTellerSnapshots` | スナップショットの保存先（プロジェクトルートからの相対パス）。 |
 | Apply実行前に自動スナップショットを保存する | ON | `Apply All` / `Apply with Validate` メニュー実行前にセーフティスナップショットを保存します。 |

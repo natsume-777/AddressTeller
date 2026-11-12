@@ -111,6 +111,7 @@ namespace AddressTeller
             private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
             private bool _includeFolders;
             private bool _includeFoldersSet;
+            private List<string> _overriddenBy;
 
             internal AddressRuleGroupBuilder(string groupName, string sourceClass, int order)
             {
@@ -208,9 +209,20 @@ namespace AddressTeller
                 return this;
             }
 
+            public IAddressRuleGroupBuilder OverriddenBy<TRule>() where TRule : AddressRuleBase
+            {
+                // SourceClass（AddressRuleBase 派生の GetType().Name）と同じ表記で持つ。蓄積する宣言なので、
+                // 同じ型を繰り返しても黙って上書きではなく無害な重複になるため、重複だけ除く。
+                _overriddenBy ??= new List<string>();
+                var name = typeof(TRule).Name;
+                if (!_overriddenBy.Contains(name))
+                    _overriddenBy.Add(name);
+                return this;
+            }
+
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids, _nonRecursiveFolders);
+                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids, _nonRecursiveFolders, _overriddenBy);
             }
         }
 

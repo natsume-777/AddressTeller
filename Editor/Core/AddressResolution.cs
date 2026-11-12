@@ -41,11 +41,17 @@ namespace AddressTeller
         public IReadOnlyList<string> Labels => _labels ?? Array.Empty<string>();
 
         /// <summary>
+        /// この候補を出したエントリが <c>OverriddenBy&lt;TRule&gt;()</c> で許可したルールクラス名（null は無し）。
+        /// 重なりの集計（<see cref="RuleOverlapCollector"/>）が、負けた候補の上書きが宣言済みかを判定するために使う。
+        /// </summary>
+        internal IReadOnlyList<string> OverriddenBy { get; }
+
+        /// <summary>
         /// 公開コンストラクタではなく internal（ライブラリ内部のルール評価エンジンからのみ構築される想定）。
         /// テストからは <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute"/> 経由で参照する。
         /// <paramref name="labels"/> は、このエントリが候補と同時に出したラベル（null は空）。
         /// </summary>
-        internal AddressCandidate(string groupName, string address, string sourceClass = null, string description = null, int ruleIndex = 0, int order = 0, IReadOnlyList<string> labels = null)
+        internal AddressCandidate(string groupName, string address, string sourceClass = null, string description = null, int ruleIndex = 0, int order = 0, IReadOnlyList<string> labels = null, IReadOnlyList<string> overriddenBy = null)
         {
             GroupName = groupName;
             Address = address;
@@ -54,6 +60,7 @@ namespace AddressTeller
             RuleIndex = ruleIndex;
             Order = order;
             _labels = labels;
+            OverriddenBy = overriddenBy;
         }
 
         /// <summary>Identifier string for error messages, e.g. <c>MyRule &gt; "InFolder(Assets/Characters)"</c>.</summary>

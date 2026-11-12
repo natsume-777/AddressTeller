@@ -393,7 +393,7 @@ namespace AddressTeller.Editor
 
             var diff = Diff(state.Before, after);
             var sortedGroupsToCreate = state.GroupsToCreate.OrderBy(g => g, StringComparer.Ordinal).ToList();
-            return new DryRunResult(diff, issues, sortedGroupsToCreate, after, state.UnmatchedInDeclaredFolders);
+            return new DryRunResult(diff, issues, sortedGroupsToCreate, after, state.UnmatchedInDeclaredFolders, state.Overlaps);
         }
 
         /// <summary>
@@ -534,17 +534,29 @@ namespace AddressTeller.Editor
         public IReadOnlyList<string> UnmatchedInDeclaredFolders { get; }
 
         /// <summary>
+        /// Pairs of rule classes whose addresses overlap in the examined assets: both matched an asset and produced an
+        /// address, and one won on <c>AddressRuleBase.Order</c> (see <see cref="RuleOverlap"/>). Each pair gives the number
+        /// of assets and a few example paths. An asset with a tie (<see cref="ValidationStatus.ConflictingAddress"/>) or whose
+        /// write is blocked by a rule error is not counted. Sorted by overridden then overriding rule name in Ordinal order.
+        /// Only the paths passed to the dry-run are examined, and the list is produced whether or not
+        /// <see cref="AddressTellerSettings.StrictRuleOverlaps"/> is on; the setting only decides whether undeclared
+        /// overlaps are also reported in <see cref="Issues"/> as <see cref="ValidationStatus.UndeclaredRuleOverlap"/>.
+        /// </summary>
+        public IReadOnlyList<RuleOverlap> Overlaps { get; }
+
+        /// <summary>
         /// <see cref="AddressTellerSnapshotService.BuildPredictedSnapshot(AddressableAssetSettings, IEnumerable{string})"/>
         /// でのみ構築される。外部からは意味を持たないインスタンスを組み立てられないよう internal 化している
         /// （テストは InternalsVisibleTo 経由で構築可能）。
         /// </summary>
-        internal DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues, IReadOnlyList<string> groupsToCreate = null, AddressTellerSnapshot after = null, IReadOnlyList<string> unmatchedInDeclaredFolders = null)
+        internal DryRunResult(SnapshotDiff diff, IReadOnlyList<ValidationResult> issues, IReadOnlyList<string> groupsToCreate = null, AddressTellerSnapshot after = null, IReadOnlyList<string> unmatchedInDeclaredFolders = null, IReadOnlyList<RuleOverlap> overlaps = null)
         {
             Diff = diff;
             Issues = issues;
             GroupsToCreate = groupsToCreate ?? Array.Empty<string>();
             After = after;
             UnmatchedInDeclaredFolders = unmatchedInDeclaredFolders ?? Array.Empty<string>();
+            Overlaps = overlaps ?? Array.Empty<RuleOverlap>();
         }
     }
 }

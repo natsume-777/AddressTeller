@@ -91,6 +91,18 @@ namespace AddressTeller.Editor
 
             report.Unmatched = new List<string>(result.UnmatchedInDeclaredFolders);
 
+            // DryRunResult.Overlaps は既に (敗者, 勝者) の Ordinal 順なので、並べ替えずそのまま写す。
+            report.Overlaps = result.Overlaps
+                .Select(o => new AddressTellerReportOverlap
+                {
+                    OverriddenRule = o.OverriddenRule,
+                    OverridingRule = o.OverridingRule,
+                    Count = o.Count,
+                    ExamplePaths = new List<string>(o.ExamplePaths),
+                    Declared = o.IsDeclared,
+                })
+                .ToList();
+
             report.Summary.Added = diff.Added.Count;
             report.Summary.Removed = diff.Removed.Count;
             report.Summary.Changed = diff.Changed.Count;

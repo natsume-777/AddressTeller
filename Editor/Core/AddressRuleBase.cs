@@ -174,5 +174,18 @@ namespace AddressTeller
         /// </summary>
         /// <exception cref="InvalidOperationException">IncludeFolders() has already been called once for this group.</exception>
         IAddressRuleGroupBuilder IncludeFolders();
+
+        /// <summary>
+        /// Declares that this rule's address is meant to be overridden by the rule class <typeparamref name="TRule"/>:
+        /// when both match an asset and <typeparamref name="TRule"/> wins on <see cref="AddressRuleBase.Order"/>, the
+        /// overlap is intended. It does not change which rule wins or what is written. It only marks the pair
+        /// (this rule class, <typeparamref name="TRule"/>) as expected, so that with the "Strict rule overlaps"
+        /// setting on, <c>ValidationStatus.UndeclaredRuleOverlap</c> is reported only for overlaps that
+        /// were not declared this way. May be called several times to allow several rules; repeating the same
+        /// <typeparamref name="TRule"/> has no further effect. The declaration belongs to this
+        /// <c>Group()</c> chain, not to the whole rule class.
+        /// </summary>
+        /// <typeparam name="TRule">The rule class that is allowed to override this rule.</typeparam>
+        IAddressRuleGroupBuilder OverriddenBy<TRule>() where TRule : AddressRuleBase;
     }
 }

@@ -21,6 +21,7 @@ namespace AddressTeller.Editor
             Issues,
             Distribution,
             Unmatched,
+            Overlaps,
         }
 
         // _showDiffTab/_showDistributionTab はドメインリロード後にリセットされ、
@@ -43,6 +44,11 @@ namespace AddressTeller.Editor
         // 1件以上あるときだけタブを表示する。
         private IReadOnlyList<string> _unmatched = Array.Empty<string>();
 
+        // Overlaps タブの内容（広いルールを狭いルールが Order で上書きしている、ルールクラスの組）。
+        // 1件以上あるときだけタブを表示する。Unmatched と違い、絞り込みプレビューでも隠さない：
+        // 絞った範囲で集計した事実は、その範囲について正しいため（ルールを1つに絞れば重なりは空になる）。
+        private IReadOnlyList<RuleOverlap> _overlaps = Array.Empty<RuleOverlap>();
+
         // Distribution タブの集計結果。Show() 時に一度だけ算出する。
         // 算出失敗・対象外（After が null 等）の場合は null（タブ自体を非表示にする）。
         private BundleDistribution _distribution;
@@ -61,6 +67,7 @@ namespace AddressTeller.Editor
         private VisualElement _issueTabContent;
         private VisualElement _distributionTabContent;
         private VisualElement _unmatchedTabContent;
+        private VisualElement _overlapsTabContent;
         private VisualElement _tabBar;
         private HelpBox _noticeBox;
 
@@ -81,6 +88,7 @@ namespace AddressTeller.Editor
             window._onApply = null;
             window._groupsToCreate = dryRun.GroupsToCreate;
             window._unmatched = showUnmatchedTab ? dryRun.UnmatchedInDeclaredFolders : Array.Empty<string>();
+            window._overlaps = dryRun.Overlaps;
             window._notice = notice;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
@@ -105,6 +113,7 @@ namespace AddressTeller.Editor
             window._onApply = onApply;
             window._groupsToCreate = dryRun.GroupsToCreate;
             window._unmatched = dryRun.UnmatchedInDeclaredFolders;
+            window._overlaps = dryRun.Overlaps;
             window._notice = null;
             window.SetDiffRows(AddressTellerResultWindowRows.BuildDiffRows(dryRun.Diff));
             window.SetIssueRows(dryRun.Issues);
@@ -123,6 +132,7 @@ namespace AddressTeller.Editor
             window._onApply = null;
             window._groupsToCreate = Array.Empty<string>();
             window._unmatched = Array.Empty<string>();
+            window._overlaps = Array.Empty<RuleOverlap>();
             window._notice = null;
             window.SetDiffRows(new List<DiffRow>());
             window.SetIssueRows(issues);
@@ -234,6 +244,9 @@ namespace AddressTeller.Editor
             _unmatchedTabContent = new VisualElement();
             _unmatchedTabContent.AddToClassList("at-tab-content");
             root.Add(_unmatchedTabContent);
+            _overlapsTabContent = new VisualElement();
+            _overlapsTabContent.AddToClassList("at-tab-content");
+            root.Add(_overlapsTabContent);
 
             // Diff タブの内容
             BuildDiffTabContent();
@@ -247,6 +260,9 @@ namespace AddressTeller.Editor
             // Unmatched タブの内容
             BuildUnmatchedTabContent();
 
+            // Overlaps タブの内容
+            BuildOverlapsTabContent();
+
             // タブボタンを並べる
             if (_showDiffTab)
             {
@@ -256,6 +272,8 @@ namespace AddressTeller.Editor
                     AddTabButton("Distribution", Tab.Distribution);
                 if (_unmatched.Count > 0)
                     AddTabButton($"Unmatched ({_unmatched.Count})", Tab.Unmatched);
+                if (_overlaps.Count > 0)
+                    AddTabButton($"Overlaps ({_overlaps.Count})", Tab.Overlaps);
             }
             else
             {
@@ -282,6 +300,7 @@ namespace AddressTeller.Editor
             _issueTabContent.style.display = tab == Tab.Issues ? DisplayStyle.Flex : DisplayStyle.None;
             _distributionTabContent.style.display = tab == Tab.Distribution ? DisplayStyle.Flex : DisplayStyle.None;
             _unmatchedTabContent.style.display = tab == Tab.Unmatched ? DisplayStyle.Flex : DisplayStyle.None;
+            _overlapsTabContent.style.display = tab == Tab.Overlaps ? DisplayStyle.Flex : DisplayStyle.None;
 
             // アクティブタブのボタンを太字にする（簡易ハイライト）
             foreach (var btn in _tabBar.Children().OfType<Button>())
@@ -395,6 +414,33 @@ namespace AddressTeller.Editor
             };
             list.style.flexGrow = 1;
             _unmatchedTabContent.Add(list);
+        }
+
+        private void BuildOverlapsTabContent()
+        {
+            _overlapsTabContent.Clear();
+
+            if (_overlaps.Count == 0)
+            {
+                _overlapsTabContent.Add(new HelpBox("No overlapping rules.", HelpBoxMessageType.Info));
+                return;
+            }
+
+            var summaryLabel = new Label(
+                $"{_overlaps.Count} pair(s) of rules overlap: both match an asset and produce an address, and the rule with the lower Order wins. " +
+                "Declare an intended override with OverriddenBy<TRule>() on the overridden rule.");
+            summaryLabel.AddToClassList("at-summary-label");
+            _overlapsTabContent.Add(summaryLabel);
+
+            // 組の数は少ないが、Unmatched タブと同じく仮想化 ListView に揃える（行は1行の文字列）。
+            var items = _overlaps.Select(AddressTellerResultWindowRows.DescribeOverlap).ToList();
+            var list = new ListView(items, 18, () => new Label(), (element, index) => ((Label)element).text = items[index])
+            {
+                selectionType = SelectionType.None,
+                showAlternatingRowBackgrounds = AlternatingRowBackground.ContentOnly,
+            };
+            list.style.flexGrow = 1;
+            _overlapsTabContent.Add(list);
         }
 
         private void BuildDistributionTabContent()

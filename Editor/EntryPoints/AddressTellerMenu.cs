@@ -440,6 +440,9 @@ namespace AddressTeller.Editor
         /// never affects this exit code, since it is a report-only status that does not block a write
         /// (<see cref="ValidationResult.IsBlocking"/> is false) — it is still logged to the console and
         /// included in the report file, but only <see cref="CheckCLI"/>'s exit code reacts to it.
+        /// This entry point does not validate, so it does not enforce <see cref="AddressTellerSettings.StrictRuleOverlaps"/>:
+        /// undeclared rule overlaps are left out of the report's Issues (one warning is logged) while the report's
+        /// <c>Overlaps[]</c> still lists every overlap. Use <see cref="ApplyWithValidateCLI"/> or <see cref="CheckCLI"/> to enforce it.
         /// </summary>
         public static void ApplyAllCLI() => RunCliEntryPoint(nameof(ApplyAllCLI), ApplyAllCLICore);
 
@@ -479,7 +482,8 @@ namespace AddressTeller.Editor
 
             // 母集合を1回確定し、dry-run（レポート化）と実 Apply で同じ対象パスを使う。
             var paths = AssetDatabase.GetAllAssetPaths();
-            var dryRun = AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules, isFullScan: true);
+            var dryRun = ExcludeUndeclaredRuleOverlapIssues(
+                AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules, isFullScan: true));
 
             // dry-run の DuplicateAddress は、書き込んだアドレスと無関係な既存の重複（ApplyAll は報告しない）も含む。
             // コンソールに出すため、ApplyAll の後にログする（ApplyAll が同じ内容を返した分は二重にならないよう除く）。
@@ -529,6 +533,8 @@ namespace AddressTeller.Editor
         /// Apply proceeds and this method exits 0 as long as nothing else is wrong. It is still logged to
         /// the console and included in the report file either way; use <see cref="CheckCLI"/> if you need
         /// its exit code to react to a duplicate.
+        /// With <see cref="AddressTellerSettings.StrictRuleOverlaps"/> on, an undeclared rule overlap
+        /// (<see cref="ValidationStatus.UndeclaredRuleOverlap"/>) found by the initial Validate pass aborts before Apply runs, with exit code 2.
         /// </summary>
         public static void ApplyWithValidateCLI() => RunCliEntryPoint(nameof(ApplyWithValidateCLI), ApplyWithValidateCLICore);
 
@@ -599,6 +605,29 @@ namespace AddressTeller.Editor
             AddressTellerIssueLogger.LogUnmatched(applyDryRun.UnmatchedInDeclaredFolders, failing: false);
 
             ExitWithReport(applyDryRun, applyIssues, cliArgs, settings);
+        }
+
+        /// <summary>
+        /// <see cref="ApplyAllCLI"/> のレポート用 dry-run から、未宣言のルール重なり
+        /// （<see cref="ValidationStatus.UndeclaredRuleOverlap"/>）の issue を外す。
+        /// </summary>
+        /// <remarks>
+        /// 「新設定フラグは全エントリポイントで一貫評価する」という原則からの意図的な逸脱。<see cref="AddressTellerSettings.StrictRuleOverlaps"/>
+        /// は検証（Validate / dry-run）の設定で、検証を行わない ApplyAll の経路（インポート時の自動適用と、この CLI が実際に
+        /// 行う ApplyAll）では評価しない。この CLI の exit code は ApplyAll の結果だけで決まる
+        /// （<see cref="AddressTellerReportBuilder.DetermineApplyExitCode"/>）ので、dry-run 由来の issue を残すと、
+        /// exit code は 0 なのに JUnit だけ failure になる食い違いが出る。そのため issue は外し、重なりの一覧
+        /// （<see cref="DryRunResult.Overlaps"/>、レポートの <c>Overlaps[]</c>）は残す。外したときは、黙って無視せず Warning を1行出す。
+        /// 検証してから適用したい場合は <see cref="ApplyWithValidateCLI"/> を使う。
+        /// </remarks>
+        internal static DryRunResult ExcludeUndeclaredRuleOverlapIssues(DryRunResult dryRun)
+        {
+            var kept = dryRun.Issues.Where(i => i.Status != ValidationStatus.UndeclaredRuleOverlap).ToList();
+            var excluded = dryRun.Issues.Count - kept.Count;
+            if (excluded == 0) return dryRun;
+
+            Debug.LogWarning($"[AddressTeller] Strict rule overlaps is on, but {nameof(ApplyAllCLI)} does not check rule overlaps ({excluded} undeclared overlap(s) not enforced); use {nameof(ApplyWithValidateCLI)} or {nameof(CheckCLI)}. The report still lists every overlap under Overlaps[].");
+            return new DryRunResult(dryRun.Diff, kept, dryRun.GroupsToCreate, dryRun.After, dryRun.UnmatchedInDeclaredFolders, dryRun.Overlaps);
         }
 
         /// <summary>
@@ -678,7 +707,7 @@ namespace AddressTeller.Editor
             foreach (var (before, after) in dryRun.Diff.Changed) diff.AddChanged(before, after);
 
             var issues = dryRun.Issues.Concat(limitIssues).ToList();
-            return new DryRunResult(diff, issues, dryRun.GroupsToCreate, dryRun.After, dryRun.UnmatchedInDeclaredFolders);
+            return new DryRunResult(diff, issues, dryRun.GroupsToCreate, dryRun.After, dryRun.UnmatchedInDeclaredFolders, dryRun.Overlaps);
         }
 
         /// <summary>
@@ -743,6 +772,8 @@ namespace AddressTeller.Editor
         /// error (including a settings load failure and any unexpected exception).
         /// With -addressTellerFailOnUnmatched, exit code 2 is also returned when an asset under a folder some rule
         /// declared gets no address or label from any rule (<see cref="DryRunResult.UnmatchedInDeclaredFolders"/>).
+        /// With <see cref="AddressTellerSettings.StrictRuleOverlaps"/> on, an undeclared rule overlap
+        /// (<see cref="ValidationStatus.UndeclaredRuleOverlap"/>) is a validation error and exits with code 2.
         /// </summary>
         public static void CheckCLI() => RunCliEntryPoint(nameof(CheckCLI), CheckCLICore);
 

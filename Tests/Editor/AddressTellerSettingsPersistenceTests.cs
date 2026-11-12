@@ -275,14 +275,14 @@ namespace AddressTeller.Editor.Tests
         // --- POCO のフィールド数のゴールデン ---
 
         [Test]
-        public void DataType_FieldCount_IsEleven()
+        public void DataType_FieldCount_IsTwelve()
         {
             var fieldCount = typeof(AddressTellerSettingsAsset.Data)
                 .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                 .Length;
 
-            Assert.AreEqual(11, fieldCount,
-                "設定フィールド数(10個 + マーカー1個)を増減したら、Documentation~/operations.md の設定一覧も同時に更新すること。");
+            Assert.AreEqual(12, fieldCount,
+                "設定フィールド数(11個 + マーカー1個)を増減したら、Documentation~/operations.md の設定一覧も同時に更新すること。");
         }
 
         // --- ログ段: SettingsGateLogPolicy.OncePerDistinctFailure ---

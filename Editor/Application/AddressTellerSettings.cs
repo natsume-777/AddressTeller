@@ -65,6 +65,25 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
+        /// When true, a pair of rule classes whose addresses overlap — both match an asset, both produce an address,
+        /// and one wins on <c>AddressRuleBase.Order</c> — is reported as a blocking
+        /// <see cref="ValidationStatus.UndeclaredRuleOverlap"/> unless the overridden rule declared the override with
+        /// <c>OverriddenBy&lt;TRule&gt;()</c>. One result is reported per pair of rule classes. Which rule wins and what is
+        /// written do not change. The check runs in the full-scan and dry-run paths (<c>ValidateAll</c>, the Validate and
+        /// Apply with Validate menu items, <c>CheckCLI</c>, <c>ApplyWithValidateCLI</c>, and the previews, each over the
+        /// assets it examines); it does not run in <c>ApplyAll</c>, so neither the automatic apply on import nor
+        /// <c>ApplyAllCLI</c> reports it. The overlap list (<c>DryRunResult.Overlaps</c>, the Overlaps tab, the report's
+        /// <c>Overlaps[]</c>) is produced whether or not this is on.
+        /// Default: false.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The settings file could not be loaded (it exists but cannot be read, or is not recognized as an AddressTeller settings file), or the label ledger (ProjectSettings/AddressTellerLabelLedger.json) could not be loaded in the same way.</exception>
+        public static bool StrictRuleOverlaps
+        {
+            get => AddressTellerSettingsAsset.Current._strictRuleOverlaps;
+            set => AddressTellerSettingsAsset.Mutate(data => data._strictRuleOverlaps = value);
+        }
+
+        /// <summary>
         /// Safety valve for <see cref="CleanupStaleEntries"/>: the largest number of entries a single
         /// run of <c>AddressTellerService.ApplyAll</c> (and so the automatic apply on import and
         /// <c>ApplyAllCLI</c> / <c>ApplyWithValidateCLI</c>) may remove. When the run would remove more than this — counting both

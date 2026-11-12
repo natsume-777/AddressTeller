@@ -124,6 +124,11 @@ Issues[]
   Path, Status, Message                             (System.String)
   Blocking, Ok                                      (System.Boolean)
 Unmatched[]                                         (System.String。アセットパス、Ordinal 順)
+Overlaps[]
+  OverriddenRule, OverridingRule                      (System.String。ルールクラス名)
+  Count                                               (System.Int32)
+  ExamplePaths[]                                      (System.String。アセットパス、最大3件、Ordinal 順)
+  Declared                                            (System.Boolean)
 BundleDistribution                                  (常に存在する。詳細は下記の注記を参照)
   Bundles[]
     GroupName, Mode, SplitKey                        (System.String)
@@ -134,6 +139,8 @@ SchemaVersion                                         (System.Int32)
 ```
 
 **`Unmatched[]`**: いずれかのルールが宣言したフォルダ（`AddressRuleEntry.DeclaredFolders`。深さを問わず、大小文字を区別しない）の配下にあるのに、どのルールからもアドレスもラベルも付かなかったアセットのパス。`Match.InFolder(path, recursive: false)` で宣言したフォルダは直下の子だけが対象です。フォルダ自体、ルールが例外を送出したアセット、ラベル専用ルールだけにマッチしたアセットは含まれません。フォルダを宣言しないルール（生ラムダの `Where`）は何も寄与しません。報告専用で `Summary.ExitCode` には影響しませんが、`CheckCLI -addressTellerFailOnUnmatched` では空でないとき exit code 2 になります。このキーの追加では `SchemaVersion` を変えていません（任意キーの追加）。
+
+**`Overlaps[]`**: 調べたアセットでアドレスが重なっているルールクラスの組ごとに1件。両方がアセットにマッチしてアドレスを出し、`OverridingRule` が `OverriddenRule` に `Order` で勝った組です（名前は `AddressRuleBase` 派生クラスの型名）。`OverriddenRule`、`OverridingRule`（Ordinal）、`Declared`（false が先）の順に並びます。`Count` はアセット数、`ExamplePaths` はそのうち Ordinal 順で小さいもの、`Declared` は上書きされる側のルールが `OverriddenBy<TRule>()` で宣言していれば true です。上書きされるクラスの一部の `Group()` の連鎖だけが宣言した場合、同じ組が `Declared` の値ごとに2回現れます。同点、ルール例外で書き込みが止まったアセット、ラベル専用ルールは数えません。一覧は `_strictRuleOverlaps` が ON かどうかに関わらず作られ、`Summary.ExitCode` には影響しません。`_strictRuleOverlaps` が ON のとき、未宣言の重なりは `Status` が `"UndeclaredRuleOverlap"` の `Issues[]` の要素にもなり、実行を失敗させうるのはこちらです。`ApplyAllCLI` は（検証しないので）この `Issues[]` の要素を除きますが、`Overlaps[]` は残します。JUnit 出力に重なり専用の testcase はなく、`UndeclaredRuleOverlap` は通常の Validation testcase です。このキーの追加では `SchemaVersion` を変えていません（任意キーの追加）。
 
 **`Summary.Issues`**: `Issues[]` の総件数（`Summary.ExitCode` に影響しない報告専用の通知、例えば `DuplicateAddress` も含む）。`Summary.Issues` が0でないことは、それ自体では実行が失敗したことを意味しません——合否は `Summary.ExitCode` を確認してください。
 
@@ -206,6 +213,7 @@ SchemaVersion                             (System.Int32)
 | `_disabledRuleClassNames` | `string[]` | 空 |
 | `_maxStaleRemovalsPerRun` | `int` | `0`（無制限） |
 | `_removeStaleManagedLabels` | `bool` | `false` |
+| `_strictRuleOverlaps` | `bool` | `false` |
 | `_marker` | `string` | 内部専用、利用者が設定するものではない（後述） |
 
 これらのキーをリネームすることは禁止です。`JsonUtility` は、JSON に対応するキーが無いフィールドをその C# の初期化子の値のまま残すため、リネームすると、既に `AddressTellerSettings.json` をコミット済みのすべてのプロジェクトで、該当設定がエラーも警告もなく既定値へ黙って戻ってしまいます。キーの既定値の変更は**メジャー**（破壊的）変更です。明示的に設定していないプロジェクトの挙動が変わるためです。
@@ -243,6 +251,7 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 - **競合**: 同一アセットに対して2件以上のマッチしたルールが `Address()` を呼んだ場合、`Order` が最小の候補が勝ちそのアドレスが書き込まれます。`Order` がより大きい候補は単に採用されません。競合（`ValidationStatus.ConflictingAddress`）——そのアセットへのアドレス・ラベルとも書き込まれない（アドレスだけでなく、そのアセットへの書き込み自体がスキップされる）——になるのは、*Order が最小*の候補が2件以上で同点だった場合のみです。
 - **例外と勝者の優先度**: 単独の勝者候補が確定した後（同点なし）、勝者以下の `Order`（アドレスを産出しうるルール、`AddressSelector != null`）に例外があった場合、そのアセットには一切書き込みが行われません——勝者のアドレスも、マッチした他のルールのラベルも書かれず、その例外を送出したルールの `RuleError` と合わせて `ValidationStatus.BlockedByRuleError` が報告されます。純粋に優先度がより低い（Order がより大きい）ルールの例外は勝者の書き込みに影響しません。ラベルのみルール（`AddressSelector == null`）の例外は、その `Order` に関わらず `BlockedByRuleError` を発生させません——勝者候補を争う立場にそもそも無いためです。詳しい説明は [Writing Rules: Evaluation Rules and Behavior](writing-rules.ja.md#評価ルールと挙動) を参照してください。
 - **ラベルは勝者ルールに従う**: アセットに書き込まれるラベルは、勝ったアドレスルールのラベルと、マッチしたラベルのみのルール（`AnyGroup()`、および `Address()` を呼ばない `Group()` ルール）すべてのラベルです。`Order` で負けたアドレスルールのラベルは書き込まれません。勝者を決められない場合（`ConflictingAddress`）や書き込みがブロックされる場合（`BlockedByRuleError`）は、ラベルも一切書き込まれません。ラベルの書き込みは加算のみで、既存エントリがどのグループに属していても（所有権を問わず）行われます。マッチしなくなったルールが、既定ではそのラベルを削除することはありません。ラベルを削除するオプトインの経路は2つです: `CleanupStaleEntries`（エントリ全体の削除）と `RemoveStaleManagedLabels`（AddressTeller が書き込むエントリから、名前がラベル台帳にあり、かつそのアセットのルールがもう出さないラベルを外す）。
+- **重なりと `OverriddenBy<TRule>()`**: アセットに対して2つ以上のマッチしたルールがアドレスを出し、一方が `Order` で勝った（同点でなく、ブロックするルール例外もない）とき、（上書きされたルールクラス, 勝ったルールクラス）の組ごとに重なりとして数え、`DryRunResult.Overlaps`、結果ウィンドウ、レポートの `Overlaps[]` で報告します。`Group()` の連鎖に付けた `OverriddenBy<TRule>()` は、その連鎖についてこの組が意図どおりだと宣言します。勝者も書き込まれる内容も変えません。宣言する名前はルールクラスの型名（`typeof(TRule).Name`。`AddressCandidate.SourceClass` と同じ文字列）なので、名前空間だけが違う同名の型は区別できません。`AddressTellerSettings.StrictRuleOverlaps` が ON のとき、未宣言の組ごとに、dry-run とフルスキャン系の経路（`ApplyAll` を除く）でブロッキングの `ValidationStatus.UndeclaredRuleOverlap` になります。
 - **`Where()` / `Address()` / `IncludeFolders()` の単回呼び出し制約**: 同一ルールチェーン上でこれらのいずれかを2回呼び出すと `InvalidOperationException` を投げます。
 - **`GroupDefault()` の解決**: `Configure()` 実行時ではなく評価時に `AddressableAssetSettings.DefaultGroup` から解決されるため、DefaultGroup のリネームに自動的に追従します。
 - **フォルダ**: ルールが `IncludeFolders()` で明示的に opt-in しない限り、フォルダ資産はそのルールの `Where()` に一切渡りません（Predicate 自体が呼ばれません）。ファイルを前提に書かれた既存ルールが、広めの `Where` 条件で意図せずフォルダにマッチしてしまうことを防ぐためです。
@@ -256,7 +265,7 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 
 **メンバー追加がコンパイルを壊さずに実行時の挙動を壊しうる理由**: `default` アームの無い `switch` 文は、認識していない新しいenum値に対してもコンパイル・実行ができてしまいます。ただ何もしない（あるいは周辺コード次第でフォールスルーする）だけで、これは呼び出し元が見たことのないステータスに対してはたいてい誤った挙動です。追加をパッチではなくマイナーとして扱うのはこのためです。ビルドは失敗しないものの、CHANGELOGで可視化され、これらの型を網羅的に `switch` しているコードの持ち主に検討してもらうことを意図しています。
 
-具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress`、`SettingsUnavailable`、`UnmatchedEntryKept`、`BlockedByRuleError`、`DuplicateAssetEntry`、`DeclaredFolderMissing`、`DeclaredFolderCaseMismatch`、`StaleRemovalLimitExceeded`、`AssetTypeUnresolved`、`StaleManagedLabelKept`、`LabelLedgerWriteFailed`、`RuleMatchedNothing` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
+具体的に、`ValidationStatus` は現在 `Ok`、`Skipped`、`LabelsOnly`、`ConflictingAddress`、`GroupNotFound`、`InvalidAddress`、`RuleError`、`GroupWillBeCreated`、`GroupCreationFailed`、`DefaultGroupUnavailable`、`RuleConfigureFailed`、`EntryRejectedByAddressables`、`DuplicateAddress`、`SettingsUnavailable`、`UnmatchedEntryKept`、`BlockedByRuleError`、`DuplicateAssetEntry`、`DeclaredFolderMissing`、`DeclaredFolderCaseMismatch`、`StaleRemovalLimitExceeded`、`AssetTypeUnresolved`、`StaleManagedLabelKept`、`LabelLedgerWriteFailed`、`RuleMatchedNothing`、`UndeclaredRuleOverlap` を持ちます。これはパッケージの汎用的な「このアセットに何が起きたか」を表す結果型であり、最も増える可能性が高い enum であるため、これに対する `switch` にこそ `default` アームを置く重要性が高いといえます。
 
 `SettingsUnavailable` は、設定ファイル（`ProjectSettings/AddressTellerSettings.json`）またはラベル台帳（`ProjectSettings/AddressTellerLabelLedger.json`）が読み込めなかった場合に、結果リストの唯一のエントリとして返されます。`Context` は `RuleConfigureFailed`・`DuplicateAddress`・`DuplicateAssetEntry` と同様 null です（特定の1アセットに関するものではないため）。
 
@@ -279,6 +288,8 @@ Project Settings の UI 自体（`Project Settings > AddressTeller`、プロバ�
 `LabelLedgerWriteFailed`（`IsOk=false`、`IsBlocking=true`）は、`AddressTellerService.ApplyAll` がラベルを書いたものの、その名前をラベル台帳に記録できなかった場合（たとえばファイルがバージョン管理で read-only）に報告されます。ラベルはエントリに書かれており、AddressTeller のものとしてまだ記録されていないだけなので、後のランが記録するまで `RemoveStaleManagedLabels` はそれらを外しません。除去自体は、ラン開始時の台帳に基づくため影響を受けません。`Context` は特定の1アセットに関するものではないため null で、報告されると `ApplyAllCLI` / `ApplyWithValidateCLI` は終了コード 2 になります。生成するのは `ApplyAll` だけです。
 
 `RuleMatchedNothing`（`IsOk=true`）は、アドレスを付けうる（`AddressSelector` が非 null の）ルールが、プロジェクト全体の走査でどのアセットにもマッチせず、評価中に例外も送出しなかったことを知らせる、ブロッキングでない通知です。ルールごとに1件、ルール名を示して報告され、`Context` は null です。宣言したフォルダが実在しないルールは報告されません（`DeclaredFolderMissing` が原因を示すため）。プロジェクト全体を走査する `ValidateAll` と dry-run 系のエントリポイント（`CheckCLI`、Apply All / Apply with Validate メニュー）が報告します。`ApplyAll`、範囲指定プレビュー、`BuildPredictedSnapshot` の直接呼び出しは報告しません——一部のアセットの中でマッチしなかったルールも、ほかの場所ではマッチするかもしれないためです。ラベル専用ルールは報告されません。何も止めません。
+
+`UndeclaredRuleOverlap`（`IsOk=false`、`IsBlocking=true`）は、`AddressTellerSettings.StrictRuleOverlaps` が ON のとき、2つのルールクラスが重なっている——あるアセットで両方がアドレスを出し、一方が `Order` で勝った——のに、上書きされる側のルールが `OverriddenBy<TRule>()` で宣言していない場合に報告されます。ルールクラスの組ごとに1件（上書きされるクラスの一部の `Group()` の連鎖だけが宣言した組は、未宣言のアセットについて）報告され、メッセージにアセット数と数件の例パスが入ります。特定の1アセットについてのものではないため `Context` は null です。同点（`ConflictingAddress`）と、ルール例外で書き込みが止まったアセットは重なりではありません。`ValidateAll` と `BuildPredictedSnapshot`（つまり Validate メニュー、Apply All / Apply with Validate の dry-run、`CheckCLI`、プレビュー。それぞれが調べるアセットについて）が生成し、`ApplyAll` は決して生成しません。import 時の自動適用は報告せず、`ApplyAllCLI` は dry-run から作るレポートからこれを除いて、代わりに警告を1行ログします。ブロッキングなので、Apply with Validate（メニューと `ApplyWithValidateCLI`）は中止され、`CheckCLI` / `ApplyWithValidateCLI` は exit code 2 で終わります。どのルールが勝つか、何が書き込まれるかは変えません。[ルールの書き方: ルールの重なり](writing-rules.ja.md#ルールの重なりoverriddenby)を参照してください。
 
 `DuplicateAddress`（`IsOk` は `ValidationResult.HasWritableDuplicate` に依存し、`IsBlocking` は常に false）は、`ValidateAll`・`BuildPredictedSnapshot` に加えて `ApplyAll`——アセットの import のたびに `AddressTellerPostprocessor` が行う増分適用を含む——でも報告されます。`ApplyAll` はラン末尾に、アドレスを1件以上割り当てた場合だけ検査します（アドレスが変わらない再 import でも、書き込み可能なグループに解決されていれば割り当てた扱いです）。Addressables の全エントリからアドレス索引を作り、そのランが割り当てたアドレスを別のアセットも持っていれば報告します。アドレスを1件も割り当てなかったランでは索引を作りません。そのランが割り当てたアドレスと無関係な既存の重複は `ValidateAll` と dry-run だけが報告します。検査は stale エントリの削除後に行うため、同じランで削除されたエントリは数えません。書き込みを止めることはありません。
 

@@ -250,6 +250,19 @@ namespace AddressTeller.Editor
         /// <see cref="ValidationResult.Context"/> is null, since it is not about one specific asset.
         /// </summary>
         RuleMatchedNothing = 23,
+        /// <summary>
+        /// Two rule classes overlap — for some assets both produced an address and one won on
+        /// <c>AddressRuleBase.Order</c> — and the overridden rule did not declare it with
+        /// <c>OverriddenBy&lt;TRule&gt;()</c>, while <see cref="AddressTellerSettings.StrictRuleOverlaps"/> is on. A blocking
+        /// problem (<see cref="ValidationResult.IsOk"/> is false), so Apply with Validate aborts and <c>CheckCLI</c> exits
+        /// with code 2. Reported once per pair of rule classes, with the number of assets and a few example paths in the
+        /// message. It is reported by <c>ValidateAll</c> and by the dry-run (<c>CheckCLI</c>, the Apply All / Apply with
+        /// Validate menu items, the scoped previews and a direct call to <c>BuildPredictedSnapshot</c>, each for the
+        /// assets it examines); it is not reported by <c>ApplyAll</c> — so not by the automatic apply on import either —
+        /// and <c>ApplyAllCLI</c> leaves it out of its report. Ties (<c>ConflictingAddress</c>) and assets blocked by a
+        /// rule error are not overlaps. <see cref="ValidationResult.Context"/> is null, since it is not about one specific asset.
+        /// </summary>
+        UndeclaredRuleOverlap = 24,
     }
 
     /// <summary>
@@ -260,8 +273,9 @@ namespace AddressTeller.Editor
     /// <see cref="ValidationStatus.StaleRemovalLimitExceeded"/>,
     /// <see cref="ValidationStatus.LabelLedgerWriteFailed"/>,
     /// <see cref="ValidationStatus.RuleMatchedNothing"/>,
+    /// <see cref="ValidationStatus.UndeclaredRuleOverlap"/>,
     /// <see cref="ValidationStatus.AssetTypeUnresolved"/>,
-    /// or <see cref="ValidationStatus.DuplicateAssetEntry"/> — the first eight are not tied to a single asset,
+    /// or <see cref="ValidationStatus.DuplicateAssetEntry"/> — the first nine are not tied to a single asset,
     /// <see cref="ValidationStatus.AssetTypeUnresolved"/> is about one asset but no context can be built for it
     /// (its message names the asset path), and the last is detected before any per-asset evaluation runs
     /// (its message identifies the asset by GUID instead). For <see cref="ValidationStatus.UnmatchedEntryKept"/> it is always
@@ -309,6 +323,8 @@ namespace AddressTeller.Editor
         // 通知であり、ほかのアセットの書き込みも削除も止めない（IsOk = true）。
         // RuleMatchedNothing はフルスキャンで1件にもマッチしなかったアドレス産出ルールの通知であり、
         // 書き込みも削除も止めない（IsOk = true）。
+        // UndeclaredRuleOverlap は StrictRuleOverlaps ON 時の、未宣言の重なり（問題）。IsOk に列挙しないので
+        // IsOk = false / IsBlocking = true になる。
         // StaleManagedLabelKept は RemoveStaleManagedLabels OFF 時、ON なら外されるはずだったラベルが残って
         // いることの通知であり、書き込みも削除も行わない（IsOk = true）。
         // DuplicateAddress は書き込みを止めない報告専用ステータスだが、重複の当事者に「このランで

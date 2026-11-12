@@ -156,6 +156,14 @@ namespace AddressTeller.Editor
                 .ToList();
         }
 
+        /// <summary>
+        /// Overlaps タブの1行（<see cref="RuleOverlap"/> 1組）の表示文字列。宣言済みかどうかを行の末尾で区別する。
+        /// 例パスの一覧は、省略せず持っている分（<see cref="RuleOverlap.ExamplePaths"/>）をそのまま出す。
+        /// </summary>
+        internal static string DescribeOverlap(RuleOverlap overlap)
+            => $"{overlap.OverriddenRule} is overridden by {overlap.OverridingRule} on {overlap.Count} asset(s) " +
+               $"[{(overlap.IsDeclared ? "declared" : "NOT declared")}] e.g. {string.Join(", ", overlap.ExamplePaths)}";
+
         /// <summary>GUID をアセットパスへ解決する。解決できない場合は GUID をそのまま返す。</summary>
         private static string ResolveAssetPath(string guid)
         {

@@ -257,6 +257,14 @@ namespace AddressTeller.Editor
             container.Add(staleLabelsToggle);
             container.Add(MakeDescription("When Apply writes an entry, removes the labels AddressTeller wrote earlier (recorded by name in ProjectSettings/AddressTellerLabelLedger.json) that no rule produces for that asset any more. Labels not in the ledger are never touched; a label with the same name that you added by hand to an entry AddressTeller writes is removed too. Each removal is logged as a warning. Off by default; while off, such labels are reported as a non-blocking StaleManagedLabelKept notice by Validate and dry-run previews. Delete label definitions nobody uses with Tools/AddressTeller/Remove Unused Managed Labels."));
 
+            var strictOverlapsToggle = new Toggle("Strict rule overlaps") { value = AddressTellerSettings.StrictRuleOverlaps };
+            strictOverlapsToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(
+                () => AddressTellerSettings.StrictRuleOverlaps = e.newValue,
+                () => strictOverlapsToggle.SetValueWithoutNotify(AddressTellerSettings.StrictRuleOverlaps)));
+            strictOverlapsToggle.SetEnabled(gateOk);
+            container.Add(strictOverlapsToggle);
+            container.Add(MakeDescription("Reports, as a blocking UndeclaredRuleOverlap issue, a rule whose address is overridden by another rule class (both match an asset, the one with the lower Order wins) when the overridden rule did not declare it with OverriddenBy<TRule>(). Which rule wins and what is written do not change. Checked by Validate, Apply with Validate, CheckCLI, ApplyWithValidateCLI and the previews; not by the automatic apply on import or ApplyAllCLI. Off by default; the list of overlaps is available in the Result Window and the JSON report either way."));
+
             var autoCreateToggle = new Toggle("Auto-create missing groups") { value = AddressTellerSettings.AutoCreateMissingGroups };
             autoCreateToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(
                 () => AddressTellerSettings.AutoCreateMissingGroups = e.newValue,

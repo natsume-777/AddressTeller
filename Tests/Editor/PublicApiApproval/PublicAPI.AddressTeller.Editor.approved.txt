@@ -38,6 +38,7 @@ sealed class AddressTeller.Editor.AddressTellerReport
   Field static const System.Int32 CurrentSchemaVersion = 1
   Field System.Collections.Generic.List<AddressTeller.Editor.AddressTellerReportDrift> Drift
   Field System.Collections.Generic.List<AddressTeller.Editor.AddressTellerReportIssue> Issues
+  Field System.Collections.Generic.List<AddressTeller.Editor.AddressTellerReportOverlap> Overlaps
   Field System.Int32 SchemaVersion
   Field AddressTeller.Editor.AddressTellerReportSummary Summary
   Field System.Collections.Generic.List<System.String> Unmatched
@@ -65,6 +66,14 @@ sealed class AddressTeller.Editor.AddressTellerReportIssue
   Field System.Boolean Ok
   Field System.String Path
   Field System.String Status
+
+sealed class AddressTeller.Editor.AddressTellerReportOverlap
+  Constructor ()
+  Field System.Int32 Count
+  Field System.Boolean Declared
+  Field System.Collections.Generic.List<System.String> ExamplePaths
+  Field System.String OverriddenRule
+  Field System.String OverridingRule
 
 sealed class AddressTeller.Editor.AddressTellerReportSummary
   Constructor ()
@@ -107,6 +116,7 @@ static class AddressTeller.Editor.AddressTellerSettings
   Property static System.Int32 PostprocessOrder { get; set; }
   Property static System.Boolean RemoveStaleManagedLabels { get; set; }
   Property static System.String SnapshotFolder { get; set; }
+  Property static System.Boolean StrictRuleOverlaps { get; set; }
 
 sealed class AddressTeller.Editor.AddressTellerSnapshot
   Constructor ()
@@ -187,6 +197,7 @@ struct AddressTeller.Editor.DryRunResult
   Property AddressTeller.Editor.SnapshotDiff Diff { get; }
   Property System.Collections.Generic.IReadOnlyList<System.String> GroupsToCreate { get; }
   Property System.Collections.Generic.IReadOnlyList<AddressTeller.Editor.ValidationResult> Issues { get; }
+  Property System.Collections.Generic.IReadOnlyList<AddressTeller.RuleOverlap> Overlaps { get; }
   Property System.Collections.Generic.IReadOnlyList<System.String> UnmatchedInDeclaredFolders { get; }
 
 sealed class AddressTeller.Editor.EditorProgressReporter : AddressTeller.Editor.IProgressReporter, System.IDisposable
@@ -263,5 +274,6 @@ enum AddressTeller.Editor.ValidationStatus
   EnumMember Skipped = 1
   EnumMember StaleManagedLabelKept = 21
   EnumMember StaleRemovalLimitExceeded = 19
+  EnumMember UndeclaredRuleOverlap = 24
   EnumMember UnmatchedEntryKept = 14
 
