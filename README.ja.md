@@ -58,13 +58,14 @@ public sealed class GameAddressRules : AddressRuleBase
     public override void Configure(IAddressRuleBuilder rules)
     {
         rules.Group("Characters")
-            .Where(ctx => ctx.Path.StartsWith("Assets/Game/Characters/")
-                       && ctx.Type == typeof(GameObject))
+            .Where(Match.InFolder("Assets/Game/Characters").And(Match.OfType<GameObject>()))
             .Address(ctx => ctx.FileNameWithoutExtension)   // "Player"
             .Label("character");
     }
 }
 ```
+
+`Match.*` で組み立てた条件は `.And()`・`.Or()`・`.Not()` で合成でき、Explain ウィンドウやエラーメッセージに自分で説明を出すので、生ラムダより優先してください（[ルールの書き方](Documentation~/writing-rules.ja.md#match-静的クラス)を参照）。
 
 なお `ctx.FileNameWithoutExtension` は、別フォルダに同名ファイルがあると同じアドレスになります。`Validate` / `Apply All` はそれをアドレス重複として報告します（[ルールの書き方](Documentation~/writing-rules.ja.md#評価ルールと挙動) を参照）。
 

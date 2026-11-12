@@ -60,13 +60,14 @@ public sealed class GameAddressRules : AddressRuleBase
     public override void Configure(IAddressRuleBuilder rules)
     {
         rules.Group("Characters")
-            .Where(ctx => ctx.Path.StartsWith("Assets/Game/Characters/")
-                       && ctx.Type == typeof(GameObject))
+            .Where(Match.InFolder("Assets/Game/Characters").And(Match.OfType<GameObject>()))
             .Address(ctx => ctx.FileNameWithoutExtension)   // "Player"
             .Label("character");
     }
 }
 ```
+
+Conditions built with `Match.*` combine with `.And()`, `.Or()` and `.Not()` and describe themselves in the Explain window and in error messages, so prefer them to a raw lambda (see [Writing Rules](Documentation~/writing-rules.md#match-static-class)).
 
 Note that `ctx.FileNameWithoutExtension` gives the same address to any two files that happen to share a name in different folders — `Validate` / `Apply All` will flag that as a duplicate address if it happens (see [Writing Rules](Documentation~/writing-rules.md#evaluation-rules-and-behavior)).
 

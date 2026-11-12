@@ -26,27 +26,26 @@ namespace AddressTellerSamples
 
             // Prefab (GameObject) -> Prefabs group, label "prefab"
             rules.Group("Prefabs")
-                .Where(ctx => ctx.Path.StartsWith(RootPath) && ctx.Type == typeof(GameObject))
+                .Where(Match.InFolder(RootPath).And(Match.OfType<GameObject>()))
                 .Address(ctx => $"prefab/{ctx.FileNameWithoutExtension}")
                 .Label("prefab");
 
             // Texture -> Textures group, label "texture"
             rules.Group("Textures")
-                .Where(ctx => ctx.Path.StartsWith(RootPath) && ctx.Type == typeof(Texture2D))
+                .Where(Match.InFolder(RootPath).And(Match.OfType<Texture2D>()))
                 .Address(ctx => $"texture/{ctx.FileNameWithoutExtension}")
                 .Label("texture");
 
             // AudioClip -> Audio group, label "audio"
             rules.Group("Audio")
-                .Where(ctx => ctx.Path.StartsWith(RootPath) && ctx.Type == typeof(AudioClip))
+                .Where(Match.InFolder(RootPath).And(Match.OfType<AudioClip>()))
                 .Address(ctx => $"audio/{ctx.FileNameWithoutExtension}")
                 .Label("audio");
 
             // Any ScriptableObject subclass -> Configs group, label "config"
-            // ctx.Type is the exact runtime type, so use IsAssignableFrom to include subclasses.
+            // Match.OfType<T>() accepts any type assignable to T, so subclasses are included.
             rules.Group("Configs")
-                .Where(ctx => ctx.Path.StartsWith(RootPath)
-                           && typeof(ScriptableObject).IsAssignableFrom(ctx.Type))
+                .Where(Match.InFolder(RootPath).And(Match.OfType<ScriptableObject>()))
                 .Address(ctx => $"config/{ctx.FileNameWithoutExtension}")
                 .Label("config");
         }

@@ -19,15 +19,13 @@ namespace AddressTellerSamples
             public override void Configure(IAddressRuleBuilder rules)
             {
                 rules.Group("MyGroup")
-                    .Where(ctx => ctx.Path.StartsWith("Assets/Demo/Characters/")
-                               && ctx.Type == typeof(GameObject))
+                    .Where(Match.InFolder("Assets/Demo/Characters").And(Match.OfType<GameObject>()))
                     .Address(ctx => ctx.FileNameWithoutExtension)
                     .Label("character")
                     .Label("humanoid");
 
                 rules.Group("MyGroup")
-                    .Where(ctx => ctx.Path.StartsWith("Assets/Demo/Items/")
-                               && ctx.Type == typeof(GameObject))
+                    .Where(Match.InFolder("Assets/Demo/Items").And(Match.OfType<GameObject>()))
                     .Address(ctx => ctx.FileNameWithoutExtension)
                     .Label("item");
             }

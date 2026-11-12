@@ -106,6 +106,8 @@ namespace AddressTeller
             private IReadOnlyList<string> _declaredFolders;
             private IReadOnlyList<FolderGuidDeclaration> _folderGuids;
             private IReadOnlyList<string> _nonRecursiveFolders;
+            private IReadOnlyList<string> _negatedFolders;
+            private IReadOnlyList<Func<string, bool>> _scopeExclusions;
             private Func<AssetContext, string> _addressSelector;
             private bool _addressSet;
             private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
@@ -147,6 +149,8 @@ namespace AddressTeller
                 _declaredFolders = condition.Folders;
                 _folderGuids = condition.FolderGuids;
                 _nonRecursiveFolders = condition.NonRecursiveFolders;
+                _negatedFolders = condition.NegatedFolders;
+                _scopeExclusions = condition.ScopeExclusions;
                 return this;
             }
 
@@ -222,7 +226,7 @@ namespace AddressTeller
 
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids, _nonRecursiveFolders, _overriddenBy);
+                return new AddressRuleEntry(_groupName, _predicate, _addressSelector, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids, _nonRecursiveFolders, _overriddenBy, _negatedFolders, _scopeExclusions);
             }
         }
 
@@ -236,6 +240,8 @@ namespace AddressTeller
             private IReadOnlyList<string> _declaredFolders;
             private IReadOnlyList<FolderGuidDeclaration> _folderGuids;
             private IReadOnlyList<string> _nonRecursiveFolders;
+            private IReadOnlyList<string> _negatedFolders;
+            private IReadOnlyList<Func<string, bool>> _scopeExclusions;
             private readonly List<Func<AssetContext, string>> _labelSelectors = new List<Func<AssetContext, string>>();
             private bool _includeFolders;
             private bool _includeFoldersSet;
@@ -273,6 +279,8 @@ namespace AddressTeller
                 _declaredFolders = condition.Folders;
                 _folderGuids = condition.FolderGuids;
                 _nonRecursiveFolders = condition.NonRecursiveFolders;
+                _negatedFolders = condition.NegatedFolders;
+                _scopeExclusions = condition.ScopeExclusions;
                 return this;
             }
 
@@ -308,7 +316,7 @@ namespace AddressTeller
 
             public AddressRuleEntry Build(int index)
             {
-                return new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids, _nonRecursiveFolders);
+                return new AddressRuleEntry(null, _predicate, null, _labelSelectors.AsReadOnly(), _sourceClass, _description, index, _includeFolders, _order, _declaredFolders, _folderGuids, _nonRecursiveFolders, negatedFolders: _negatedFolders, scopeExclusions: _scopeExclusions);
             }
         }
     }

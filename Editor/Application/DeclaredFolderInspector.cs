@@ -101,6 +101,11 @@ namespace AddressTeller.Editor
 
                 var declared = new List<string>(entry.DeclaredFolders);
                 var nonRecursive = new List<string>(entry.NonRecursiveFolders);
+                // 範囲として宣言されたフォルダ（Not の内側でないもの）。除外側にだけ宣言されたパスを
+                // NegatedFolders に残すために持つ。
+                var scope = new HashSet<string>(entry.DeclaredFolders, StringComparer.Ordinal);
+                scope.ExceptWith(entry.NegatedFolders);
+                var negatedPaths = new List<string>();
                 foreach (var declaration in entry.FolderGuids)
                 {
                     var path = resolve(declaration.Guid);
@@ -113,10 +118,18 @@ namespace AddressTeller.Editor
 
                     var normalized = AssetCondition.NormalizeFolder(path);
                     declared.Add(normalized);
-                    if (!declaration.Recursive) nonRecursive.Add(normalized);
+                    if (declaration.Negated) negatedPaths.Add(normalized);
+                    else
+                    {
+                        scope.Add(normalized);
+                        if (!declaration.Recursive) nonRecursive.Add(normalized);
+                    }
                 }
 
-                result.Add(entry.WithDeclaredFolders(declared, nonRecursive));
+                var negated = new List<string>(entry.NegatedFolders);
+                negated.AddRange(negatedPaths);
+                negated.RemoveAll(scope.Contains);
+                result.Add(entry.WithDeclaredFolders(declared, nonRecursive, negated));
             }
 
             foreach (var guid in failedGuids)

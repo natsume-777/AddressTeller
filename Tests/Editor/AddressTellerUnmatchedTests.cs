@@ -75,6 +75,41 @@ namespace AddressTeller.Editor.Tests
             }
         }
 
+        /// <summary>RealFolder のうち SubFolder を Not で除く条件のルール。名前が "Match" で始まるアセットにアドレスを付ける。</summary>
+        private sealed class ExcludeSubRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("StubGroup")
+                    .Where(Match.InFolder(RealFolder).And(Match.InFolder(SubFolder).Not())
+                        .And(ctx => ctx.FileNameWithoutExtension.StartsWith("Match", StringComparison.Ordinal)))
+                    .Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
+        /// <summary>ExcludeSubRule の GroupDefault() 版。</summary>
+        private sealed class ExcludeSubGroupDefaultRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.GroupDefault()
+                    .Where(Match.InFolder(RealFolder).And(Match.InFolder(SubFolder).Not())
+                        .And(ctx => ctx.FileNameWithoutExtension.StartsWith("Match", StringComparison.Ordinal)))
+                    .Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
+        /// <summary>RealFolder のうち SubFolder を Not で除く条件のラベル専用ルール（Real 直下は全部マッチする）。</summary>
+        private sealed class ExcludeSubAnyGroupRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.AnyGroup()
+                    .Where(Match.InFolder(RealFolder).And(Match.InFolder(SubFolder).Not()))
+                    .Label("tagged");
+            }
+        }
+
         /// <summary>フォルダを宣言しない生ラムダのルール。何にもマッチしない。</summary>
         private sealed class RawLambdaNeverRule : AddressRuleBase
         {
@@ -214,6 +249,44 @@ namespace AddressTeller.Editor.Tests
             // MatchA: アドレスルールにマッチ / Labelled: ラベル専用ルールにマッチ / Boom: ルール例外 /
             // Sub と Real と Other: フォルダ / Elsewhere: 宣言フォルダの外。残るのは入れ子の Orphan だけ。
             CollectionAssert.AreEqual(new[] { OrphanPath }, result.UnmatchedInDeclaredFolders);
+        }
+
+        [Test]
+        public void BuildPredictedSnapshot_FolderExcludedByNot_IsNotListedAsUnmatched()
+        {
+            // Sub/Orphan はルールが Not で除いたフォルダの中身。このルールが取らないだけなので未登録に載せない。
+            // Real 直下で名前が Match で始まらない Boom / Labelled は、範囲内で取られていないので載る。
+            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(_settings, AllPaths, Rules(new ExcludeSubRule()));
+
+            CollectionAssert.AreEqual(new[] { BoomPath, LabelledPath }, result.UnmatchedInDeclaredFolders);
+        }
+
+        [Test]
+        public void BuildPredictedSnapshot_FolderExcludedByNot_IsListedWhenAnotherRuleCoversIt()
+        {
+            // 除外は他のルールの範囲を削らない。MatchPrefixRule は Real 配下全体を範囲にするので Orphan は載る。
+            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(_settings, AllPaths,
+                Rules(new ExcludeSubRule(), new MatchPrefixRule()));
+
+            CollectionAssert.Contains(result.UnmatchedInDeclaredFolders, OrphanPath);
+        }
+
+        [Test]
+        public void BuildPredictedSnapshot_GroupDefaultRuleWithNotExclusion_KeepsTheExclusion()
+        {
+            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(_settings, AllPaths, Rules(new ExcludeSubGroupDefaultRule()));
+
+            CollectionAssert.DoesNotContain(result.UnmatchedInDeclaredFolders, OrphanPath);
+            CollectionAssert.Contains(result.UnmatchedInDeclaredFolders, BoomPath);
+        }
+
+        [Test]
+        public void BuildPredictedSnapshot_AnyGroupRuleWithNotExclusion_KeepsTheExclusion()
+        {
+            // ラベル専用ルールは Real 直下を全部取る。Sub/Orphan は除外されるので、一覧は空になる。
+            var result = AddressTellerSnapshotService.BuildPredictedSnapshot(_settings, AllPaths, Rules(new ExcludeSubAnyGroupRule()));
+
+            Assert.AreEqual(0, result.UnmatchedInDeclaredFolders.Count);
         }
 
         [Test]

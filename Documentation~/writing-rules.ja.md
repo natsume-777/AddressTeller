@@ -22,14 +22,14 @@ public abstract class AddressRuleBase
 
 ```csharp
 rules.Group("グループ名")
-    .Where(ctx => /* bool */)                 // 1グループにつき1回のみ。複数条件は && でまとめる
+    .Where(Match.InFolder("Assets/X"))        // 1グループにつき1回のみ。Match.* を優先し、And / Or / Not で合成する（生ラムダ ctx => bool も可）
     .Address(ctx => /* string */)             // または .Address("固定文字列")
     .Label(ctx => /* string */)               // 複数回呼べる。.Label("固定文字列") も可
     .Label("もう一つのラベル");
 ```
 
 - `Where(predicate)` / `Where(predicate, description)` は **1グループにつき1回のみ**呼び出せます。2回目を呼ぶと `InvalidOperationException`。
-  `description` を指定すると、衝突時のエラーメッセージにその説明文が使われます。
+  `description` を指定すると、衝突時のエラーメッセージにその説明文が使われます。条件は、自分で説明を出す [`Match.*` ヘルパー](#match-静的クラス)で組み立てることを推奨します。`description` を手で書くのは、ヘルパーで書けない生ラムダのときだけにしてください。
 - `Address()` を呼ばなければ、そのグループルールはアドレスを発行しません（ラベル付与だけのルールとして使えます）。
 - `Label()` は**何度でも**呼び出せます。ルールのラベルは、そのルールのアドレスがアセットで勝ったときにだけ書き込まれます（[評価ルールと挙動](#評価ルールと挙動)参照）。`Order` で負けたルールのラベルは1つも書き込まれません。`Address()` を呼ばないルール（ラベルのみのルール）はアドレスを競わないため、マッチすれば常にラベルが書き込まれます。どのアドレスルールが勝つかに関わらずラベルを付けたい場合は、別の [`AnyGroup()`](#anygroup) ルールに分けて書いてください。
 - 同じ `Configure()` 内で `Group()` を複数回呼び、複数のルールエントリを定義できます。ただし `Order` はルール**クラス**単位であり `Group()` 呼び出し単位ではないため、同じ `Configure()` 内の複数の `Group()` は必ず同じ `Order` を共有し、同一アセットに対して両方アドレスを発行すれば同点で衝突します（[アドレスの優先順位と競合](#評価ルールと挙動)参照）。優先順位で上書きしたい場合は、別々のクラスに分けて異なる `Order` を与えてください。
@@ -42,7 +42,7 @@ rules.Group("グループ名")
 
 ```csharp
 rules.GroupDefault()
-    .Where(ctx => ctx.IsInFolder("Assets/Game/Misc"))
+    .Where(Match.InFolder("Assets/Game/Misc"))
     .Address(ctx => ctx.FileNameWithoutExtension);
 ```
 
@@ -55,7 +55,7 @@ rules.GroupDefault()
 
 ```csharp
 rules.AnyGroup()
-    .Where(ctx => ctx.Path.Contains("/Characters/"))
+    .Where(Match.Glob("Assets/**/Characters/**"))
     .Label("character");
 ```
 
@@ -87,18 +87,32 @@ rules.Group("Characters")
 - `Match.InFolderByGuid(string guid, bool recursive = true)` — `InFolder` と同じだが、フォルダをアセット GUID で指定する。フォルダを移動・改名してもルールが壊れない
 - `Match.OfType<T>()` — 指定の型（GameObject, Sprite など）にマッチ
 - `Match.Glob(string pattern)` — フルパスに対するワイルドカード照合（例: `Assets/**/*.prefab`。`*` は `/` をまたがないため、単に `*.prefab` と書いても、`/` を含まないアセットパスは存在しないので一件もマッチしない。詳しい構文は `Match.Glob` の XML doc を参照）
+- `Match.WithExtension(params string[] extensions)` — 拡張子が指定したいずれかのファイルにマッチ。`"png"`・`".png"`・`".PNG"` は同じ扱い。ファイル名の最後の拡張子だけを見るため、`".tar.gz"` は黙って一件もマッチしない代わりに `ArgumentException` で拒否される。拡張子を1つも渡さない場合や null・空の要素も例外
 - `Match.All()` — 常に真（条件なしルール）
+- `Match.Any(params AssetCondition[] conditions)` — いずれかの条件にマッチ（OR）。`All()` と違い、条件を1つも渡さないと `ArgumentException`（空の OR は何にもマッチせず、うっかり書きやすいため）。null の要素は `ArgumentNullException`
 - `condition.And(otherCondition)` — 条件を AND 合成
+- `condition.Or(otherCondition)` — 条件を OR 合成
+- `condition.Not()` — 条件を反転
+
+説明は自動で合成されます。`Match.InFolder("Assets/A").And(Match.WithExtension("png", "jpg"))` の説明は `InFolder(Assets/A) AND WithExtension(.png, .jpg)`、OR は `(A OR B)`、NOT は `NOT A` です。OR や NOT の中の `A AND B` は専用の括弧で包まれ（`((A AND B) OR C)`、`NOT (A AND B)`）、入れ子が曖昧になりません。完全な説明を持たないオペランド（生ラムダ、またはそれを含む AND）を含む OR / NOT は、一部だけを伝える誤解を招く説明を作らず、説明なしになります。`description` を手で書くより `Match.*` の合成を優先してください。説明が条件そのものから生成されるので、条件の中身と食い違うことがありません。
+
+```csharp
+// Art 配下のテクスチャ。ただし Raw フォルダは除く
+.Where(Match.InFolder("Assets/Art")
+           .And(Match.WithExtension("png", "jpg"))
+           .And(Match.InFolder("Assets/Art/Raw").Not()))
+```
 
 同じルールファイルで `System.Text.RegularExpressions` も使う場合は、2つの `Match` 型を区別するため `using Match = AddressTeller.Match;` を追加してください。
 
 ### 宣言フォルダ
 
-`Match.InFolder`・`Match.InFolderByGuid`・`Match.Glob` で組み立てた条件は、依存するフォルダを記録します（`AssetCondition.Folders`。`Where()` に渡すと `AddressRuleEntry.DeclaredFolders` に引き継がれます）。`And()` と `Match.All()` は各条件のフォルダの和集合になります。AddressTeller はルールを評価するたび（Apply・Validate・ドライラン）に、宣言された各フォルダが実在するかを検査します。
+`Match.InFolder`・`Match.InFolderByGuid`・`Match.Glob` で組み立てた条件は、依存するフォルダを記録します（`AssetCondition.Folders`。`Where()` に渡すと `AddressRuleEntry.DeclaredFolders` に引き継がれます）。`And()`・`Or()`・`Match.All()`・`Match.Any()` は各条件のフォルダの和集合になり、`Not()` は内側の条件のフォルダをそのまま保ちます。AddressTeller はルールを評価するたび（Apply・Validate・ドライラン）に、宣言された各フォルダが実在するかを検査します。
 
 - 実在しないフォルダは `ValidationStatus.DeclaredFolderMissing`（ブロッキング）として、フォルダごとに1件、宣言したルール名つきで報告されます。実在しないフォルダに依存するルールは何にもマッチしません。多くは綴りの誤りか、移動・削除されたフォルダです。宣言フォルダが1つでも欠けている間は、Configure() に失敗したルールがあるときと同じく、そのランの stale エントリ掃除も止まります。何にもマッチしないルールのせいで、本来は対象のエントリが「無マッチ」に見えているだけかもしれず、それを削除してはいけないためです。素の `ApplyAll` 呼び出しや import 時の自動適用では、それ以外（ほかのルール・ほかのアセット）は通常どおり評価・書き込みされます。ただしブロッキングの問題なので、Apply with Validate（メニュー項目と `ApplyWithValidateCLI`）は Apply 全体を中止し、`CheckCLI` / `ApplyWithValidateCLI` は終了コード 2 になります。
 - 実在するが宣言と大小文字だけ異なるフォルダ（例: `Assets/art` と宣言、実際は `Assets/Art`）は、ブロッキングでない通知 `ValidationStatus.DeclaredFolderCaseMismatch` として報告されます。フォルダの照合は大小文字を区別しないのでルールは効きますが、宣言を実際の名前に直してください。
 - `Match.Glob` は、最初のワイルドカードより前にある、完結したパスセグメントだけから成るフォルダを宣言します。`Assets/Art/*.png` は `Assets/Art`、`Assets/Art*/x` は `Assets` です。先頭がワイルドカードのパターン（例: `**/foo`）には固定のプレフィックスが無く、何も宣言されないため、フォルダの欠落は報告できません。
+- `Not()` の内側で宣言されたフォルダ（`Match.InFolder("Assets/Raw").Not()`）は、実在検査の対象のままですが（存在しないフォルダを除外しても黙って何も起きないので、気づけるようにするため）、ルールが対象とする*範囲*にはなりません。[未登録アセット](operations.ja.md#未登録アセットと一致-0-件のルール)の一覧は、ルールが対象とする範囲だけを見ます。よくある形 `Match.InFolder("Assets/Art").And(Match.InFolder("Assets/Art/Raw").Not())` では、ルールの範囲は `Assets/Art` から否定した条件にマッチするものを除いたものなので、`Assets/Art/Raw` の配下のアセットが、このルールが取らないというだけで載ることはありません。これは `Not` を `Match.InFolder`・`Match.InFolderByGuid`・`Match.Glob` に直接適用し、それを `And()` で合成した場合に働きます（`Glob` は固定プレフィックス全体ではなく、パターンにマッチするパスだけが除外されます）。複数の `And()` オペランドの除外は足し合わされます。除外はそれを宣言したルールだけのものです。別のルールが同じフォルダを範囲にしていれば、そのルールや他のルールがアドレスやラベルを付けない限り、そのアセットは載ります。それ以外の条件への `Not`（`Or(...).Not()` など）は実在検査だけを残します。`Not(Not(x))` は `x` に戻ります。`Or()` と `Match.Any()` は範囲のフォルダを範囲のまま保ち、オペランドの除外は落とします（片方のオペランドだけに掛かっていたため）。そのぶん載る件数は増えることはあっても減りません。同じフォルダが再帰と `recursive: false` の両方で宣言された場合、`Or` では再帰が範囲になり、`And()` では直下の子に絞られます。
 - 生ラムダの条件（`Where(ctx => ctx.IsInFolder("Assets/Foo"))`）は何も宣言せず、報告の対象になりません。検査が欲しい場合は `Match.InFolder` を使ってください。
 - `Match.InFolderByGuid` は、ルールを評価するたびに GUID を現在のフォルダパスへ解決します（引いた結果は、次のランの開始か次の import のどちらか早いほうまで保持されます）。フォルダに引けない GUID は `DeclaredFolderMissing` として報告され、条件は何にもマッチしません。GUID は条件を評価するたびに引かれるため、Editor の単体テストでの `RuleInspector.Collect` でも AddressTeller 自身の評価と同じ結果になります。GUID を引く手段が無い環境（Unity Editor の AssetDatabase の外）では、条件は常にマッチしません。
 

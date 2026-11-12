@@ -584,12 +584,43 @@ namespace AddressTeller.Editor
     /// エントリが宣言したフォルダの「配下」を判定する。宣言が <c>Match.InFolder(path, recursive: false)</c> なら直下のアセット
     /// だけ、それ以外（再帰の InFolder・GUID 宣言・Glob の固定接頭辞）は子孫すべて。大小文字は区別しない
     /// （<see cref="AssetContext.IsInFolder"/> と同じ）。同じフォルダを別のルールが再帰で宣言していれば再帰が優先される
-    /// （そのルールの宣言の配下でもあるため）。毎資産ループから呼ばれるので、接頭辞はコンストラクタで1回だけ組み立てる。
+    /// （そのルールの宣言の配下でもあるため）。
+    /// <para>
+    /// <c>Not</c> の内側にだけ宣言されたフォルダ（<see cref="AddressRuleEntry.NegatedFolders"/>）は範囲に含めない。
+    /// <c>And(InFolder(A), Not(InFolder(A/Raw)))</c> のような直接の否定は、そのエントリの除外
+    /// （<see cref="AddressRuleEntry.ScopeExclusions"/>）として、そのエントリの範囲からだけ差し引く。
+    /// 判定は「どれかのエントリについて、その範囲内かつそのエントリの除外の外」なので、除外は他のエントリの範囲を削らない。
+    /// </para>
+    /// 毎資産ループから呼ばれるので、接頭辞はコンストラクタで1回だけ組み立てる。
     /// </summary>
     internal sealed class DeclaredFolderScope
     {
+        /// <summary>除外を持つエントリ1件分の範囲。除外を持たないエントリは下の合算配列にまとめる。</summary>
+        private sealed class ExcludingScope
+        {
+            private readonly string[] _recursivePrefixes;
+            private readonly string[] _directPrefixes;
+            private readonly Func<string, bool>[] _exclusions;
+
+            public ExcludingScope(string[] recursivePrefixes, string[] directPrefixes, Func<string, bool>[] exclusions)
+            {
+                _recursivePrefixes = recursivePrefixes;
+                _directPrefixes = directPrefixes;
+                _exclusions = exclusions;
+            }
+
+            public bool Contains(string path)
+            {
+                if (!ContainsPrefix(_recursivePrefixes, _directPrefixes, path)) return false;
+                foreach (var exclusion in _exclusions)
+                    if (exclusion(path)) return false;
+                return true;
+            }
+        }
+
         private readonly string[] _recursivePrefixes;
         private readonly string[] _directPrefixes;
+        private readonly ExcludingScope[] _excludingScopes;
 
         public DeclaredFolderScope(IReadOnlyList<AddressRuleEntry> entries)
         {
@@ -597,33 +628,71 @@ namespace AddressTeller.Editor
             var direct = new List<string>();
             var seenRecursive = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var seenDirect = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var excluding = new List<ExcludingScope>();
 
             foreach (var entry in entries)
             {
-                foreach (var folder in entry.DeclaredFolders)
+                if (entry.ScopeExclusions.Count == 0)
                 {
-                    if (entry.NonRecursiveFolders.Contains(folder))
-                    {
-                        if (seenDirect.Add(folder)) direct.Add(folder + "/");
-                    }
-                    else if (seenRecursive.Add(folder))
-                    {
-                        recursive.Add(folder + "/");
-                    }
+                    AddPrefixes(entry, recursive, direct, seenRecursive, seenDirect);
+                    continue;
                 }
+
+                var entryRecursive = new List<string>();
+                var entryDirect = new List<string>();
+                AddPrefixes(entry, entryRecursive, entryDirect,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+                if (entryRecursive.Count + entryDirect.Count == 0) continue;
+                excluding.Add(new ExcludingScope(entryRecursive.ToArray(), entryDirect.ToArray(), entry.ScopeExclusions.ToArray()));
             }
 
             _recursivePrefixes = recursive.ToArray();
             _directPrefixes = direct.ToArray();
+            _excludingScopes = excluding.ToArray();
+        }
+
+        /// <summary>エントリの範囲のフォルダ（Not の内側にだけ宣言されたものを除く）を接頭辞として集める。</summary>
+        private static void AddPrefixes(
+            AddressRuleEntry entry,
+            List<string> recursive,
+            List<string> direct,
+            HashSet<string> seenRecursive,
+            HashSet<string> seenDirect)
+        {
+            foreach (var folder in entry.DeclaredFolders)
+            {
+                // Not の内側にだけ宣言されたフォルダは実在検査専用。除外した中身を「未登録」に並べない。
+                if (entry.NegatedFolders.Contains(folder)) continue;
+
+                if (entry.NonRecursiveFolders.Contains(folder))
+                {
+                    if (seenDirect.Add(folder)) direct.Add(folder + "/");
+                }
+                else if (seenRecursive.Add(folder))
+                {
+                    recursive.Add(folder + "/");
+                }
+            }
         }
 
         public bool Contains(string path)
         {
-            foreach (var prefix in _recursivePrefixes)
+            if (ContainsPrefix(_recursivePrefixes, _directPrefixes, path)) return true;
+
+            foreach (var scope in _excludingScopes)
+                if (scope.Contains(path))
+                    return true;
+
+            return false;
+        }
+
+        private static bool ContainsPrefix(string[] recursivePrefixes, string[] directPrefixes, string path)
+        {
+            foreach (var prefix in recursivePrefixes)
                 if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                     return true;
 
-            foreach (var prefix in _directPrefixes)
+            foreach (var prefix in directPrefixes)
                 if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && path.IndexOf('/', prefix.Length) < 0)
                     return true;
 

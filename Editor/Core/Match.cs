@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -22,12 +23,15 @@ namespace AddressTeller
             if (recursive)
             {
                 var description = $"InFolder({folder})";
-                return new AssetCondition(ctx => ctx.IsInFolder(folder), description, declared);
+                var normalizedRecursive = AssetCondition.NormalizeFolder(folder);
+                return new AssetCondition(ctx => ctx.IsInFolder(folder), description, declared, null, null, null, null,
+                    pathTest: path => AssetCondition.IsUnderFolder(path, normalizedRecursive, true));
             }
 
             var normalized = AssetCondition.NormalizeFolder(folder);
             var descriptionNonRecursive = $"InFolder({folder}, recursive: false)";
-            return new AssetCondition(ctx => ctx.Directory.Equals(normalized, StringComparison.OrdinalIgnoreCase), descriptionNonRecursive, declared, null, declared);
+            return new AssetCondition(ctx => ctx.Directory.Equals(normalized, StringComparison.OrdinalIgnoreCase), descriptionNonRecursive, declared, null, declared, null, null,
+                pathTest: path => AssetCondition.IsUnderFolder(path, normalized, false));
         }
 
         /// <summary>
@@ -57,7 +61,13 @@ namespace AddressTeller
                     ? ctx.IsInFolder(resolved)
                     : ctx.Directory.Equals(resolved, StringComparison.OrdinalIgnoreCase);
             };
-            return new AssetCondition(predicate, description, null, new[] { declaration });
+            // 除外として記録されるときのパス判定。評価のたびに GUID を引く（述語と同じ）。
+            Func<string, bool> pathTest = path =>
+            {
+                var resolved = FolderGuidResolver.Resolve(declaredGuid);
+                return !string.IsNullOrEmpty(resolved) && AssetCondition.IsUnderFolder(path, AssetCondition.NormalizeFolder(resolved), recursive);
+            };
+            return new AssetCondition(predicate, description, null, new[] { declaration }, null, null, null, pathTest);
         }
 
         /// <summary>Returns a condition that checks whether the asset's type is assignable to T.</summary>
@@ -86,7 +96,8 @@ namespace AddressTeller
             var regex = new Regex(ConvertGlobToRegex(pattern), RegexOptions.IgnoreCase | RegexOptions.Compiled);
             var description = $"Glob({pattern})";
             var prefix = ExtractGlobFolderPrefix(pattern);
-            return new AssetCondition(ctx => regex.IsMatch(ctx.Path), description, prefix == null ? null : new[] { prefix });
+            return new AssetCondition(ctx => regex.IsMatch(ctx.Path), description, prefix == null ? null : new[] { prefix }, null, null, null, null,
+                pathTest: path => regex.IsMatch(path));
         }
 
         /// <summary>
@@ -125,6 +136,77 @@ namespace AddressTeller
             }
 
             return combined;
+        }
+
+        /// <summary>
+        /// Combines the given conditions with OR (short-circuit, in the order given). The description is
+        /// "(A OR B OR C)" (see <see cref="AssetCondition.Or"/> for how an operand without a description and an
+        /// "X AND Y" operand are handled). <see cref="AssetCondition.Folders"/> of the result is the union of all
+        /// operands' folders; see <see cref="AssetCondition.Or"/> for the scope rules. With exactly one condition,
+        /// that condition is returned as is.
+        /// Unlike <see cref="All"/>, giving no conditions is an error: an empty OR would match nothing, and a
+        /// rule that silently matches nothing is easy to write by accident (for example from an empty
+        /// array).
+        /// </summary>
+        /// <exception cref="ArgumentException"><paramref name="conditions"/> is null or empty.</exception>
+        /// <exception cref="ArgumentNullException">An element of <paramref name="conditions"/> is null.</exception>
+        public static AssetCondition Any(params AssetCondition[] conditions)
+        {
+            if (conditions == null || conditions.Length == 0)
+                throw new ArgumentException("At least one condition is required.", nameof(conditions));
+            for (var i = 0; i < conditions.Length; i++)
+            {
+                if (conditions[i] == null)
+                    throw new ArgumentNullException(nameof(conditions), $"conditions[{i}] must not be null.");
+            }
+
+            if (conditions.Length == 1) return conditions[0];
+            return AssetCondition.AnyOf((AssetCondition[])conditions.Clone());
+        }
+
+        /// <summary>
+        /// Returns a condition that checks whether the asset's file extension is one of the given extensions.
+        /// Each extension may be written with or without the leading dot and in any letter case
+        /// (<c>"png"</c>, <c>".PNG"</c> and <c>".png"</c> are the same); surrounding white space is ignored.
+        /// Only the last extension of a file name counts, as in <see cref="AssetContext.Extension"/>, so an extension
+        /// that itself contains a dot (<c>".tar.gz"</c>) or a path separator is rejected rather than silently
+        /// never matching. A folder asset (<see cref="AssetContext.IsFolder"/>) has no extension and matches nothing, even if its name contains a dot (for example "Foo.bundle"). The description is
+        /// <c>WithExtension(.png, .jpg)</c> in the normalized spelling, duplicates removed. Declares no folders.
+        /// </summary>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="extensions"/> is null or empty, or an element is null, empty, white space, only a dot,
+        /// or contains another dot or a path separator.
+        /// </exception>
+        public static AssetCondition WithExtension(params string[] extensions)
+        {
+            if (extensions == null || extensions.Length == 0)
+                throw new ArgumentException("At least one extension is required.", nameof(extensions));
+
+            var normalized = new List<string>(extensions.Length);
+            foreach (var extension in extensions)
+            {
+                var trimmed = extension?.Trim();
+                if (!string.IsNullOrEmpty(trimmed) && trimmed[0] == '.') trimmed = trimmed.Substring(1);
+                if (string.IsNullOrEmpty(trimmed) || trimmed.IndexOfAny(new[] { '.', '/', '\\' }) >= 0)
+                    throw new ArgumentException($"'{extension}' is not a single file extension (expected something like \"png\" or \".png\").", nameof(extensions));
+
+                var withDot = "." + trimmed.ToLowerInvariant();
+                if (!normalized.Contains(withDot)) normalized.Add(withDot);
+            }
+
+            var accepted = normalized.ToArray();
+            var description = $"WithExtension({string.Join(", ", accepted)})";
+            return new AssetCondition(ctx =>
+            {
+                // フォルダは拡張子を持たない扱い（"Foo.bundle" のようなフォルダ名の ".bundle" は拡張子ではない）。
+                if (ctx.IsFolder) return false;
+
+                // AssetContext.Extension は小文字化で割り当てるので、1回だけ取り出して比較する。
+                var actual = ctx.Extension;
+                for (var i = 0; i < accepted.Length; i++)
+                    if (string.Equals(actual, accepted[i], StringComparison.Ordinal)) return true;
+                return false;
+            }, description);
         }
 
         /// <summary>glob パターンを正規表現パターン文字列に変換する。</summary>

@@ -19,10 +19,10 @@ namespace AddressTellerSamples
 
         public override void Configure(IAddressRuleBuilder rules)
         {
-            // Targets all assets placed in subfolders under Assets/Demo/
+            // Targets all assets placed in subfolders under Assets/Demo/: everything under it,
+            // except the files directly in Assets/Demo/ itself.
             rules.Group("FolderAssets")
-                .Where(ctx => ctx.Path.StartsWith(RootPath)
-                           && ctx.Path.Substring(RootPath.Length).Contains("/"))
+                .Where(Match.InFolder(RootPath).And(Match.InFolder(RootPath, recursive: false).Not()))
                 // Address: path without extension, relative to Assets/Demo/
                 // Example: "Assets/Demo/Characters/Enemies/Goblin.prefab" -> "Characters/Enemies/Goblin"
                 .Address(ctx => ctx.Directory.Substring(RootPath.Length - 1).TrimStart('/')

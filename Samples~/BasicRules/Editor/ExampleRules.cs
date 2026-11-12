@@ -27,9 +27,9 @@ namespace AddressTellerSamples
 
             // Prefabs under Characters/
             rules.Group("MyGroup")
-                // Where() can only be called once per group. Combine multiple conditions with &&.
-                .Where(ctx => ctx.Path.StartsWith("Assets/Demo/Characters/")
-                           && ctx.Type == typeof(GameObject))
+                // Where() can only be called once per group. Build the condition from Match.* helpers and
+                // combine them with And() / Or() / Not(); they describe themselves in Explain and in error messages.
+                .Where(Match.InFolder("Assets/Demo/Characters").And(Match.OfType<GameObject>()))
                 // Address: file name without extension
                 .Address(ctx => ctx.FileNameWithoutExtension)
                 // Label() can be called any number of times. These labels are written only when this rule's address wins for the asset.
@@ -40,8 +40,7 @@ namespace AddressTellerSamples
             // A group rule without Address() is valid — it only assigns labels without issuing an address.
             // Here Address() is provided, so the address will be the file name without extension.
             rules.Group("MyGroup")
-                .Where(ctx => ctx.Path.StartsWith("Assets/Demo/Items/")
-                           && ctx.Type == typeof(GameObject))
+                .Where(Match.InFolder("Assets/Demo/Items").And(Match.OfType<GameObject>()))
                 .Address(ctx => ctx.FileNameWithoutExtension)
                 .Label("item");
         }

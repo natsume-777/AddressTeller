@@ -271,7 +271,7 @@ namespace AddressTeller.Editor.Tests
             var entry = builder.Entries[0];
 
             CollectionAssert.AreEqual(new[] { nameof(NarrowRule) }, entry.WithGroupName("Resolved").OverriddenBy);
-            CollectionAssert.AreEqual(new[] { nameof(NarrowRule) }, entry.WithDeclaredFolders(new[] { "Assets/A" }, null).OverriddenBy);
+            CollectionAssert.AreEqual(new[] { nameof(NarrowRule) }, entry.WithDeclaredFolders(new[] { "Assets/A" }, null, null).OverriddenBy);
         }
 
         [Test]

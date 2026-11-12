@@ -67,6 +67,18 @@ namespace AddressTeller
         internal IReadOnlyList<string> NonRecursiveFolders { get; }
 
         /// <summary>
+        /// <see cref="DeclaredFolders"/> のうち、実在検査だけのために宣言されたもの（<see cref="AssetCondition.Not"/> の内側）。
+        /// Unmatched の列挙は、これらを範囲に含めない（<see cref="AssetCondition.NegatedFolders"/> を参照）。
+        /// </summary>
+        internal IReadOnlyList<string> NegatedFolders { get; }
+
+        /// <summary>
+        /// このエントリの範囲から取り除くパス条件（<see cref="AssetCondition.ScopeExclusions"/>）。
+        /// Unmatched の列挙が、このエントリの範囲のうち、これに当たるパスを数えないために使う。
+        /// </summary>
+        internal IReadOnlyList<Func<string, bool>> ScopeExclusions { get; }
+
+        /// <summary>
         /// <c>OverriddenBy&lt;TRule&gt;()</c> で許可された、このエントリのアドレスを上書きしてよいルールクラス名
         /// （<see cref="AddressRuleBase"/> 派生の型名。<see cref="SourceClass"/> と同じ表記）。重なりの集計が
         /// 「宣言済みの上書き」と「未宣言の上書き」を分けるために使う。空なら何も許可していない。
@@ -83,7 +95,7 @@ namespace AddressTeller
             string description = null,
             int ruleIndex = 0,
             IReadOnlyList<string> declaredFolders = null)
-            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false, order: 0, declaredFolders: declaredFolders, folderGuids: null, nonRecursiveFolders: null, overriddenBy: null)
+            : this(groupName, predicate, addressSelector, labelSelectors, sourceClass, description, ruleIndex, includesFolders: false, order: 0, declaredFolders: declaredFolders, folderGuids: null, nonRecursiveFolders: null, overriddenBy: null, negatedFolders: null)
         {
         }
 
@@ -104,9 +116,13 @@ namespace AddressTeller
             IReadOnlyList<string> declaredFolders = null,
             IReadOnlyList<FolderGuidDeclaration> folderGuids = null,
             IReadOnlyList<string> nonRecursiveFolders = null,
-            IReadOnlyList<string> overriddenBy = null)
+            IReadOnlyList<string> overriddenBy = null,
+            IReadOnlyList<string> negatedFolders = null,
+            IReadOnlyList<Func<string, bool>> scopeExclusions = null)
         {
+            ScopeExclusions = scopeExclusions ?? Array.Empty<Func<string, bool>>();
             OverriddenBy = overriddenBy ?? Array.Empty<string>();
+            NegatedFolders = AssetCondition.NormalizeFolders(negatedFolders);
             DeclaredFolders = AssetCondition.NormalizeFolders(declaredFolders);
             NonRecursiveFolders = AssetCondition.NormalizeFolders(nonRecursiveFolders);
             FolderGuids = folderGuids ?? Array.Empty<FolderGuidDeclaration>();
@@ -124,11 +140,11 @@ namespace AddressTeller
 
         /// <summary>グループ名だけを差し替えた複製を返す（GroupDefault() のセンチネル解決用）。</summary>
         internal AddressRuleEntry WithGroupName(string groupName)
-            => new AddressRuleEntry(groupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, DeclaredFolders, FolderGuids, NonRecursiveFolders, OverriddenBy);
+            => new AddressRuleEntry(groupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, DeclaredFolders, FolderGuids, NonRecursiveFolders, OverriddenBy, NegatedFolders, ScopeExclusions);
 
         /// <summary>宣言フォルダだけを差し替えた複製を返す（GUID で宣言されたフォルダの解決結果を反映する用）。</summary>
-        internal AddressRuleEntry WithDeclaredFolders(IReadOnlyList<string> declaredFolders, IReadOnlyList<string> nonRecursiveFolders)
-            => new AddressRuleEntry(GroupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, declaredFolders, FolderGuids, nonRecursiveFolders, OverriddenBy);
+        internal AddressRuleEntry WithDeclaredFolders(IReadOnlyList<string> declaredFolders, IReadOnlyList<string> nonRecursiveFolders, IReadOnlyList<string> negatedFolders)
+            => new AddressRuleEntry(GroupName, Predicate, AddressSelector, LabelSelectors, SourceClass, Description, RuleIndex, IncludesFolders, Order, declaredFolders, FolderGuids, nonRecursiveFolders, OverriddenBy, negatedFolders, ScopeExclusions);
 
         /// <summary>
         /// Builds an identifier string for error messages from SourceClass / Description / RuleIndex.

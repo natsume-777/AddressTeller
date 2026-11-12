@@ -22,14 +22,14 @@ Add `AddressTeller.Editor` on top of that only if the same assembly also calls t
 
 ```csharp
 rules.Group("GroupName")
-    .Where(ctx => /* bool */)                 // One call per group only. Combine multiple conditions with &&
+    .Where(Match.InFolder("Assets/X"))        // One call per group only. Prefer Match.* helpers; combine with And / Or / Not (a raw lambda ctx => bool also works)
     .Address(ctx => /* string */)             // Or .Address("fixed string")
     .Label(ctx => /* string */)               // Can be called multiple times. .Label("fixed string") also works
     .Label("another label");
 ```
 
 - `Where(predicate)` / `Where(predicate, description)` can be called **only once per group**. A second call throws `InvalidOperationException`.
-  Providing a `description` includes it in conflict error messages.
+  Providing a `description` includes it in conflict error messages. Prefer building the condition from [`Match.*` helpers](#match-static-class), which describe themselves; write a `description` by hand only for a raw lambda that the helpers cannot express.
 - If `Address()` is not called, the group rule emits no address (useful for label-only rules).
 - `Label()` can be called **any number of times**. A rule's labels are written only when that rule's address wins for the asset (see [Address priority and conflicts](#evaluation-rules-and-behavior)); if its address loses on `Order`, none of its labels are written. A rule with no `Address()` (a label-only rule) is not competing for an address, so its labels are always written when it matches. To attach a label regardless of which address rule wins, put it in a separate [`AnyGroup()`](#anygroup) rule.
 - `Group()` can be called multiple times within the same `Configure()` to define multiple rule entries. Note that `Order` is per rule *class*, not per `Group()` call — several `Group()` calls in the same `Configure()` all share the same `Order` and therefore tie if they ever address the same asset (see [Address priority and conflicts](#evaluation-rules-and-behavior)). To let one rule override another by priority, put them in separate classes with different `Order` values.
@@ -42,7 +42,7 @@ Use `GroupDefault()` instead of `Group("name")` to assign addresses and labels t
 
 ```csharp
 rules.GroupDefault()
-    .Where(ctx => ctx.IsInFolder("Assets/Game/Misc"))
+    .Where(Match.InFolder("Assets/Game/Misc"))
     .Address(ctx => ctx.FileNameWithoutExtension);
 ```
 
@@ -55,7 +55,7 @@ Use `AnyGroup()` for a label-only rule that doesn't target a specific group — 
 
 ```csharp
 rules.AnyGroup()
-    .Where(ctx => ctx.Path.Contains("/Characters/"))
+    .Where(Match.Glob("Assets/**/Characters/**"))
     .Label("character");
 ```
 
@@ -87,18 +87,32 @@ Key methods:
 - `Match.InFolderByGuid(string guid, bool recursive = true)` — like `InFolder`, but identifies the folder by its asset GUID, so the rule keeps working after the folder is moved or renamed
 - `Match.OfType<T>()` — matches assets of the specified type (GameObject, Sprite, etc.)
 - `Match.Glob(string pattern)` — matches by wildcard pattern against the full path (e.g., `Assets/**/*.prefab`; a bare `*.prefab` never matches anything, since `*` doesn't cross `/` and there is no asset path without one — see the XML doc on `Match.Glob` for the full syntax)
+- `Match.WithExtension(params string[] extensions)` — matches files whose extension is any of the given ones. `"png"`, `".png"` and `".PNG"` are the same; only the last extension of a file name counts, so `".tar.gz"` is rejected with an `ArgumentException` rather than silently never matching. Giving no extension, or a null / empty one, also throws
 - `Match.All()` — always true (unconditional rule)
+- `Match.Any(params AssetCondition[] conditions)` — matches when any of the conditions matches (OR). Unlike `All()`, giving no condition throws `ArgumentException` (an empty OR would match nothing, which is easy to write by accident); a null element throws `ArgumentNullException`
 - `condition.And(otherCondition)` — combines conditions with AND
+- `condition.Or(otherCondition)` — combines conditions with OR
+- `condition.Not()` — inverts the condition
+
+Descriptions are composed automatically: `Match.InFolder("Assets/A").And(Match.WithExtension("png", "jpg"))` is described as `InFolder(Assets/A) AND WithExtension(.png, .jpg)`, an OR as `(A OR B)`, a NOT as `NOT A`. An `A AND B` inside an OR or a NOT is wrapped in its own parentheses (`((A AND B) OR C)`, `NOT (A AND B)`), so the nesting is never ambiguous. An OR or a NOT that includes an operand without a complete description (a raw lambda, or an AND that contains one) has no description rather than a misleading partial one. Prefer composing `Match.*` conditions over writing a `description` by hand: the description is then generated from the condition itself, so it cannot drift from what the condition does.
+
+```csharp
+// Textures anywhere under Art, except the Raw folder
+.Where(Match.InFolder("Assets/Art")
+           .And(Match.WithExtension("png", "jpg"))
+           .And(Match.InFolder("Assets/Art/Raw").Not()))
+```
 
 If your rule file also uses `System.Text.RegularExpressions`, add `using Match = AddressTeller.Match;` to disambiguate the two `Match` types.
 
 ### Declared Folders
 
-A condition built with `Match.InFolder`, `Match.InFolderByGuid`, or `Match.Glob` records the folders it depends on (`AssetCondition.Folders`, copied to `AddressRuleEntry.DeclaredFolders` when the condition is passed to `Where()`). `And()` and `Match.All()` take the union of their operands' folders. Whenever AddressTeller evaluates the rules (Apply, Validate, dry-run), it checks that each declared folder exists:
+A condition built with `Match.InFolder`, `Match.InFolderByGuid`, or `Match.Glob` records the folders it depends on (`AssetCondition.Folders`, copied to `AddressRuleEntry.DeclaredFolders` when the condition is passed to `Where()`). `And()`, `Or()`, `Match.All()` and `Match.Any()` take the union of their operands' folders, and `Not()` keeps its operand's folders. Whenever AddressTeller evaluates the rules (Apply, Validate, dry-run), it checks that each declared folder exists:
 
 - A folder that does not exist is reported as `ValidationStatus.DeclaredFolderMissing` (blocking), once per folder, naming the rules that declare it. A rule that depends on a missing folder can never match anything — typically a typo, or a folder that was moved or deleted. While any declared folder is missing, AddressTeller also suspends stale entry cleanup for that whole run, the same as when a rule fails to configure: with a rule silently matching nothing, an entry that merely looks unmatched must not be removed. A plain `ApplyAll` call and the automatic apply on import still evaluate and write everything else (other rules, other assets) as usual; but because the issue is blocking, Apply with Validate (the menu item and `ApplyWithValidateCLI`) aborts the whole Apply, and `CheckCLI` / `ApplyWithValidateCLI` exit with code 2.
 - A folder that exists but differs from the declaration only in letter case (for example `Assets/art` declared, `Assets/Art` on disk) is reported as `ValidationStatus.DeclaredFolderCaseMismatch`, a non-blocking notice. Folder matching ignores case, so the rule still applies; correct the declaration to the real name.
 - `Match.Glob` declares the folder made of the whole path segments before its first wildcard: `Assets/Art/*.png` declares `Assets/Art`, and `Assets/Art*/x` declares `Assets`. A pattern that starts with a wildcard (for example `**/foo`) has no fixed prefix and declares nothing, so a missing folder cannot be reported for it.
+- A folder declared inside `Not()` — `Match.InFolder("Assets/Raw").Not()` — is still checked for existence (excluding a folder that does not exist is a silent no-op, which is worth knowing about), but it is not a *scope* of the rule. The [Unmatched Assets](operations.md#unmatched-assets-and-rules-that-match-nothing) list only looks at what a rule covers. For the common form `Match.InFolder("Assets/Art").And(Match.InFolder("Assets/Art/Raw").Not())`, the rule covers `Assets/Art` except what the negated condition matches, so assets under `Assets/Art/Raw` are not listed just because this rule leaves them out. This applies when the `Not` is applied directly to `Match.InFolder`, `Match.InFolderByGuid` or `Match.Glob` (for `Glob`, only the paths the pattern matches are excluded, not its whole fixed prefix) and is then combined with `And()`; the exclusions of several `And()` operands add up. Exclusions belong to the rule that declares them: if another rule covers the same folder, its assets are still listed unless that rule or another one gives them an address or label. A `Not` of any other condition (such as `Or(...).Not()`) only keeps the existence check. `Not(Not(x))` is `x` again. `Or()` and `Match.Any()` keep a scope folder as a scope and drop the exclusions of their operands (they applied to one operand only), so they can list more assets, never fewer. If the same folder is declared both recursively and with `recursive: false`, the recursive one covers it under `Or()`, while `And()` narrows to the direct children.
 - A condition built from a raw lambda — `Where(ctx => ctx.IsInFolder("Assets/Foo"))` — declares nothing and is never reported. Use `Match.InFolder` if you want the check.
 - `Match.InFolderByGuid` is resolved to the folder's current path each time the rules are evaluated (the lookup result is kept until the start of the next run or the next import, whichever comes first). A GUID that does not resolve to a folder is reported as `DeclaredFolderMissing`, and the condition matches nothing. The GUID is looked up each time the condition is evaluated, so `RuleInspector.Collect` in an Editor unit test sees the same result as AddressTeller's own evaluation; where no GUID lookup is available (outside the Unity Editor's AssetDatabase) the condition never matches.
 
