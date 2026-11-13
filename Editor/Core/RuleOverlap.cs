@@ -150,7 +150,7 @@ namespace AddressTeller
         /// 集計結果を、(敗者, 勝者) のクラス名の Ordinal 順（宣言済みが後）で返す。
         /// 辞書の列挙順に依存しないよう、毎回明示的に並べる。
         /// </summary>
-        public IReadOnlyList<RuleOverlap> ToList()
+        public IReadOnlyList<RuleOverlap> Build()
             => _pairs
                 .OrderBy(p => p.Key.overridden, StringComparer.Ordinal)
                 .ThenBy(p => p.Key.overriding, StringComparer.Ordinal)

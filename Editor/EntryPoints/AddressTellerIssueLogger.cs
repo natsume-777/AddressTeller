@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace AddressTeller.Editor
@@ -114,6 +115,35 @@ namespace AddressTeller.Editor
                 Debug.LogError(message);
             else
                 Debug.LogWarning(message);
+        }
+
+        /// <summary>
+        /// import した資産のうち、宣言フォルダの配下にあるのにどのルールからもアドレスもラベルも付かなかったもの
+        /// （増分適用の結果。既存エントリの有無は見ない）を、件数と先頭数件のパスの Warning 1 行にまとめる。import のたびに通る経路なので、
+        /// 多数が同時に該当しても1行に収める。0 件なら何も出さない。呼び出し側（Postprocessor）が、警告済みのパスを
+        /// 除いた「新しく該当したパス」だけを渡す（再 import で毎回出さない。パス単位で、ドメインリロードまで）。
+        /// 全体は Validate メニューの Unmatched タブで確認できる。
+        /// </summary>
+        public static void LogUnmatchedOnImport(IReadOnlyList<string> unmatched)
+        {
+            var message = BuildUnmatchedOnImportMessage(unmatched);
+            if (message != null) Debug.LogWarning(message);
+        }
+
+        /// <summary>先頭に並べるパスの上限。</summary>
+        internal const int UnmatchedOnImportSampleCount = 3;
+
+        /// <summary><see cref="LogUnmatchedOnImport"/> のメッセージ。0 件なら null。先頭は Ordinal 順で決定的に選ぶ。</summary>
+        internal static string BuildUnmatchedOnImportMessage(IReadOnlyList<string> unmatched)
+        {
+            if (unmatched == null || unmatched.Count == 0) return null;
+
+            var sample = unmatched.OrderBy(p => p, System.StringComparer.Ordinal).Take(UnmatchedOnImportSampleCount).ToList();
+            var isSingle = unmatched.Count == 1;
+            var more = unmatched.Count > sample.Count ? $", and {unmatched.Count - sample.Count} more" : string.Empty;
+            return $"[AddressTeller] Unmatched: {unmatched.Count} imported asset{(isSingle ? "" : "s")} under folders that rules declare " +
+                $"get{(isSingle ? "s" : "")} no address or label from any rule " +
+                $"({string.Join(", ", sample)}{more}). Run Tools/AddressTeller/Validate to list every such asset in the Unmatched tab.";
         }
 
         /// <summary>

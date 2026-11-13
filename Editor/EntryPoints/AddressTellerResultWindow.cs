@@ -125,13 +125,21 @@ namespace AddressTeller.Editor
 
         /// <summary>Issues のみをタブ固定で表示する。ApplyAll/ValidateAll の結果表示用。</summary>
         public static void Show(IReadOnlyList<ValidationResult> issues, string title)
+            => Show(issues, title, Array.Empty<string>());
+
+        /// <summary>
+        /// Issues を表示し、<paramref name="unmatched"/>（宣言フォルダ配下の未登録アセット）が1件以上あるときだけ
+        /// Unmatched タブを加える（Validate メニュー用）。issues が空で未登録だけのときは Unmatched タブから開く。
+        /// </summary>
+        internal static void Show(IReadOnlyList<ValidationResult> issues, string title, IReadOnlyList<string> unmatched)
         {
+            unmatched ??= Array.Empty<string>();
             var window = GetOrCreateWindow(title);
             window._showDiffTab = false;
-            window._currentTab = Tab.Issues;
+            window._currentTab = (issues == null || issues.Count == 0) && unmatched.Count > 0 ? Tab.Unmatched : Tab.Issues;
             window._onApply = null;
             window._groupsToCreate = Array.Empty<string>();
-            window._unmatched = Array.Empty<string>();
+            window._unmatched = unmatched;
             window._overlaps = Array.Empty<RuleOverlap>();
             window._notice = null;
             window.SetDiffRows(new List<DiffRow>());
@@ -274,6 +282,13 @@ namespace AddressTeller.Editor
                     AddTabButton($"Unmatched ({_unmatched.Count})", Tab.Unmatched);
                 if (_overlaps.Count > 0)
                     AddTabButton($"Overlaps ({_overlaps.Count})", Tab.Overlaps);
+            }
+            else if (_unmatched.Count > 0)
+            {
+                // Diff タブなしで未登録アセットがある（Validate）：Issues と Unmatched の2タブ。
+                AddTabButton("Issues", Tab.Issues);
+                AddTabButton($"Unmatched ({_unmatched.Count})", Tab.Unmatched);
+                if (_currentTab != Tab.Unmatched) _currentTab = Tab.Issues;
             }
             else
             {
@@ -433,8 +448,14 @@ namespace AddressTeller.Editor
             _overlapsTabContent.Add(summaryLabel);
 
             // 組の数は少ないが、Unmatched タブと同じく仮想化 ListView に揃える（行は1行の文字列）。
+            // 例パスが長いと1行に収まらず切れるので、行全体をツールチップにも出す。
             var items = _overlaps.Select(AddressTellerResultWindowRows.DescribeOverlap).ToList();
-            var list = new ListView(items, 18, () => new Label(), (element, index) => ((Label)element).text = items[index])
+            var list = new ListView(items, 18, () => new Label(), (element, index) =>
+            {
+                var label = (Label)element;
+                label.text = items[index];
+                label.tooltip = items[index];
+            })
             {
                 selectionType = SelectionType.None,
                 showAlternatingRowBackgrounds = AlternatingRowBackground.ContentOnly,

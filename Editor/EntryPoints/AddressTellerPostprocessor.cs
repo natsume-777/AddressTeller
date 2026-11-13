@@ -48,6 +48,43 @@ namespace AddressTeller.Editor
         /// </summary>
         internal static string s_lastLoggedDuplicateSignature;
 
+        /// <summary>
+        /// 宣言フォルダ内の未登録として警告済みのパス（ドメインリロードまで）。同じ資産の再 import で毎回出さないための記憶。
+        /// ルールからアドレスかラベルが付くようになった・宣言フォルダから出た・削除された・移動したパスは <see cref="TakeNewUnmatched"/> が外すので、
+        /// 増え続けるのは「いま未登録のまま残っているアセット」の数までに収まる。テストからリセットできるよう internal。
+        /// </summary>
+        internal static readonly HashSet<string> s_warnedUnmatchedPaths = new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// 今回の増分適用の結果から、まだ警告していない未登録パスだけを取り出し、警告済みの集合を更新する
+        /// （OnPostprocessAllAssets から切り出した、<see cref="ShouldSkip"/> と同じ意図のテスト用の継ぎ目）。
+        /// <paramref name="evaluatedPaths"/> のうち今回未登録でなくなったもの（ルールが当たるようになった・宣言フォルダの外へ出た）と、
+        /// <paramref name="gonePaths"/>（削除・移動元。フォルダなら配下も）は集合から外す。再び該当すれば新規として返る。
+        /// </summary>
+        internal static List<string> TakeNewUnmatched(
+            IEnumerable<string> evaluatedPaths,
+            IReadOnlyList<string> unmatchedNow,
+            IEnumerable<string> gonePaths)
+        {
+            if (s_warnedUnmatchedPaths.Count > 0)
+            {
+                var stillUnmatched = new HashSet<string>(unmatchedNow, StringComparer.Ordinal);
+                foreach (var path in evaluatedPaths)
+                    if (!stillUnmatched.Contains(path))
+                        s_warnedUnmatchedPaths.Remove(path);
+
+                var gone = gonePaths.ToList();
+                if (gone.Count > 0)
+                    s_warnedUnmatchedPaths.RemoveWhere(p => gone.Any(g => p == g || p.StartsWith(g + "/", StringComparison.Ordinal)));
+            }
+
+            var fresh = new List<string>();
+            foreach (var path in unmatchedNow)
+                if (s_warnedUnmatchedPaths.Add(path))
+                    fresh.Add(path);
+            return fresh;
+        }
+
         /// <summary>Postprocess order, taken from <see cref="AddressTellerSettings.PostprocessOrder"/>.</summary>
         public override int GetPostprocessOrder() => AddressTellerSettings.PostprocessOrder;
 
@@ -111,8 +148,11 @@ namespace AddressTeller.Editor
                 // 報告するのは、割り当てたアドレスを別の guid も持っている重複だけ。それと無関係な既存の重複は
                 // フルスキャンする ValidateAll / BuildPredictedSnapshot（Apply All・Apply with Validate・
                 // 各 CLI が経由する dry-run）側で報告する。DuplicateAddress は書き込みを止めない。
-                var targetPaths = importedAssets.Concat(movedAssets);
-                var issues = AddressTellerService.ApplyAllIncremental(targetPaths, settings);
+                var targetPaths = importedAssets.Concat(movedAssets).ToArray();
+                // 宣言フォルダの配下に置かれたのにどのルールにもマッチしなかった資産（Skipped は issues に積まれない）は、
+                // 今回の評価結果から受け取り、下で1行の Warning にまとめる。
+                var unmatchedInDeclaredFolders = new List<string>();
+                var issues = AddressTellerService.ApplyAllIncremental(targetPaths, settings, unmatchedInDeclaredFolders);
 
                 // 宣言フォルダの検査結果（欠落・大小文字違い）は、直らない限り import のたびに同じ内容で返ってくる。
                 // 重複エントリ検出と同じく、内容が変わらない間は最初の1回だけログする（フルスキャン系の
@@ -122,6 +162,9 @@ namespace AddressTeller.Editor
                 var declaredFolderIssues = issues.Where(IsLogOnceIssue).ToList();
                 AddressTellerIssueLogger.LogAll(issues.Where(i => !IsLogOnceIssue(i)).ToList());
                 LogDeclaredFolderIssuesOnce(declaredFolderIssues);
+                // 警告済みのパスは黙らせ、新しく該当したパスだけを出す。移動元・削除されたパスは集合から外す。
+                AddressTellerIssueLogger.LogUnmatchedOnImport(
+                    TakeNewUnmatched(targetPaths, unmatchedInDeclaredFolders, deletedAssets.Concat(movedFromAssets)));
 
                 if (deletedAssets.Length > 0)
                 {
@@ -217,7 +260,7 @@ namespace AddressTeller.Editor
                 return false;
             }
 
-            var signature = string.Join("", declaredFolderIssues.Select(i => $"{i.Status}:{i.Message}"));
+            var signature = string.Join("", declaredFolderIssues.Select(i => $"{i.Status}:{i.IsOk}:{i.Message}"));
             if (signature == s_lastLoggedDeclaredFolderSignature) return false;
 
             s_lastLoggedDeclaredFolderSignature = signature;

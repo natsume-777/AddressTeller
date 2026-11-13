@@ -404,10 +404,7 @@ namespace AddressTeller.Editor
                 // issues に積まれないため、別リストで持つ。ルール例外があったアセットは「マッチしなかった」と
                 // 言い切れないので除く。フォルダ自体は IncludeFolders() しないルールには評価されない
                 // （常に Skipped になる）ため対象外にする。
-                if (prediction.Validation.Status == ValidationStatus.Skipped
-                    && resolution.Errors.Count == 0
-                    && !ctx.IsFolder
-                    && declaredFolderScope.Contains(ctx.Path))
+                if (IsUnmatchedInDeclaredFolders(resolution, ctx, declaredFolderScope))
                     unmatchedInDeclaredFolders.Add(ctx.Path);
             }
 
@@ -420,7 +417,7 @@ namespace AddressTeller.Editor
 
             // 重なりは、キャンセルされたランでもそこまでに走査した分は事実として正しいので報告する
             // （「一致 0 件」のような、全体を見ないと言えない主張とは違う）。
-            var overlaps = overlapCollector.ToList();
+            var overlaps = overlapCollector.Build();
             if (AddressTellerSettings.StrictRuleOverlaps)
                 AddUndeclaredRuleOverlapIssues(overlaps, issues);
 
@@ -499,6 +496,28 @@ namespace AddressTeller.Editor
         /// </summary>
         public static AssetContext BuildContext(string path, out ValidationResult typeUnresolved)
             => BuildContext(path, p => AssetDatabase.AssetPathToGUID(p), p => AssetDatabase.GetMainAssetTypeAtPath(p), p => AssetDatabase.IsValidFolder(p), out typeUnresolved);
+
+        /// <summary>
+        /// 宣言フォルダの配下にあるのにどのルールにもマッチしなかったアセットか（Unmatched の判定）。
+        /// フルスキャン（<see cref="BuildPredictedRunState"/>）と増分適用（<see cref="AddressTellerService.ApplyAllIncremental(IEnumerable{string}, UnityEditor.AddressableAssets.Settings.AddressableAssetSettings, List{string})"/>）が
+        /// 同じ基準で数えるよう、条件をここに1つだけ置く。基準は評価結果（<see cref="HasNoMatch"/>）で、Apply / Predict の
+        /// status は見ない。status は既存エントリの有無・CleanupStaleEntries・件数上限で変わる
+        /// （Predict は cleanup OFF で所有グループに既存エントリがあると Skipped ではなく UnmatchedEntryKept を返す）が、
+        /// 「どのルールにも当たらなかったか」はそれらと無関係なため。
+        /// </summary>
+        internal static bool IsUnmatchedInDeclaredFolders(AddressResolution resolution, AssetContext ctx, DeclaredFolderScope scope)
+            => HasNoMatch(resolution)
+                && !ctx.IsFolder
+                && scope.Contains(ctx.Path);
+
+        /// <summary>
+        /// どのルールもアドレスもラベルも出さず、ルール例外も無い（評価が完了した上でのマッチなし）。
+        /// <see cref="AddressTellerApplier.Validate"/> が Skipped を返す条件に、例外なしを加えたもの。
+        /// </summary>
+        internal static bool HasNoMatch(AddressResolution resolution)
+            => resolution.AddressCandidates.Count == 0
+                && resolution.LabelOnlyLabels.Count == 0
+                && resolution.Errors.Count == 0;
 
         /// <summary>
         /// <see cref="BuildContext(string, out ValidationResult)"/> の本体。AssetDatabase への依存を引数で

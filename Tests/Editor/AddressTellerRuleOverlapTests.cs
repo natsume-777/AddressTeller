@@ -36,7 +36,7 @@ namespace AddressTeller.Editor.Tests
 
             collector.Add("Assets/A.prefab", Resolution(Candidate("Broad", 100)));
 
-            Assert.AreEqual(0, collector.ToList().Count);
+            Assert.AreEqual(0, collector.Build().Count);
         }
 
         [Test]
@@ -47,7 +47,7 @@ namespace AddressTeller.Editor.Tests
             collector.Add("Assets/B.prefab", Resolution(Candidate("Broad", 100), Candidate("Narrow", 0)));
             collector.Add("Assets/A.prefab", Resolution(Candidate("Narrow", 0), Candidate("Broad", 100)));
 
-            var overlaps = collector.ToList();
+            var overlaps = collector.Build();
             Assert.AreEqual(1, overlaps.Count);
             Assert.AreEqual("Broad", overlaps[0].OverriddenRule);
             Assert.AreEqual("Narrow", overlaps[0].OverridingRule);
@@ -64,7 +64,7 @@ namespace AddressTeller.Editor.Tests
             // 最小 Order が2件で同点（Conflict）。高 Order の3件目が負けていても、勝者が決まらないので数えない。
             collector.Add("Assets/A.prefab", Resolution(Candidate("TieA", 10), Candidate("TieB", 10), Candidate("Broad", 100)));
 
-            Assert.AreEqual(0, collector.ToList().Count);
+            Assert.AreEqual(0, collector.Build().Count);
         }
 
         [Test]
@@ -78,7 +78,7 @@ namespace AddressTeller.Editor.Tests
 
             collector.Add("Assets/A.prefab", resolution);
 
-            Assert.AreEqual(0, collector.ToList().Count, "勝者より優先度が高いアドレス産出ルールが例外を出したアセットは、勝者が確定しない。");
+            Assert.AreEqual(0, collector.Build().Count, "勝者より優先度が高いアドレス産出ルールが例外を出したアセットは、勝者が確定しない。");
         }
 
         [Test]
@@ -92,7 +92,7 @@ namespace AddressTeller.Editor.Tests
 
             collector.Add("Assets/A.prefab", resolution);
 
-            Assert.AreEqual(1, collector.ToList().Count, "勝者より低い優先度のルールの例外は、勝者の書き込みも重なりの集計も止めない。");
+            Assert.AreEqual(1, collector.Build().Count, "勝者より低い優先度のルールの例外は、勝者の書き込みも重なりの集計も止めない。");
         }
 
         [Test]
@@ -103,7 +103,7 @@ namespace AddressTeller.Editor.Tests
             collector.Add("Assets/Declared.prefab", Resolution(Candidate("Narrow", 0), Candidate("Broad", 100, 0, "Narrow")));
             collector.Add("Assets/Undeclared.prefab", Resolution(Candidate("Narrow", 0), Candidate("Broad", 100, 1)));
 
-            var overlaps = collector.ToList();
+            var overlaps = collector.Build();
             Assert.AreEqual(2, overlaps.Count);
             Assert.IsFalse(overlaps[0].IsDeclared, "宣言なしが先。");
             CollectionAssert.AreEqual(new[] { "Assets/Undeclared.prefab" }, overlaps[0].ExamplePaths);
@@ -118,7 +118,7 @@ namespace AddressTeller.Editor.Tests
 
             collector.Add("Assets/A.prefab", Resolution(Candidate("Narrow", 0), Candidate("Broad", 100, 0, "SomethingElse")));
 
-            Assert.IsFalse(collector.ToList().Single().IsDeclared);
+            Assert.IsFalse(collector.Build().Single().IsDeclared);
         }
 
         [Test]
@@ -128,7 +128,23 @@ namespace AddressTeller.Editor.Tests
 
             collector.Add("Assets/A.prefab", Resolution(Candidate("Narrow", 0), Candidate("Broad", 100, 0), Candidate("Broad", 100, 1)));
 
-            Assert.AreEqual(1, collector.ToList().Single().Count);
+            Assert.AreEqual(1, collector.Build().Single().Count);
+        }
+
+        [Test]
+        public void Collector_DeclaringAndUndeclaringEntriesOfOneClassLosingToTheSameWinner_CountTheAssetOncePerKind()
+        {
+            var collector = new RuleOverlapCollector();
+
+            // 同じクラスの2つの Group() の連鎖が、同じアセットで同じ勝者に負ける。一方だけが宣言している。
+            collector.Add("Assets/A.prefab", Resolution(Candidate("Narrow", 0), Candidate("Broad", 100, 0, "Narrow"), Candidate("Broad", 100, 1)));
+
+            var overlaps = collector.Build();
+            Assert.AreEqual(2, overlaps.Count);
+            Assert.IsFalse(overlaps[0].IsDeclared);
+            Assert.AreEqual(1, overlaps[0].Count);
+            Assert.IsTrue(overlaps[1].IsDeclared);
+            Assert.AreEqual(1, overlaps[1].Count);
         }
 
         [Test]
@@ -138,7 +154,7 @@ namespace AddressTeller.Editor.Tests
 
             collector.Add("Assets/A.prefab", Resolution(Candidate("Narrow", 0), Candidate("Mid", 50), Candidate("Broad", 100)));
 
-            var overlaps = collector.ToList();
+            var overlaps = collector.Build();
             Assert.AreEqual(2, overlaps.Count);
             CollectionAssert.AreEqual(new[] { "Broad", "Mid" }, overlaps.Select(o => o.OverriddenRule));
             Assert.IsTrue(overlaps.All(o => o.OverridingRule == "Narrow" && o.Count == 1));
@@ -156,7 +172,7 @@ namespace AddressTeller.Editor.Tests
                 foreach (var path in ordering)
                     collector.Add(path, Resolution(Candidate("Narrow", 0), Candidate("Broad", 100)));
 
-                var overlap = collector.ToList().Single();
+                var overlap = collector.Build().Single();
                 CollectionAssert.AreEqual(expected, overlap.ExamplePaths);
                 Assert.AreEqual(paths.Length, overlap.Count, "例を絞っても、件数は全アセット分。");
             }
@@ -174,7 +190,7 @@ namespace AddressTeller.Editor.Tests
             // Ordinal なので大文字が小文字より先: Gamma < beta。
             CollectionAssert.AreEqual(
                 new[] { ("Gamma", "Alpha"), ("beta", "Alpha"), ("beta", "Zed") },
-                collector.ToList().Select(o => (o.OverriddenRule, o.OverridingRule)));
+                collector.Build().Select(o => (o.OverriddenRule, o.OverridingRule)));
         }
 
         [Test]
@@ -184,7 +200,7 @@ namespace AddressTeller.Editor.Tests
 
             collector.Add("Assets/A.prefab", Resolution(Candidate(null, 0), Candidate("Broad", 100)));
 
-            Assert.AreEqual(RuleOverlapCollector.UnnamedRule, collector.ToList().Single().OverridingRule);
+            Assert.AreEqual(RuleOverlapCollector.UnnamedRule, collector.Build().Single().OverridingRule);
         }
 
         // ---------------- 純粋なテスト: OverriddenBy の宣言 ----------------
@@ -315,8 +331,7 @@ namespace AddressTeller.Editor.Tests
             }
         }
 
-        // TieARule と TieBRule は同じ Order（同点）。RuleCollectorTests が Order 10 / -5 の重複なしを前提にしているため、
-        // ここでは別の値（3）を使う。
+        // TieARule と TieBRule は同じ Order（同点）。
         private sealed class TieARule : AddressRuleBase
         {
             public override int Order => 3;
@@ -759,7 +774,7 @@ namespace AddressTeller.Editor.Tests
 
                 AddressTellerMenu.ReportCheckResult(DryRunWithOverlaps(new List<ValidationResult>(), Overlap(declared: false)), ParseArgs(), null);
 
-                Assert.AreEqual(0, exitCode, "厳格モードが OFF なら、未宣言の重なりがあっても CheckCLI は失敗しない。");
+                Assert.AreEqual(0, exitCode, "Issues に UndeclaredRuleOverlap が無ければ、重なりの一覧（Overlaps）だけでは CheckCLI は失敗しない。");
             }
             finally
             {
@@ -780,6 +795,19 @@ namespace AddressTeller.Editor.Tests
             Assert.AreEqual(1, stripped.Overlaps.Count, "重なりの一覧は残す。");
             Assert.IsEmpty(AddressTellerReportBuilder.BuildApplyFailingStatusNames(stripped.Issues),
                 "exit code（ApplyAll の結果だけで決まる）と JUnit の failure が食い違わない。");
+        }
+
+        [Test]
+        public void ApplyAllCli_DryRun_StrictOn_LeavesOutTheUndeclaredIssue_KeepsTheList_AndNamesThePairInTheWarning()
+        {
+            AddressTellerSettings.StrictRuleOverlaps = true;
+            LogAssert.Expect(LogType.Warning, new Regex("ApplyAllCLI does not check rule overlaps \\(1 undeclared overlap\\(s\\) not enforced \\(e\\.g\\. BroadRule -> NarrowRule\\)"));
+
+            // ApplyAllCLI が実際に使う dry-run の組み立て（配線そのもの）を通す。
+            var dryRun = AddressTellerMenu.BuildApplyAllCliDryRun(_settings, AllPaths, Rules(new BroadRule(), new NarrowRule()));
+
+            Assert.AreEqual(0, OfStatus(dryRun.Issues, ValidationStatus.UndeclaredRuleOverlap).Length);
+            Assert.AreEqual(1, dryRun.Overlaps.Count, "重なりの一覧は残す。");
         }
 
         [Test]
@@ -862,11 +890,19 @@ namespace AddressTeller.Editor.Tests
             var undeclared = AddressTellerResultWindowRows.DescribeOverlap(Overlap(declared: false));
             var declared = AddressTellerResultWindowRows.DescribeOverlap(Overlap(declared: true));
 
-            StringAssert.Contains("Broad is overridden by Narrow on 2 asset(s)", undeclared);
+            StringAssert.Contains("Broad is overridden by Narrow on 2 assets [", undeclared);
             StringAssert.Contains("NOT declared", undeclared);
             StringAssert.Contains("Assets/A.prefab, Assets/B.prefab", undeclared);
             StringAssert.Contains("[declared]", declared);
             StringAssert.DoesNotContain("NOT declared", declared);
+        }
+
+        [Test]
+        public void ResultWindowRows_DescribeOverlap_UsesTheSingularForOneAsset()
+        {
+            var text = AddressTellerResultWindowRows.DescribeOverlap(Overlap(declared: false, count: 1));
+
+            StringAssert.Contains("on 1 asset [", text);
         }
     }
 }

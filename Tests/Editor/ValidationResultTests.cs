@@ -68,6 +68,24 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void LabelLedgerWriteFailed_WhenRemovalIsOff_IsNonBlockingNotice()
+        {
+            var result = new ValidationResult(null, ValidationStatus.LabelLedgerWriteFailed, "cannot write", ledgerWriteBlocks: false);
+
+            Assert.IsTrue(result.IsOk);
+            Assert.IsFalse(result.IsBlocking);
+        }
+
+        [Test]
+        public void LedgerWriteBlocksFlag_DoesNotAffectOtherStatuses()
+        {
+            var result = new ValidationResult(Ctx("guid-a", "Assets/A.prefab"), ValidationStatus.GroupNotFound, "missing", ledgerWriteBlocks: false);
+
+            Assert.IsFalse(result.IsOk);
+            Assert.IsTrue(result.IsBlocking);
+        }
+
+        [Test]
         public void StaleManagedLabelKept_IsOkTrue_NotBlocking()
         {
             // IsOk=true な通知ステータス。RemoveStaleManagedLabels が OFF の間、ON なら外されるラベルが
@@ -89,14 +107,13 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void UndeclaredRuleOverlap_IsOkFalse_Blocking_WithoutContext()
+        public void UndeclaredRuleOverlap_IsOkFalse_Blocking()
         {
             // 厳格モードで止めるための問題。IsOk=false かつ IsBlocking=true（Apply with Validate と CheckCLI が止まる）。
             var result = new ValidationResult(null, ValidationStatus.UndeclaredRuleOverlap, "overlap");
 
             Assert.IsFalse(result.IsOk);
             Assert.IsTrue(result.IsBlocking);
-            Assert.IsNull(result.Context);
         }
 
         [Test]

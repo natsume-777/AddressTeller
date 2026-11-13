@@ -349,13 +349,13 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// Validate() が issue（IsOk=false）を検出した際に結果ウィンドウを開く処理。既定では
-        /// <see cref="AddressTellerResultWindow.Show(IReadOnlyList{ValidationResult}, string)"/> を呼ぶが、
+        /// <see cref="AddressTellerResultWindow.Show(IReadOnlyList{ValidationResult}, string, IReadOnlyList{string})"/> を呼ぶが、
         /// EditMode テストが実ウィンドウを開かずにこの経路（呼ばれた issues・タイトル）を検証できるよう
         /// 差し替え可能にしている（<see cref="s_notifyClearAborted"/> / <see cref="AddressTellerApplyFlow.s_notifyApplyAborted"/>
         /// と同じ「テスト用シーム」の考え方。テストは差し替え後、TearDown で必ず既定値へ戻すこと）。
         /// </summary>
-        internal static Action<IReadOnlyList<ValidationResult>, string> s_showResultWindow =
-            (issues, title) => AddressTellerResultWindow.Show(issues, title);
+        internal static Action<IReadOnlyList<ValidationResult>, string, IReadOnlyList<string>> s_showResultWindow =
+            (issues, title, unmatched) => AddressTellerResultWindow.Show(issues, title, unmatched);
 
         /// <summary>
         /// <see cref="Validate()"/> のコア処理。評価対象ルールを注入可能にしたオーバーロード（internal）。
@@ -368,13 +368,17 @@ namespace AddressTeller.Editor
         {
             if (settings == null) throw new ArgumentNullException(nameof(settings));
 
-            var issues = rules != null
-                ? AddressTellerService.ValidateAll(settings, NullProgressReporter.Instance, rules)
-                : AddressTellerService.ValidateAll(settings);
+            // 宣言フォルダの配下にあるのにどのルールにもマッチしなかったアセット。報告専用（issue ではない）なので
+            // 完了行の判定には使わないが、件数1行のログと結果ウィンドウの Unmatched タブには出す
+            // （コンソールの1行だけでは個々のパスが見えないため）。
+            var unmatched = new List<string>();
+            var issues = AddressTellerService.ValidateAllCollectingUnmatched(settings, rules, unmatched);
 
             if (issues.Count == 0)
             {
                 Debug.Log("[AddressTeller] Validate completed: no issues.");
+                AddressTellerIssueLogger.LogUnmatched(unmatched, failing: false);
+                if (unmatched.Count > 0) s_showResultWindow(issues, "AddressTeller - Validate", unmatched);
                 return;
             }
 
@@ -393,6 +397,8 @@ namespace AddressTeller.Editor
             if (errorCount == 0 && unmatchedEntryKeptCount == 0 && staleManagedLabelKeptCount == 0)
             {
                 Debug.Log($"[AddressTeller] Validate completed: {issues.Count} notice(s) (no issues).");
+                AddressTellerIssueLogger.LogUnmatched(unmatched, failing: false);
+                if (unmatched.Count > 0) s_showResultWindow(issues, "AddressTeller - Validate", unmatched);
                 return;
             }
 
@@ -416,8 +422,9 @@ namespace AddressTeller.Editor
             // Apply All / Apply with Validate の中止経路と対称に、IsOk=false の問題があるか、UnmatchedEntryKept
             // 通知（中身は結果ウィンドウでしか確認できない）が1件以上ある場合に結果ウィンドウを開く。
             // GroupWillBeCreated 等それ以外の通知のみ（errorCount == 0 かつ UnmatchedEntryKept も0件）では
-            // フォーカスを奪わない。
-            s_showResultWindow(issues, "AddressTeller - Validate");
+            // フォーカスを奪わない（ただし Unmatched があれば上の早期 return で開いている）。
+            AddressTellerIssueLogger.LogUnmatched(unmatched, failing: false);
+            s_showResultWindow(issues, "AddressTeller - Validate", unmatched);
         }
 
         /// <summary>
@@ -482,8 +489,7 @@ namespace AddressTeller.Editor
 
             // 母集合を1回確定し、dry-run（レポート化）と実 Apply で同じ対象パスを使う。
             var paths = AssetDatabase.GetAllAssetPaths();
-            var dryRun = ExcludeUndeclaredRuleOverlapIssues(
-                AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules, isFullScan: true));
+            var dryRun = BuildApplyAllCliDryRun(settings, paths, rules);
 
             // dry-run の DuplicateAddress は、書き込んだアドレスと無関係な既存の重複（ApplyAll は報告しない）も含む。
             // コンソールに出すため、ApplyAll の後にログする（ApplyAll が同じ内容を返した分は二重にならないよう除く）。
@@ -608,6 +614,14 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
+        /// <see cref="ApplyAllCLI"/> のレポート用 dry-run。全件走査の予測に <see cref="ExcludeUndeclaredRuleOverlapIssues"/> を
+        /// 掛けたもの。この配線（ApplyAll の経路で厳格モードを評価しない）を、実 CLI を起動せずに検証できるよう切り出してある。
+        /// </summary>
+        internal static DryRunResult BuildApplyAllCliDryRun(AddressableAssetSettings settings, IEnumerable<string> paths, IReadOnlyList<AddressRuleBase> rules)
+            => ExcludeUndeclaredRuleOverlapIssues(
+                AddressTellerSnapshotService.BuildPredictedSnapshot(settings, paths, rules, isFullScan: true));
+
+        /// <summary>
         /// <see cref="ApplyAllCLI"/> のレポート用 dry-run から、未宣言のルール重なり
         /// （<see cref="ValidationStatus.UndeclaredRuleOverlap"/>）の issue を外す。
         /// </summary>
@@ -626,7 +640,10 @@ namespace AddressTeller.Editor
             var excluded = dryRun.Issues.Count - kept.Count;
             if (excluded == 0) return dryRun;
 
-            Debug.LogWarning($"[AddressTeller] Strict rule overlaps is on, but {nameof(ApplyAllCLI)} does not check rule overlaps ({excluded} undeclared overlap(s) not enforced); use {nameof(ApplyWithValidateCLI)} or {nameof(CheckCLI)}. The report still lists every overlap under Overlaps[].");
+            // 何が外れたか分かるよう、先頭の数組（上書きされる側 -> 上書きする側）を添える。
+            var examples = string.Join(", ", dryRun.Overlaps.Where(o => !o.IsDeclared).Take(3).Select(o => $"{o.OverriddenRule} -> {o.OverridingRule}"));
+            var exampleText = examples.Length > 0 ? $" (e.g. {examples})" : string.Empty;
+            Debug.LogWarning($"[AddressTeller] Strict rule overlaps is on, but {nameof(ApplyAllCLI)} does not check rule overlaps ({excluded} undeclared overlap(s) not enforced{exampleText}); use {nameof(ApplyWithValidateCLI)} or {nameof(CheckCLI)}. The report still lists every overlap under Overlaps[].");
             return new DryRunResult(dryRun.Diff, kept, dryRun.GroupsToCreate, dryRun.After, dryRun.UnmatchedInDeclaredFolders, dryRun.Overlaps);
         }
 
@@ -826,7 +843,7 @@ namespace AddressTeller.Editor
         /// </summary>
         internal static void ReportCheckResult(DryRunResult result, AddressTellerCliArgs cliArgs, AddressableAssetSettings settings)
         {
-            Debug.Log($"[AddressTeller] Check completed: Added={result.Diff.Added.Count} / Removed={result.Diff.Removed.Count} / Changed={result.Diff.Changed.Count}, Issues={result.Issues.Count}, Unmatched={result.UnmatchedInDeclaredFolders.Count}.");
+            Debug.Log($"[AddressTeller] Check completed: Added={result.Diff.Added.Count} / Removed={result.Diff.Removed.Count} / Changed={result.Diff.Changed.Count}, Issues={result.Issues.Count}, Unmatched={result.UnmatchedInDeclaredFolders.Count}, Overlaps={result.Overlaps.Count}.");
             AddressTellerIssueLogger.LogAll(result.Issues);
             AddressTellerIssueLogger.LogUnmatched(result.UnmatchedInDeclaredFolders, cliArgs.FailOnUnmatched);
 

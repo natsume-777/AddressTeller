@@ -28,8 +28,9 @@ rules.Group("グループ名")
     .Label("もう一つのラベル");
 ```
 
-- `Where(predicate)` / `Where(predicate, description)` は **1グループにつき1回のみ**呼び出せます。2回目を呼ぶと `InvalidOperationException`。
+- `Where(predicate)` / `Where(predicate, description)` / `Where(condition)` / `Where(condition, description)` は、4つのオーバーロードを合わせて **1グループにつき1回のみ**呼び出せます。2回目を呼ぶと `InvalidOperationException`。
   `description` を指定すると、衝突時のエラーメッセージにその説明文が使われます。条件は、自分で説明を出す [`Match.*` ヘルパー](#match-静的クラス)で組み立てることを推奨します。`description` を手で書くのは、ヘルパーで書けない生ラムダのときだけにしてください。
+- `Match.*` の条件に自分の説明を付けたいときは `Where(condition, description)` を使います。条件が宣言しているもの（フォルダ・除外）はそのまま保たれるので、フォルダ実在検査と未登録アセットの列挙は効いたままで、メッセージ上の説明だけが生成された説明の代わりに `description` になります（`null` なら説明なし）。`Where(Match.InFolder(...).Predicate, "text")` のように書いたり、条件を `Func<AssetContext, bool>` として渡したりしないでください。素の述語に変換され、宣言が落ちます。合成でも同じで、条件 `b` には `a.And(b, "text")` と `new AssetCondition(b, "text")` を使ってください（どちらも `Not(InFolder ...)` の除外を含む宣言が保たれます）。`b` がラムダなら従来どおり述語のオーバーロードです。説明の意味は2つの書き方で異なります。`Where(condition, "text")` はルール全体の説明を置き換え、`a.And(b, "text")` は `b` の説明だけを置き換えて `a` の説明に連結します（`A AND text`。`a.And(ラムダ, "text")` と同じ）。合成全体に説明を付けたいときは `Where(a.And(b), "text")` と書いてください。
 - `Address()` を呼ばなければ、そのグループルールはアドレスを発行しません（ラベル付与だけのルールとして使えます）。
 - `Label()` は**何度でも**呼び出せます。ルールのラベルは、そのルールのアドレスがアセットで勝ったときにだけ書き込まれます（[評価ルールと挙動](#評価ルールと挙動)参照）。`Order` で負けたルールのラベルは1つも書き込まれません。`Address()` を呼ばないルール（ラベルのみのルール）はアドレスを競わないため、マッチすれば常にラベルが書き込まれます。どのアドレスルールが勝つかに関わらずラベルを付けたい場合は、別の [`AnyGroup()`](#anygroup) ルールに分けて書いてください。
 - 同じ `Configure()` 内で `Group()` を複数回呼び、複数のルールエントリを定義できます。ただし `Order` はルール**クラス**単位であり `Group()` 呼び出し単位ではないため、同じ `Configure()` 内の複数の `Group()` は必ず同じ `Order` を共有し、同一アセットに対して両方アドレスを発行すれば同点で衝突します（[アドレスの優先順位と競合](#評価ルールと挙動)参照）。優先順位で上書きしたい場合は、別々のクラスに分けて異なる `Order` を与えてください。
@@ -87,14 +88,14 @@ rules.Group("Characters")
 - `Match.InFolderByGuid(string guid, bool recursive = true)` — `InFolder` と同じだが、フォルダをアセット GUID で指定する。フォルダを移動・改名してもルールが壊れない
 - `Match.OfType<T>()` — 指定の型（GameObject, Sprite など）にマッチ
 - `Match.Glob(string pattern)` — フルパスに対するワイルドカード照合（例: `Assets/**/*.prefab`。`*` は `/` をまたがないため、単に `*.prefab` と書いても、`/` を含まないアセットパスは存在しないので一件もマッチしない。詳しい構文は `Match.Glob` の XML doc を参照）
-- `Match.WithExtension(params string[] extensions)` — 拡張子が指定したいずれかのファイルにマッチ。`"png"`・`".png"`・`".PNG"` は同じ扱い。ファイル名の最後の拡張子だけを見るため、`".tar.gz"` は黙って一件もマッチしない代わりに `ArgumentException` で拒否される。拡張子を1つも渡さない場合や null・空の要素も例外
+- `Match.WithExtension(params string[] extensions)` — 拡張子が指定したいずれかのファイルにマッチ。`"png"`・`".png"`・`".PNG"` は同じ扱い。ファイル名の最後の拡張子だけを見るため、`".tar.gz"` は黙って一件もマッチしない代わりに `ArgumentException` で拒否される。ワイルドカード（`*`・`?`）、拡張子内の空白、ファイル名に使えない文字も同様に拒否される。拡張子を1つも渡さない場合や null・空の要素も例外
 - `Match.All()` — 常に真（条件なしルール）
 - `Match.Any(params AssetCondition[] conditions)` — いずれかの条件にマッチ（OR）。`All()` と違い、条件を1つも渡さないと `ArgumentException`（空の OR は何にもマッチせず、うっかり書きやすいため）。null の要素は `ArgumentNullException`
 - `condition.And(otherCondition)` — 条件を AND 合成
 - `condition.Or(otherCondition)` — 条件を OR 合成
 - `condition.Not()` — 条件を反転
 
-説明は自動で合成されます。`Match.InFolder("Assets/A").And(Match.WithExtension("png", "jpg"))` の説明は `InFolder(Assets/A) AND WithExtension(.png, .jpg)`、OR は `(A OR B)`、NOT は `NOT A` です。OR や NOT の中の `A AND B` は専用の括弧で包まれ（`((A AND B) OR C)`、`NOT (A AND B)`）、入れ子が曖昧になりません。完全な説明を持たないオペランド（生ラムダ、またはそれを含む AND）を含む OR / NOT は、一部だけを伝える誤解を招く説明を作らず、説明なしになります。`description` を手で書くより `Match.*` の合成を優先してください。説明が条件そのものから生成されるので、条件の中身と食い違うことがありません。
+説明は自動で合成されます。`Match.InFolder("Assets/A").And(Match.WithExtension("png", "jpg"))` の説明は `InFolder(Assets/A) AND WithExtension(.png, .jpg)`、OR は `(A OR B)`、NOT は `NOT A` です。OR や NOT の中の `A AND B` は専用の括弧で包まれ（`((A AND B) OR C)`、`NOT (A AND B)`）、入れ子が曖昧になりません。手で書いた説明に ` AND ` や ` OR ` が含まれていれば、同じように括弧で包まれます。完全な説明を持たないオペランド（生ラムダ、またはそれを含む AND）を含む OR / NOT は、一部だけを伝える誤解を招く説明を作らず、説明なしになります。`description` を手で書くより `Match.*` の合成を優先してください。説明が条件そのものから生成されるので、条件の中身と食い違うことがありません。
 
 ```csharp
 // Art 配下のテクスチャ。ただし Raw フォルダは除く
@@ -109,12 +110,12 @@ rules.Group("Characters")
 
 `Match.InFolder`・`Match.InFolderByGuid`・`Match.Glob` で組み立てた条件は、依存するフォルダを記録します（`AssetCondition.Folders`。`Where()` に渡すと `AddressRuleEntry.DeclaredFolders` に引き継がれます）。`And()`・`Or()`・`Match.All()`・`Match.Any()` は各条件のフォルダの和集合になり、`Not()` は内側の条件のフォルダをそのまま保ちます。AddressTeller はルールを評価するたび（Apply・Validate・ドライラン）に、宣言された各フォルダが実在するかを検査します。
 
-- 実在しないフォルダは `ValidationStatus.DeclaredFolderMissing`（ブロッキング）として、フォルダごとに1件、宣言したルール名つきで報告されます。実在しないフォルダに依存するルールは何にもマッチしません。多くは綴りの誤りか、移動・削除されたフォルダです。宣言フォルダが1つでも欠けている間は、Configure() に失敗したルールがあるときと同じく、そのランの stale エントリ掃除も止まります。何にもマッチしないルールのせいで、本来は対象のエントリが「無マッチ」に見えているだけかもしれず、それを削除してはいけないためです。素の `ApplyAll` 呼び出しや import 時の自動適用では、それ以外（ほかのルール・ほかのアセット）は通常どおり評価・書き込みされます。ただしブロッキングの問題なので、Apply with Validate（メニュー項目と `ApplyWithValidateCLI`）は Apply 全体を中止し、`CheckCLI` / `ApplyWithValidateCLI` は終了コード 2 になります。
+- 実在しないフォルダは `ValidationStatus.DeclaredFolderMissing`（ブロッキング）として、フォルダごとに1件、宣言したルール名つきで報告されます。実在しないフォルダに依存するルールは何にもマッチしません。多くは綴りの誤りか、移動・削除されたフォルダです。（`Not()` の内側では逆になります。`Match.InFolder("Assets/Missing").Not()` は何も除外しないので、これを使ったルールは、ほかの条件を満たすすべてのアセットにマッチして書き込みます。素の `ApplyAll` や import 時の自動適用は、欠落フォルダの問題では止まらないため、そこでも書き込まれます。）宣言フォルダが1つでも欠けている間は、Configure() に失敗したルールがあるときと同じく、そのランの stale エントリ掃除も止まります。何にもマッチしないルールのせいで、本来は対象のエントリが「無マッチ」に見えているだけかもしれず、それを削除してはいけないためです。素の `ApplyAll` 呼び出しや import 時の自動適用では、それ以外（ほかのルール・ほかのアセット）は通常どおり評価・書き込みされます。ただしブロッキングの問題なので、Apply with Validate（メニュー項目と `ApplyWithValidateCLI`）は Apply 全体を中止し、`CheckCLI` / `ApplyWithValidateCLI` は終了コード 2 になります。
 - 実在するが宣言と大小文字だけ異なるフォルダ（例: `Assets/art` と宣言、実際は `Assets/Art`）は、ブロッキングでない通知 `ValidationStatus.DeclaredFolderCaseMismatch` として報告されます。フォルダの照合は大小文字を区別しないのでルールは効きますが、宣言を実際の名前に直してください。
 - `Match.Glob` は、最初のワイルドカードより前にある、完結したパスセグメントだけから成るフォルダを宣言します。`Assets/Art/*.png` は `Assets/Art`、`Assets/Art*/x` は `Assets` です。先頭がワイルドカードのパターン（例: `**/foo`）には固定のプレフィックスが無く、何も宣言されないため、フォルダの欠落は報告できません。
 - `Not()` の内側で宣言されたフォルダ（`Match.InFolder("Assets/Raw").Not()`）は、実在検査の対象のままですが（存在しないフォルダを除外しても黙って何も起きないので、気づけるようにするため）、ルールが対象とする*範囲*にはなりません。[未登録アセット](operations.ja.md#未登録アセットと一致-0-件のルール)の一覧は、ルールが対象とする範囲だけを見ます。よくある形 `Match.InFolder("Assets/Art").And(Match.InFolder("Assets/Art/Raw").Not())` では、ルールの範囲は `Assets/Art` から否定した条件にマッチするものを除いたものなので、`Assets/Art/Raw` の配下のアセットが、このルールが取らないというだけで載ることはありません。これは `Not` を `Match.InFolder`・`Match.InFolderByGuid`・`Match.Glob` に直接適用し、それを `And()` で合成した場合に働きます（`Glob` は固定プレフィックス全体ではなく、パターンにマッチするパスだけが除外されます）。複数の `And()` オペランドの除外は足し合わされます。除外はそれを宣言したルールだけのものです。別のルールが同じフォルダを範囲にしていれば、そのルールや他のルールがアドレスやラベルを付けない限り、そのアセットは載ります。それ以外の条件への `Not`（`Or(...).Not()` など）は実在検査だけを残します。`Not(Not(x))` は `x` に戻ります。`Or()` と `Match.Any()` は範囲のフォルダを範囲のまま保ち、オペランドの除外は落とします（片方のオペランドだけに掛かっていたため）。そのぶん載る件数は増えることはあっても減りません。同じフォルダが再帰と `recursive: false` の両方で宣言された場合、`Or` では再帰が範囲になり、`And()` では直下の子に絞られます。
 - 生ラムダの条件（`Where(ctx => ctx.IsInFolder("Assets/Foo"))`）は何も宣言せず、報告の対象になりません。検査が欲しい場合は `Match.InFolder` を使ってください。
-- `Match.InFolderByGuid` は、ルールを評価するたびに GUID を現在のフォルダパスへ解決します（引いた結果は、次のランの開始か次の import のどちらか早いほうまで保持されます）。フォルダに引けない GUID は `DeclaredFolderMissing` として報告され、条件は何にもマッチしません。GUID は条件を評価するたびに引かれるため、Editor の単体テストでの `RuleInspector.Collect` でも AddressTeller 自身の評価と同じ結果になります。GUID を引く手段が無い環境（Unity Editor の AssetDatabase の外）では、条件は常にマッチしません。
+- `Match.InFolderByGuid` は、ルールを評価するたびに GUID を現在のフォルダパスへ解決します（引いた結果は、次のランの開始か次の import のどちらか早いほうまで保持されます）。フォルダに引けない GUID は `DeclaredFolderMissing` として報告され、条件は何にもマッチしません。GUID は条件を評価するたびに引かれるため、Editor の単体テストでの `RuleInspector.Collect` でも AddressTeller 自身の評価と同じ結果になります。GUID を引く手段が無い環境（Unity Editor の AssetDatabase の外）では、条件は常にマッチしません。同じ GUID が `Or()` の中で再帰と `recursive: false` の両方で宣言されたときは、パスの場合と同じく再帰の宣言が範囲になります。パスで宣言したフォルダと GUID で宣言したフォルダが同じフォルダに解決される組は、この合成の対象になりません。その場合、Unmatched の一覧に必要以上のアセットが載ることがあります。
 
 ドメインリロードの間、import 時の自動適用（`AddressTellerPostprocessor`）はこの検査結果を再利用し、そのフォルダ自身か上位のフォルダが import で作成・削除・移動・改名されたときだけ検査し直します。Apply All・Validate・CLI の各入口は毎回検査し直します。
 
@@ -196,6 +197,8 @@ rules.Group("Audio")
 ```
 
 `OverriddenBy<TRule>()` は、どのルールが勝つかも書き込まれる内容も変えません。（このルールクラス, `TRule`）の組が想定どおりだと印を付けるだけです。宣言はその `Group()` の連鎖に属し、ルールクラス全体のものではありません。1つのクラスに `Group()` が2つあって一方だけが宣言した場合、もう一方の重なりは未宣言のままです。複数のルールを許可するときは複数回呼びます。
+
+`OverriddenBy<TRule>()` はアドレスを出すルール（`Address()` を呼ぶ `Group()` の連鎖）でだけ意味を持ちます。`TRule` には具象のルールクラスを指定してください。組の照合はクラス名だけで行うため、名前空間が違う同名のルールクラスは区別できません。どの重なりにも当たらなくなった古い宣言（相手のルールを変えた後など）は報告されません。
 
 **厳格モード**（`AddressTellerSettings.StrictRuleOverlaps`、既定 OFF。[適用と運用](operations.ja.md#project-settings)参照）を ON にすると、宣言されていない重なりが、ルールクラスの組ごとに1件、`ValidationStatus.UndeclaredRuleOverlap`（ブロッキング）として報告されます。メッセージにはアセット数と数件の例パスが入ります。すると Apply with Validate は中止され、`CheckCLI` / `ApplyWithValidateCLI` は exit code 2 で終わります。この検査は `ApplyAll` では行わないため、import 時の自動適用も `ApplyAllCLI` も強制しません。どのルールが勝つか、何が書き込まれるかは変わりません。例パスについて関与したルールをすべて見るには、そのパスで `Assets > AddressTeller > Explain` を使ってください。[適用と運用: ルールの重なり](operations.ja.md#ルールの重なり)も参照してください。
 

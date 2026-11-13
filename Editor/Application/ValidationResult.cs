@@ -233,9 +233,14 @@ namespace AddressTeller.Editor
         /// (ProjectSettings/AddressTellerLabelLedger.json) — for example because the file is read-only under version
         /// control. The labels themselves were written as usual; they are simply not remembered as AddressTeller's, so
         /// <see cref="AddressTellerSettings.RemoveStaleManagedLabels"/> will not remove them until a later run records
-        /// them (removal itself rests on the ledger as it was when the run started, so it is not affected). A blocking
-        /// problem (<see cref="ValidationResult.IsOk"/> is false), so <c>ApplyAllCLI</c> / <c>ApplyWithValidateCLI</c>
-        /// exit with code 2. <see cref="ValidationResult.Context"/> is null, since it is not about one specific asset.
+        /// them (removal itself rests on the ledger as it was when the run started, so it is not affected).
+        /// The severity depends on <see cref="AddressTellerSettings.RemoveStaleManagedLabels"/>. While that setting is on,
+        /// this is a blocking problem (<see cref="ValidationResult.IsOk"/> is false), so <c>ApplyAllCLI</c> /
+        /// <c>ApplyWithValidateCLI</c> exit with code 2: the labels the run wrote would not be removed later, which is
+        /// what the setting promises. While it is off, nothing depends on the ledger yet, so this is a non-blocking
+        /// notice (<see cref="ValidationResult.IsOk"/> is true) and the exit code is unaffected. The setting is read when the
+        /// result is created and carried by it, so a result keeps its severity if the setting changes later.
+        /// <see cref="ValidationResult.Context"/> is null, since it is not about one specific asset.
         /// </summary>
         LabelLedgerWriteFailed = 22,
         /// <summary>
@@ -312,6 +317,12 @@ namespace AddressTeller.Editor
         /// </summary>
         public bool HasWritableDuplicate { get; }
 
+        /// <summary>
+        /// <see cref="ValidationStatus.LabelLedgerWriteFailed"/> のときだけ意味を持つ。ラン終了時点で
+        /// RemoveStaleManagedLabels が ON なら true（問題）、OFF なら false（通知）。他のステータスでは読まない。
+        /// </summary>
+        private readonly bool _ledgerWriteBlocks;
+
         // Skipped はルール対象外という正常系であり、ApplyAll/ValidateAll の issues には積まれない（IsOk = true）。
         // LabelsOnly はラベルのみルールがマッチした正常系であり、同様に issues には積まれない（IsOk = true）。
         // GroupWillBeCreated は AutoCreateMissingGroups ON 時の作成予定通知であり、Apply をブロックしない（IsOk = true）。
@@ -325,6 +336,9 @@ namespace AddressTeller.Editor
         // 書き込みも削除も止めない（IsOk = true）。
         // UndeclaredRuleOverlap は StrictRuleOverlaps ON 時の、未宣言の重なり（問題）。IsOk に列挙しないので
         // IsOk = false / IsBlocking = true になる。
+        // LabelLedgerWriteFailed は設定で重大度が変わる。RemoveStaleManagedLabels が ON のときだけ問題
+        // （IsOk = false / IsBlocking = true）、OFF の間は台帳を使う機能が無効なので通知（IsOk = true）。
+        // 設定は結果の生成時に読んで結果自身が持つ（生成後に設定が変わっても重大度が動かないようにする）。
         // StaleManagedLabelKept は RemoveStaleManagedLabels OFF 時、ON なら外されるはずだったラベルが残って
         // いることの通知であり、書き込みも削除も行わない（IsOk = true）。
         // DuplicateAddress は書き込みを止めない報告専用ステータスだが、重複の当事者に「このランで
@@ -340,7 +354,8 @@ namespace AddressTeller.Editor
         /// <see cref="ValidationStatus.AssetTypeUnresolved"/>, or
         /// <see cref="ValidationStatus.StaleManagedLabelKept"/>, or
         /// <see cref="ValidationStatus.RuleMatchedNothing"/> — i.e. this result does not represent a
-        /// problem. Also true for <see cref="ValidationStatus.DuplicateAddress"/> when
+        /// problem. Also true for <see cref="ValidationStatus.LabelLedgerWriteFailed"/> when it was reported while
+        /// <see cref="AddressTellerSettings.RemoveStaleManagedLabels"/> was off. Also true for <see cref="ValidationStatus.DuplicateAddress"/> when
         /// <see cref="HasWritableDuplicate"/> is false (AddressTeller cannot resolve it itself, so it is
         /// reported as a notice rather than a blocking problem).
         /// </summary>
@@ -351,6 +366,7 @@ namespace AddressTeller.Editor
             || Status == ValidationStatus.AssetTypeUnresolved
             || Status == ValidationStatus.StaleManagedLabelKept
             || Status == ValidationStatus.RuleMatchedNothing
+            || (Status == ValidationStatus.LabelLedgerWriteFailed && !_ledgerWriteBlocks)
             || (Status == ValidationStatus.DuplicateAddress && !HasWritableDuplicate);
 
         /// <summary>
@@ -370,8 +386,10 @@ namespace AddressTeller.Editor
         /// テストからは <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute"/> 経由で参照する。
         /// </summary>
         internal ValidationResult(AssetContext context, ValidationStatus status, string message,
-            IReadOnlyList<AddressCandidate> conflictingCandidates = null, bool hasWritableDuplicate = false)
+            IReadOnlyList<AddressCandidate> conflictingCandidates = null, bool hasWritableDuplicate = false,
+            bool ledgerWriteBlocks = true)
         {
+            _ledgerWriteBlocks = ledgerWriteBlocks;
             Context = context;
             Status = status;
             Message = message;

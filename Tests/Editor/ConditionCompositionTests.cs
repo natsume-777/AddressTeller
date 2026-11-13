@@ -39,6 +39,19 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void PublicConstructorDescriptionWithAndOr_IsParenthesizedByOrAndNot()
+        {
+            // 手書きの説明は中身を知れないので、" AND " / " OR " を含むものは括弧で包んで優先順位を曖昧にしない。
+            var handWritten = new AssetCondition(_ => true, "x AND y");
+            var handWrittenOr = new AssetCondition(_ => true, "x OR y");
+
+            Assert.AreEqual("NOT (x AND y)", handWritten.Not().Description);
+            Assert.AreEqual("NOT (x OR y)", handWrittenOr.Not().Description);
+            Assert.AreEqual("((x AND y) OR z)", handWritten.Or(Named("z", true)).Description);
+            Assert.AreEqual("NOT plain", Named("plain", true).Not().Description);
+        }
+
+        [Test]
         public void Or_Description_IsParenthesized()
         {
             Assert.AreEqual("(a OR b)", Named("a", true).Or(Named("b", true)).Description);
@@ -174,12 +187,16 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void Any_ChangingTheArrayAfterwards_DoesNotChangeTheCondition()
         {
-            var operands = new[] { Named("a", false), Named("b", false) };
+            var operands = new[] { Named("a", false), Match.InFolder("Assets/B").And(Named("b", false)) };
             var any = Match.Any(operands);
 
-            operands[1] = Named("z", true);
+            operands[0] = Named("z", true);
+            operands[1] = Match.InFolder("Assets/Other");
 
+            // 述語・説明・宣言フォルダのどれも、渡した配列の後からの書き換えの影響を受けない。
             Assert.IsFalse(any.Test(Ctx("Assets/x.png")));
+            Assert.AreEqual("(a OR (InFolder(Assets/B) AND b))", any.Description);
+            CollectionAssert.AreEqual(new[] { "Assets/B" }, any.Folders);
         }
 
         // --- Match.WithExtension ---
@@ -229,6 +246,16 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void WithExtension_PathWithoutExtensionInTheFileName_DoesNotPickUpADotInAFolderName()
+        {
+            var condition = Match.WithExtension("png");
+
+            Assert.IsFalse(condition.Test(Ctx("Assets/Foo.png/README")));
+            Assert.IsFalse(condition.Test(Ctx("Assets/a.")));
+            Assert.IsTrue(condition.Test(Ctx("Assets/Foo.d/a.PnG")));
+        }
+
+        [Test]
         public void WithExtension_OnlyTheLastExtensionCounts()
         {
             Assert.IsTrue(Match.WithExtension("gz").Test(Ctx("Assets/a.tar.gz")));
@@ -256,6 +283,13 @@ namespace AddressTeller.Editor.Tests
         [TestCase(".tar.gz")]
         [TestCase("tar.gz")]
         [TestCase("a/b")]
+        [TestCase("*")]
+        [TestCase("p*")]
+        [TestCase("p?g")]
+        [TestCase("p ng")]
+        [TestCase("a:b")]
+        [TestCase("a|b")]
+        [TestCase("a<b")]
         [TestCase("a\\b")]
         public void WithExtension_InvalidElement_Throws(string bad)
         {
@@ -302,6 +336,28 @@ namespace AddressTeller.Editor.Tests
             var and = Match.InFolder("Assets/A", recursive: false).And(Match.InFolder("Assets/A"));
 
             CollectionAssert.AreEqual(new[] { "Assets/A" }, and.NonRecursiveFolders);
+        }
+
+        [Test]
+        public void Not_OfOrWithNegatedNonRecursiveFolder_KeepsTheNonRecursiveFlagThroughTheOuterNot()
+        {
+            // 内側の Not で除外側に回った直下指定が、Or を経ても失われず、外側の Not で範囲へ戻ったとき直下のままになる。
+            var restored = Match.InFolder("Assets/A", recursive: false).Not().Or(Match.InFolder("Assets/B")).Not();
+
+            CollectionAssert.AreEqual(new[] { "Assets/A" }, restored.NonRecursiveFolders);
+            CollectionAssert.AreEqual(new[] { "Assets/B" }, restored.NegatedFolders);
+        }
+
+        [Test]
+        public void NegatedNonRecursive_AndNeedsEveryDeclarerDirect_OrNeedsAny()
+        {
+            var direct = Match.InFolder("Assets/A", recursive: false).Not();
+            var deep = Match.InFolder("Assets/A").Not();
+
+            CollectionAssert.AreEqual(new[] { "Assets/A" }, direct.And(direct).NonRecursiveFolders);
+            Assert.AreEqual(0, direct.And(deep).NonRecursiveFolders.Count);
+            CollectionAssert.AreEqual(new[] { "Assets/A" }, direct.Or(deep).NonRecursiveFolders);
+            Assert.AreEqual(0, deep.Or(deep).NonRecursiveFolders.Count);
         }
 
         [Test]
@@ -648,6 +704,36 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(1, failures.Count);
             Assert.AreEqual(ValidationStatus.DeclaredFolderMissing, failures[0].Status);
+        }
+
+        [Test]
+        public void ResolveGuids_SameGuidRecursiveAndDirectUnderOr_RecursiveWins()
+        {
+            var entry = EntryOf(Match.InFolderByGuid("g1", recursive: false).Or(Match.InFolderByGuid("g1")));
+
+            var resolved = Resolve(entry, _ => "Assets/Scope")[0];
+
+            Assert.AreEqual(0, resolved.NonRecursiveFolders.Count);
+        }
+
+        [Test]
+        public void ResolveGuids_SameGuidRecursiveAndDirectUnderAnd_DirectWins()
+        {
+            var entry = EntryOf(Match.InFolderByGuid("g1", recursive: false).And(Match.InFolderByGuid("g1")));
+
+            var resolved = Resolve(entry, _ => "Assets/Scope")[0];
+
+            CollectionAssert.AreEqual(new[] { "Assets/Scope" }, resolved.NonRecursiveFolders);
+        }
+
+        [Test]
+        public void ResolveGuids_DirectGuidUnderOrWithAnotherGuid_StaysDirect()
+        {
+            var entry = EntryOf(Match.InFolderByGuid("g1", recursive: false).Or(Match.InFolderByGuid("g2")));
+
+            var resolved = Resolve(entry, guid => guid == "g1" ? "Assets/One" : "Assets/Two")[0];
+
+            CollectionAssert.AreEqual(new[] { "Assets/One" }, resolved.NonRecursiveFolders);
         }
 
         [Test]

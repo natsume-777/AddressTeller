@@ -144,7 +144,13 @@ namespace AddressTeller
             public IAddressRuleGroupBuilder Where(AssetCondition condition)
             {
                 if (condition == null) throw new ArgumentNullException(nameof(condition));
-                Where(condition.Predicate, condition.Description);
+                return Where(condition, condition.Description);
+            }
+
+            public IAddressRuleGroupBuilder Where(AssetCondition condition, string description)
+            {
+                if (condition == null) throw new ArgumentNullException(nameof(condition));
+                Where(condition.Predicate, description);
                 // 条件が宣言しているフォルダをエントリへ引き継ぐ（生ラムダの Where は宣言を持たない）。
                 _declaredFolders = condition.Folders;
                 _folderGuids = condition.FolderGuids;
@@ -274,7 +280,13 @@ namespace AddressTeller
             public ILabelRuleBuilder Where(AssetCondition condition)
             {
                 if (condition == null) throw new ArgumentNullException(nameof(condition));
-                Where(condition.Predicate, condition.Description);
+                return Where(condition, condition.Description);
+            }
+
+            public ILabelRuleBuilder Where(AssetCondition condition, string description)
+            {
+                if (condition == null) throw new ArgumentNullException(nameof(condition));
+                Where(condition.Predicate, description);
                 // 条件が宣言しているフォルダをエントリへ引き継ぐ（生ラムダの Where は宣言を持たない）。
                 _declaredFolders = condition.Folders;
                 _folderGuids = condition.FolderGuids;

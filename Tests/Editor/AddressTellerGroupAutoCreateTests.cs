@@ -260,6 +260,58 @@ namespace AddressTeller.Editor.Tests
             Assert.AreSame(entry1.parentGroup, entry2.parentGroup, "2件目のアセットも1件目で作成されたグループへ書き込まれるべき。");
         }
 
+        /// <summary>Target だけにマッチし、存在しない NewGroup へ固定のアドレス "dup" を割り当てるルール。</summary>
+        private sealed class AssignsDupToNewGroupRule : AddressRuleBase
+        {
+            public override int Order => 0;
+
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("NewGroup")
+                    .Where(Match.InFolder(StubFolder).And(ctx => ctx.FileNameWithoutExtension == "Target"))
+                    .Address(ctx => "dup");
+            }
+        }
+
+        [Test]
+        public void ApplyAll_AutoCreateOn_AddressWrittenIntoACreatedGroup_CountsAsWrittenForDuplicateDetection()
+        {
+            // グループ自動作成の経路（Status は GroupWillBeCreated）でも、書き込んだアドレスは「このランで書いた」ものとして
+            // 重複検出の入力になる。数えていないと、新規グループへ書いたアドレスが他のアセットと重なっても報告されない。
+            var originalCleanup = AddressTellerSettings.CleanupStaleEntries;
+            AddressTellerSettings.AutoCreateMissingGroups = true;
+            AddressTellerSettings.CleanupStaleEntries = false;
+
+            // ApplyAll は settings.ConfigFolder を参照するので、テスト用 settings は ConfigFolder を持つ非永続のものを使う。
+            // ConfigFolder は対象アセットの外（StubFolder の外）にする（ConfigFolder 配下は処理対象から外れるため）。
+            var settings = AddressTellerTestSettingsFactory.CreateInMemory(
+                "Assets/_AddressTellerTestTempGroupAutoCreateConfig", "AddressTellerGroupAutoCreateApplyAllSettings");
+            try
+            {
+                var existingGroup = settings.CreateGroup("ExistingGroup", false, false, false, null);
+                var other = RealCtx(StubFolder + "/Other.prefab");
+                settings.CreateOrMoveEntry(other.Guid, existingGroup).address = "dup";
+                var target = RealCtx(StubFolder + "/Target.prefab");
+
+                var issues = AddressTellerService.ApplyAll(new[] { target.Path }, settings, NullProgressReporter.Instance,
+                    new AddressRuleBase[] { new AssignsDupToNewGroupRule() });
+
+                var entry = settings.FindAssetEntry(target.Guid);
+                Assert.IsNotNull(entry);
+                Assert.AreEqual("NewGroup", entry.parentGroup.Name, "グループは自動作成され、アドレスが書き込まれている。");
+                var duplicate = issues.SingleOrDefault(i => i.Status == ValidationStatus.DuplicateAddress);
+                Assert.IsNotNull(duplicate, "新規グループへ書いたアドレスが別アセットと重なるので、DuplicateAddress が報告されるべき。");
+                Assert.IsTrue(duplicate.HasWritableDuplicate);
+            }
+            finally
+            {
+                AddressTellerSettings.CleanupStaleEntries = originalCleanup;
+                foreach (var group in settings.groups.Where(g => g != null).ToList())
+                    UnityEngine.Object.DestroyImmediate(group, true);
+                UnityEngine.Object.DestroyImmediate(settings, true);
+            }
+        }
+
         // --- AddressTellerGroupFactory.EnsureGroup ---
 
         [Test]

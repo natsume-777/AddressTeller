@@ -537,7 +537,8 @@ namespace AddressTeller.Editor
         /// Pairs of rule classes whose addresses overlap in the examined assets: both matched an asset and produced an
         /// address, and one won on <c>AddressRuleBase.Order</c> (see <see cref="RuleOverlap"/>). Each pair gives the number
         /// of assets and a few example paths. An asset with a tie (<see cref="ValidationStatus.ConflictingAddress"/>) or whose
-        /// write is blocked by a rule error is not counted. Sorted by overridden then overriding rule name in Ordinal order.
+        /// write is blocked by a rule error is not counted. Sorted by overridden then overriding rule name in Ordinal order, then by <see cref="RuleOverlap.IsDeclared"/>
+        /// (undeclared first).
         /// Only the paths passed to the dry-run are examined, and the list is produced whether or not
         /// <see cref="AddressTellerSettings.StrictRuleOverlaps"/> is on; the setting only decides whether undeclared
         /// overlaps are also reported in <see cref="Issues"/> as <see cref="ValidationStatus.UndeclaredRuleOverlap"/>.

@@ -91,6 +91,21 @@ namespace AddressTeller
         /// <exception cref="InvalidOperationException">Where() has already been called once for this rule.</exception>
         ILabelRuleBuilder Where(AssetCondition condition);
 
+        /// <summary>
+        /// Like <see cref="Where(AssetCondition)"/>, but reports <paramref name="description"/> instead of the
+        /// condition's own <see cref="AssetCondition.Description"/> (null means the rule has no description).
+        /// Everything else the condition declares (its folders and exclusions) is kept, which is the difference
+        /// from passing <c>condition</c> as a plain predicate: a <see cref="Match"/> helper converts implicitly to
+        /// a <c>Func&lt;AssetContext, bool&gt;</c>, so <c>Where(Match.InFolder(...), "text")</c> is this overload,
+        /// not the predicate one. The description is only the text shown for this rule; it does not change how the
+        /// condition composes with <c>And</c> / <c>Or</c> / <c>Not</c>, and it is not parsed. May be called at most
+        /// once per <see cref="IAddressRuleBuilder.AnyGroup"/> call (shared limit with the other Where() overloads). A second call throws
+        /// <see cref="InvalidOperationException"/>.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="condition"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Where() has already been called once for this rule.</exception>
+        ILabelRuleBuilder Where(AssetCondition condition, string description);
+
         /// <summary>Adds a label produced by <paramref name="selector"/> for each matching asset.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="selector"/> is null.</exception>
         ILabelRuleBuilder Label(Func<AssetContext, string> selector);
@@ -142,6 +157,21 @@ namespace AddressTeller
         IAddressRuleGroupBuilder Where(AssetCondition condition);
 
         /// <summary>
+        /// Like <see cref="Where(AssetCondition)"/>, but reports <paramref name="description"/> instead of the
+        /// condition's own <see cref="AssetCondition.Description"/> (null means the rule has no description).
+        /// Everything else the condition declares (its folders and exclusions) is kept, which is the difference
+        /// from passing <c>condition</c> as a plain predicate: a <see cref="Match"/> helper converts implicitly to
+        /// a <c>Func&lt;AssetContext, bool&gt;</c>, so <c>Where(Match.InFolder(...), "text")</c> is this overload,
+        /// not the predicate one. The description is only the text shown for this rule; it does not change how the
+        /// condition composes with <c>And</c> / <c>Or</c> / <c>Not</c>, and it is not parsed. May be called at most
+        /// once per group (shared limit with the other Where() overloads). A second call throws
+        /// <see cref="InvalidOperationException"/>.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="condition"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Where() has already been called once for this group.</exception>
+        IAddressRuleGroupBuilder Where(AssetCondition condition, string description);
+
+        /// <summary>
         /// May be called at most once per group (shared limit with the other Address() overload).
         /// A second call throws <see cref="InvalidOperationException"/> instead of silently overwriting.
         /// </summary>
@@ -183,7 +213,11 @@ namespace AddressTeller
         /// setting on, <c>ValidationStatus.UndeclaredRuleOverlap</c> is reported only for overlaps that
         /// were not declared this way. May be called several times to allow several rules; repeating the same
         /// <typeparamref name="TRule"/> has no further effect. The declaration belongs to this
-        /// <c>Group()</c> chain, not to the whole rule class.
+        /// <c>Group()</c> chain, not to the whole rule class. Only meaningful on a chain that produces an address
+        /// (one that calls <c>Address()</c>); overlaps are about addresses, so a label-only chain never has one.
+        /// Pass the concrete rule class. The pair is matched by the class's short type name, so two rule classes with
+        /// the same name in different namespaces cannot be told apart. A declaration that matches no overlap
+        /// (for example after the other rule changed) is not reported.
         /// </summary>
         /// <typeparam name="TRule">The rule class that is allowed to override this rule.</typeparam>
         IAddressRuleGroupBuilder OverriddenBy<TRule>() where TRule : AddressRuleBase;

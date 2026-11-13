@@ -589,6 +589,19 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
+        public void ShouldLogDeclaredFolderIssues_LedgerWriteFailedSeverityChanged_LogsAgain()
+        {
+            // 台帳の書き込み失敗は RemoveStaleManagedLabels の設定で重大度（IsOk）が変わる。同じ内容でも
+            // 設定を切り替えたら、変わった重大度で改めてログする。
+            ValidationResult LedgerFailure(bool blocks)
+                => new ValidationResult(null, ValidationStatus.LabelLedgerWriteFailed, "cannot write", ledgerWriteBlocks: blocks);
+
+            Assert.IsTrue(AddressTellerPostprocessor.ShouldLogDeclaredFolderIssues(new[] { LedgerFailure(false) }));
+            Assert.IsFalse(AddressTellerPostprocessor.ShouldLogDeclaredFolderIssues(new[] { LedgerFailure(false) }), "同じ内容・同じ重大度は1回だけ。");
+            Assert.IsTrue(AddressTellerPostprocessor.ShouldLogDeclaredFolderIssues(new[] { LedgerFailure(true) }), "重大度が変われば再ログする。");
+        }
+
+        [Test]
         public void ShouldLogDeclaredFolderIssues_ResolvedThenRecurs_LogsAgain()
         {
             var issues = FolderIssue(ValidationStatus.DeclaredFolderMissing, "Folder 'A' does not exist.");

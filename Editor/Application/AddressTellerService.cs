@@ -157,12 +157,17 @@ namespace AddressTeller.Editor
         /// ドメインリロードまでキャッシュして再利用する。公開 API の ApplyAll は常に検査し直す。
         /// 非対話経路なので stale 削除の件数上限（<see cref="AddressTellerSettings.MaxStaleRemovalsPerRun"/>）を適用する。
         /// </summary>
-        internal static IReadOnlyList<ValidationResult> ApplyAllIncremental(IEnumerable<string> paths, AddressableAssetSettings settings)
-            => ApplyAllIncremental(paths, settings, CollectEnabledRulesIfSettingsLoaded());
+        /// <param name="unmatchedInDeclaredFolders">
+        /// 非 null のとき、今回評価したパスのうち、宣言フォルダの配下にあるのにどのルールにもマッチしなかったもの
+        /// （フルスキャンの Unmatched と同じ基準）を追加する。マッチなしは issues に積まれないため、別の出口で受け取る。
+        /// 判定は今回の評価結果（resolution）をそのまま使い、評価は二重にしない。
+        /// </param>
+        internal static IReadOnlyList<ValidationResult> ApplyAllIncremental(IEnumerable<string> paths, AddressableAssetSettings settings, List<string> unmatchedInDeclaredFolders = null)
+            => ApplyAllIncremental(paths, settings, CollectEnabledRulesIfSettingsLoaded(), unmatchedInDeclaredFolders);
 
-        /// <summary>評価するルールを差し替えられる <see cref="ApplyAllIncremental(IEnumerable{string}, AddressableAssetSettings)"/>（テスト用）。</summary>
-        internal static IReadOnlyList<ValidationResult> ApplyAllIncremental(IEnumerable<string> paths, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
-            => ApplyAllCore(paths, settings, NullProgressReporter.Instance, rules, useDeclaredFolderCache: true, enforceStaleRemovalLimit: true);
+        /// <summary>評価するルールを差し替えられる <see cref="ApplyAllIncremental(IEnumerable{string}, AddressableAssetSettings, List{string})"/>（テスト用）。</summary>
+        internal static IReadOnlyList<ValidationResult> ApplyAllIncremental(IEnumerable<string> paths, AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules, List<string> unmatchedInDeclaredFolders = null)
+            => ApplyAllCore(paths, settings, NullProgressReporter.Instance, rules, useDeclaredFolderCache: true, enforceStaleRemovalLimit: true, unmatchedInDeclaredFolders);
 
         /// <summary>
         /// メニューの確認ダイアログ（削除件数を見せて承認を得た後）から呼ぶ適用。公開 API の
@@ -173,7 +178,7 @@ namespace AddressTeller.Editor
         internal static IReadOnlyList<ValidationResult> ApplyAllConfirmed(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules)
             => ApplyAllCore(paths, settings, progress, rules ?? CollectEnabledRulesIfSettingsLoaded(), useDeclaredFolderCache: false, enforceStaleRemovalLimit: false);
 
-        private static IReadOnlyList<ValidationResult> ApplyAllCore(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules, bool useDeclaredFolderCache, bool enforceStaleRemovalLimit)
+        private static IReadOnlyList<ValidationResult> ApplyAllCore(IEnumerable<string> paths, AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules, bool useDeclaredFolderCache, bool enforceStaleRemovalLimit, List<string> unmatchedInDeclaredFolders = null)
         {
             if (s_isApplying) return Array.Empty<ValidationResult>();
             s_isApplying = true;
@@ -234,6 +239,11 @@ namespace AddressTeller.Editor
                 var staleRemovals = new StaleRemovalPlan();
                 var writtenGuids = new HashSet<string>();
 
+                // 未登録アセットの集計（呼び出し側が受け皿を渡したときだけ）。範囲の組み立てはマッチしなかった
+                // アセットが最初に現れたときに1回だけ行い、全件マッチする import では何も払わない。
+                // 判定自体は評価済みの結果を見るだけなので、増分のパス数に比例する。
+                DeclaredFolderScope declaredFolderScope = null;
+
                 var issues = new List<ValidationResult>(setup.ConfigureFailures);
                 issues.AddRange(setup.DeclaredFolderIssues);
 
@@ -279,6 +289,13 @@ namespace AddressTeller.Editor
                     if (result.Status == ValidationStatus.Ok || result.Status == ValidationStatus.GroupWillBeCreated)
                         writtenGuids.Add(ctx.Guid);
 
+                    if (unmatchedInDeclaredFolders != null && RuleEvaluationPipeline.HasNoMatch(resolution))
+                    {
+                        declaredFolderScope ??= new DeclaredFolderScope(setup.Entries);
+                        if (RuleEvaluationPipeline.IsUnmatchedInDeclaredFolders(resolution, ctx, declaredFolderScope))
+                            unmatchedInDeclaredFolders.Add(ctx.Path);
+                    }
+
                     // ルール例外(resolution.Errors)があった場合、「全ルールが正常評価された上でマッチ0件」とは
                     // 言えないため削除予定にしない（ルールのバグで誤ってエントリを削除しないようにする）。
                     // Configure() 失敗・宣言フォルダ欠落は cleanupStale に織り込み済み。
@@ -290,7 +307,8 @@ namespace AddressTeller.Editor
                 // （キャンセル時も、そこまでに書いたラベルは記録する）。
                 var ledgerError = AddressTellerLabelLedger.EndRun();
                 if (ledgerError != null)
-                    issues.Add(new ValidationResult(null, ValidationStatus.LabelLedgerWriteFailed, ledgerError));
+                    issues.Add(new ValidationResult(null, ValidationStatus.LabelLedgerWriteFailed, ledgerError,
+                        ledgerWriteBlocks: AddressTellerSettings.RemoveStaleManagedLabels));
 
                 // キャンセル時は削除を一切行わない（途中までの走査結果で「無マッチ」「無効パス」を確定させない。
                 // 書き込みは処理済みアセット分が完了済み＝部分適用のままで、巻き戻さないのは従来どおり）。
@@ -460,6 +478,18 @@ namespace AddressTeller.Editor
         /// the caller supplies (intended for use in tests, etc.).
         /// </summary>
         public static IReadOnlyList<ValidationResult> ValidateAll(AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules)
+            => ValidateAllCore(settings, progress, rules, null);
+
+        /// <summary>
+        /// <see cref="ValidateAll(AddressableAssetSettings)"/> と同じ検証に加えて、宣言フォルダの配下にあるのにどのルールにも
+        /// マッチしなかったアセットのパス（Ordinal 昇順）を <paramref name="unmatchedInDeclaredFolders"/> へ追加する。
+        /// 公開シグネチャを変えずに Validate メニューへ Unmatched を渡すための入口。<paramref name="rules"/> が null のときは
+        /// リフレクションでルールを収集する。
+        /// </summary>
+        internal static IReadOnlyList<ValidationResult> ValidateAllCollectingUnmatched(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules, List<string> unmatchedInDeclaredFolders)
+            => ValidateAllCore(settings, NullProgressReporter.Instance, rules ?? CollectEnabledRulesIfSettingsLoaded(), unmatchedInDeclaredFolders);
+
+        private static IReadOnlyList<ValidationResult> ValidateAllCore(AddressableAssetSettings settings, IProgressReporter progress, IReadOnlyList<AddressRuleBase> rules, List<string> unmatchedInDeclaredFolders)
         {
             // ApplyAll と同じ理由（メニュー・CLI・Postprocessor は既に入口でゲート済み。このメソッドは
             // 公開 API であり、利用者が直接呼ぶ経路もゲートせず既定値のまま動かしてはいけない）で、
@@ -492,6 +522,8 @@ namespace AddressTeller.Editor
             state.Issues.AddRange(DuplicateAddressDetector.Detect(
                 state.AfterMap.Select(kvp => new KeyValuePair<string, string>(kvp.Key, kvp.Value.Address)),
                 state.WrittenGuids));
+
+            unmatchedInDeclaredFolders?.AddRange(state.UnmatchedInDeclaredFolders);
 
             return state.Issues;
         }

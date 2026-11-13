@@ -263,7 +263,7 @@ namespace AddressTeller.Editor
                 () => strictOverlapsToggle.SetValueWithoutNotify(AddressTellerSettings.StrictRuleOverlaps)));
             strictOverlapsToggle.SetEnabled(gateOk);
             container.Add(strictOverlapsToggle);
-            container.Add(MakeDescription("Reports, as a blocking UndeclaredRuleOverlap issue, a rule whose address is overridden by another rule class (both match an asset, the one with the lower Order wins) when the overridden rule did not declare it with OverriddenBy<TRule>(). Which rule wins and what is written do not change. Checked by Validate, Apply with Validate, CheckCLI, ApplyWithValidateCLI and the previews; not by the automatic apply on import or ApplyAllCLI. Off by default; the list of overlaps is available in the Result Window and the JSON report either way."));
+            container.Add(MakeDescription("Reports, as a blocking UndeclaredRuleOverlap issue, a rule whose address is overridden by another rule class (both match an asset, the one with the lower Order wins) when the overridden rule did not declare it with OverriddenBy<TRule>(). Which rule wins and what is written do not change. Checked by Validate, Apply with Validate, CheckCLI, ApplyWithValidateCLI and the previews; not by the automatic apply on import or ApplyAllCLI. The Apply All menu item shows it in its dry-run but does not stop the apply. Off by default; the list of overlaps is available in the Result Window and the JSON report either way."));
 
             var autoCreateToggle = new Toggle("Auto-create missing groups") { value = AddressTellerSettings.AutoCreateMissingGroups };
             autoCreateToggle.RegisterValueChangedCallback(e => TrySetSettingsValue(

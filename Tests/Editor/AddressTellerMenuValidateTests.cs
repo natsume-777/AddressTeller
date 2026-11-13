@@ -63,7 +63,7 @@ namespace AddressTeller.Editor.Tests
         private AddressableAssetSettings _settings;
         private bool _originalAutoCreate;
         private bool _originalCleanup;
-        private Action<IReadOnlyList<ValidationResult>, string> _originalShowResultWindow;
+        private Action<IReadOnlyList<ValidationResult>, string, IReadOnlyList<string>> _originalShowResultWindow;
 
         [SetUp]
         public void SetUp()
@@ -116,7 +116,7 @@ namespace AddressTeller.Editor.Tests
 
             IReadOnlyList<ValidationResult> shownIssues = null;
             string shownTitle = null;
-            AddressTellerMenu.s_showResultWindow = (issues, title) =>
+            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) =>
             {
                 shownIssues = issues;
                 shownTitle = title;
@@ -140,7 +140,7 @@ namespace AddressTeller.Editor.Tests
             LogAssert.Expect(LogType.Log, new Regex(Regex.Escape("[AddressTeller] Validate completed: no issues.")));
 
             var wasShown = false;
-            AddressTellerMenu.s_showResultWindow = (issues, title) => wasShown = true;
+            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) => wasShown = true;
 
             AddressTellerMenu.Validate(_settings, System.Array.Empty<AddressRuleBase>());
 
@@ -156,7 +156,7 @@ namespace AddressTeller.Editor.Tests
             var rules = new AddressRuleBase[] { new AutoCreateGroupRule() };
 
             var wasShown = false;
-            AddressTellerMenu.s_showResultWindow = (issues, title) => wasShown = true;
+            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) => wasShown = true;
 
             LogAssert.Expect(LogType.Log, new Regex(Regex.Escape("[AddressTeller] Validate completed: 1 notice(s) (no issues).")));
 
@@ -180,7 +180,7 @@ namespace AddressTeller.Editor.Tests
             var rules = new AddressRuleBase[] { new NoMatchOwnsStubGroupRule() };
 
             IReadOnlyList<ValidationResult> shownIssues = null;
-            AddressTellerMenu.s_showResultWindow = (issues, title) => shownIssues = issues;
+            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) => shownIssues = issues;
 
             // このルールは何にもマッチしないので、フルスキャンの ValidateAll は RuleMatchedNothing の通知も加える。
             LogAssert.Expect(LogType.Warning, new Regex("RuleMatchedNothing: .*" + nameof(NoMatchOwnsStubGroupRule)));

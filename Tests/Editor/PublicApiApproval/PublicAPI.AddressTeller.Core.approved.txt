@@ -27,8 +27,10 @@ sealed class AddressTeller.AddressRuleEntry
   Property System.String SourceClass { get; }
 
 sealed class AddressTeller.AssetCondition
+  Constructor (AddressTeller.AssetCondition source, System.String description)
   Constructor (System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description = null, System.Collections.Generic.IReadOnlyList<System.String> folders = null)
   Method AddressTeller.AssetCondition And(AddressTeller.AssetCondition other)
+  Method AddressTeller.AssetCondition And(AddressTeller.AssetCondition other, System.String description)
   Method AddressTeller.AssetCondition And(System.Func<AddressTeller.AssetContext, System.Boolean> other, System.String description = null)
   Method AddressTeller.AssetCondition Not()
   Method AddressTeller.AssetCondition Or(AddressTeller.AssetCondition other)
@@ -86,6 +88,7 @@ interface AddressTeller.IAddressRuleGroupBuilder
   Method abstract AddressTeller.IAddressRuleGroupBuilder Label(System.String label)
   Method abstract AddressTeller.IAddressRuleGroupBuilder OverriddenBy<TRule>()
   Method abstract AddressTeller.IAddressRuleGroupBuilder Where(AddressTeller.AssetCondition condition)
+  Method abstract AddressTeller.IAddressRuleGroupBuilder Where(AddressTeller.AssetCondition condition, System.String description)
   Method abstract AddressTeller.IAddressRuleGroupBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate)
   Method abstract AddressTeller.IAddressRuleGroupBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description)
 
@@ -94,6 +97,7 @@ interface AddressTeller.ILabelRuleBuilder
   Method abstract AddressTeller.ILabelRuleBuilder Label(System.Func<AddressTeller.AssetContext, System.String> selector)
   Method abstract AddressTeller.ILabelRuleBuilder Label(System.String label)
   Method abstract AddressTeller.ILabelRuleBuilder Where(AddressTeller.AssetCondition condition)
+  Method abstract AddressTeller.ILabelRuleBuilder Where(AddressTeller.AssetCondition condition, System.String description)
   Method abstract AddressTeller.ILabelRuleBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate)
   Method abstract AddressTeller.ILabelRuleBuilder Where(System.Func<AddressTeller.AssetContext, System.Boolean> predicate, System.String description)
 

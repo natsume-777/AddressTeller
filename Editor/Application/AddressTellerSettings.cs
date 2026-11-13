@@ -49,8 +49,8 @@ namespace AddressTeller.Editor
         /// is missing, or from an asset for which any rule threw (a label the failing rule would have produced
         /// is not visible then). Which labels count as AddressTeller's is fixed from the ledger as it was when
         /// the run started, so a label first written during the run is never removed in that same run. If the
-        /// ledger cannot be written, no label is removed and the run reports
-        /// <see cref="ValidationStatus.LabelLedgerWriteFailed"/>. <see cref="MaxStaleRemovalsPerRun"/> does not
+        /// ledger cannot be written, the run reports <see cref="ValidationStatus.LabelLedgerWriteFailed"/> (blocking
+        /// while this setting is on, a non-blocking notice while it is off). <see cref="MaxStaleRemovalsPerRun"/> does not
         /// limit label removals. Each removal is logged individually as a warning. The label definition itself is left
         /// in Addressables; use Tools/AddressTeller/Remove Unused Managed Labels to delete definitions nobody uses.
         /// Default: false. When off, an entry that carries such a label is reported once per asset as
@@ -72,7 +72,8 @@ namespace AddressTeller.Editor
         /// written do not change. The check runs in the full-scan and dry-run paths (<c>ValidateAll</c>, the Validate and
         /// Apply with Validate menu items, <c>CheckCLI</c>, <c>ApplyWithValidateCLI</c>, and the previews, each over the
         /// assets it examines); it does not run in <c>ApplyAll</c>, so neither the automatic apply on import nor
-        /// <c>ApplyAllCLI</c> reports it. The overlap list (<c>DryRunResult.Overlaps</c>, the Overlaps tab, the report's
+        /// <c>ApplyAllCLI</c> reports it. The Apply All menu item shows it in its dry-run (and the Console) but does not
+        /// stop the apply, since Apply All does not validate first. The overlap list (<c>DryRunResult.Overlaps</c>, the Overlaps tab, the report's
         /// <c>Overlaps[]</c>) is produced whether or not this is on.
         /// Default: false.
         /// </summary>

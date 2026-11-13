@@ -408,21 +408,29 @@ namespace AddressTeller.Editor.Tests
 
         // --- 台帳へ書けない ---
 
-        [Test]
-        public void LedgerWriteFails_ApplyAllReportsBlockingResultAndDoesNotThrow()
+        /// <summary>台帳の書き込みを失敗させたまま ApplyAll を1回走らせ、その issues を返す。</summary>
+        private IReadOnlyList<ValidationResult> ApplyAllWithFailingLedgerWrite()
         {
-            var entry = PrepareEntryCarryingStaleLabel();
             var original = AddressTellerLabelLedger.WriteFile;
             AddressTellerLabelLedger.WriteFile = (path, text) => throw new System.IO.IOException("disk full");
-            IReadOnlyList<ValidationResult> issues;
             try
             {
-                issues = AddressTellerService.ApplyAll(new[] { StubAssetPath }, _settings, NullProgressReporter.Instance, Rules);
+                return AddressTellerService.ApplyAll(new[] { StubAssetPath }, _settings, NullProgressReporter.Instance, Rules);
             }
             finally
             {
                 AddressTellerLabelLedger.WriteFile = original;
             }
+        }
+
+        [Test]
+        public void LedgerWriteFails_RemoveOn_ApplyAllReportsBlockingResultAndDoesNotThrow()
+        {
+            AddressTellerSettings.RemoveStaleManagedLabels = true;
+            var entry = PrepareEntryCarryingStaleLabel();
+            LogAssert.Expect(LogType.Warning, new Regex("label='stale'"));
+
+            var issues = ApplyAllWithFailingLedgerWrite();
 
             var failure = issues.Single(i => i.Status == ValidationStatus.LabelLedgerWriteFailed);
             Assert.IsFalse(failure.IsOk);
@@ -430,6 +438,37 @@ namespace AddressTeller.Editor.Tests
             Assert.IsNull(failure.Context);
             StringAssert.Contains("fresh", failure.Message);
             Assert.IsTrue(entry.labels.Contains("fresh"), "ラベルの書き込み自体は通常どおり行われる。");
+            Assert.AreEqual(2, AddressTellerReportBuilder.DetermineApplyExitCode(issues), "ON の間はブロッキングなので CLI は終了コード 2。");
+        }
+
+        [Test]
+        public void LedgerWriteFails_RemoveOff_ReportsNonBlockingNotice_AndExitCodeIsZero()
+        {
+            // OFF の間は台帳に依存する機能（除去）が働いていないので、書けないこと自体は通知にとどまる。
+            var entry = PrepareEntryCarryingStaleLabel();
+
+            var issues = ApplyAllWithFailingLedgerWrite();
+
+            var failure = issues.Single(i => i.Status == ValidationStatus.LabelLedgerWriteFailed);
+            Assert.IsTrue(failure.IsOk);
+            Assert.IsFalse(failure.IsBlocking);
+            Assert.IsNull(failure.Context);
+            StringAssert.Contains("fresh", failure.Message);
+            Assert.IsTrue(entry.labels.Contains("fresh"), "ラベルの書き込み自体は通常どおり行われる。");
+            Assert.AreEqual(0, AddressTellerReportBuilder.DetermineApplyExitCode(issues), "OFF の間は終了コードに影響しない。");
+        }
+
+        [Test]
+        public void LedgerWriteFails_SeverityIsFixedWhenTheResultIsCreated()
+        {
+            PrepareEntryCarryingStaleLabel();
+            var issues = ApplyAllWithFailingLedgerWrite();
+            var failure = issues.Single(i => i.Status == ValidationStatus.LabelLedgerWriteFailed);
+            Assert.IsTrue(failure.IsOk, "テストの前提: OFF で生成された。");
+
+            AddressTellerSettings.RemoveStaleManagedLabels = true;
+
+            Assert.IsTrue(failure.IsOk, "生成後に設定が変わっても、結果の重大度は動かない。");
         }
 
         [Test]
@@ -476,7 +515,7 @@ namespace AddressTeller.Editor.Tests
             PrepareEntryCarryingStaleLabel();
             var original = AddressTellerMenu.s_showResultWindow;
             IReadOnlyList<ValidationResult> shown = null;
-            AddressTellerMenu.s_showResultWindow = (issues, title) => shown = issues;
+            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) => shown = issues;
             try
             {
                 LogAssert.Expect(LogType.Log, new Regex("StaleManagedLabelKept: 1 entry carries"));

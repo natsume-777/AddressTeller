@@ -30,7 +30,7 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// Pairs of rule classes whose addresses overlap (see <see cref="DryRunResult.Overlaps"/>), sorted by overridden
-        /// then overriding rule name in Ordinal order. Report-only: the list itself never affects
+        /// then overriding rule name in Ordinal order, then by <see cref="RuleOverlap.IsDeclared"/> (undeclared first). Report-only: the list itself never affects
         /// <see cref="AddressTellerReportSummary.ExitCode"/>. With the "Strict rule overlaps" setting on, an undeclared
         /// overlap is also an entry of <see cref="Issues"/> (<c>UndeclaredRuleOverlap</c>), and that is what can fail a run.
         /// </summary>

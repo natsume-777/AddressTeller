@@ -161,7 +161,8 @@ namespace AddressTeller
             }
 
             if (conditions.Length == 1) return conditions[0];
-            return AssetCondition.AnyOf((AssetCondition[])conditions.Clone());
+            // AnyOf は述語・説明・宣言をその場で取り出して持つ（配列自体は保持しない）ので、複製は要らない。
+            return AssetCondition.AnyOf(conditions);
         }
 
         /// <summary>
@@ -169,13 +170,14 @@ namespace AddressTeller
         /// Each extension may be written with or without the leading dot and in any letter case
         /// (<c>"png"</c>, <c>".PNG"</c> and <c>".png"</c> are the same); surrounding white space is ignored.
         /// Only the last extension of a file name counts, as in <see cref="AssetContext.Extension"/>, so an extension
-        /// that itself contains a dot (<c>".tar.gz"</c>) or a path separator is rejected rather than silently
-        /// never matching. A folder asset (<see cref="AssetContext.IsFolder"/>) has no extension and matches nothing, even if its name contains a dot (for example "Foo.bundle"). The description is
+        /// that itself contains a dot (<c>".tar.gz"</c>), a path separator, a wildcard (<c>*</c>, <c>?</c>), white space
+        /// inside the extension or any other character not allowed in file names is rejected rather than
+        /// silently never matching. A folder asset (<see cref="AssetContext.IsFolder"/>) has no extension and matches nothing, even if its name contains a dot (for example "Foo.bundle"). The description is
         /// <c>WithExtension(.png, .jpg)</c> in the normalized spelling, duplicates removed. Declares no folders.
         /// </summary>
         /// <exception cref="ArgumentException">
         /// <paramref name="extensions"/> is null or empty, or an element is null, empty, white space, only a dot,
-        /// or contains another dot or a path separator.
+        /// or contains another dot, a path separator, a wildcard, inner white space or a character that is not allowed in file names (<c>: " &lt; &gt; |</c> or a control character).
         /// </exception>
         public static AssetCondition WithExtension(params string[] extensions)
         {
@@ -187,7 +189,7 @@ namespace AddressTeller
             {
                 var trimmed = extension?.Trim();
                 if (!string.IsNullOrEmpty(trimmed) && trimmed[0] == '.') trimmed = trimmed.Substring(1);
-                if (string.IsNullOrEmpty(trimmed) || trimmed.IndexOfAny(new[] { '.', '/', '\\' }) >= 0)
+                if (string.IsNullOrEmpty(trimmed) || !IsValidExtensionBody(trimmed))
                     throw new ArgumentException($"'{extension}' is not a single file extension (expected something like \"png\" or \".png\").", nameof(extensions));
 
                 var withDot = "." + trimmed.ToLowerInvariant();
@@ -201,12 +203,32 @@ namespace AddressTeller
                 // フォルダは拡張子を持たない扱い（"Foo.bundle" のようなフォルダ名の ".bundle" は拡張子ではない）。
                 if (ctx.IsFolder) return false;
 
-                // AssetContext.Extension は小文字化で割り当てるので、1回だけ取り出して比較する。
-                var actual = ctx.Extension;
+                // 毎資産で呼ばれるので、ctx.Extension（GetExtension + 小文字化で割り当てる）は使わず、
+                // パスの最後の '/' 以降にある最後の '.' から割り当てなしで大小文字無視比較する。
+                var path = ctx.Path;
+                var dot = path.LastIndexOf('.');
+                if (dot < 0 || dot < path.LastIndexOf('/')) return false;
+
+                var length = path.Length - dot;
                 for (var i = 0; i < accepted.Length; i++)
-                    if (string.Equals(actual, accepted[i], StringComparison.Ordinal)) return true;
+                    if (accepted[i].Length == length
+                        && string.Compare(path, dot, accepted[i], 0, length, StringComparison.OrdinalIgnoreCase) == 0)
+                        return true;
                 return false;
             }, description);
+        }
+
+        // Path.GetInvalidFileNameChars は OS で内容が違う（Windows 以外では '/' と NUL だけ）ため使わず、
+        // プロジェクトをどの OS で開いても同じ入力が通る・弾かれるように、固定の一覧で判定する。
+        private static readonly char[] s_invalidExtensionChars = { '.', '/', '\\', ':', '*', '?', '"', '<', '>', '|' };
+
+        /// <summary>先頭のドットを除いた拡張子が、単一の拡張子として書けるか（ドット・区切り・ワイルドカード・内部の空白・ファイル名に使えない文字を含まない）。</summary>
+        private static bool IsValidExtensionBody(string body)
+        {
+            if (body.IndexOfAny(s_invalidExtensionChars) >= 0) return false;
+            foreach (var c in body)
+                if (char.IsWhiteSpace(c) || char.IsControl(c)) return false;
+            return true;
         }
 
         /// <summary>glob パターンを正規表現パターン文字列に変換する。</summary>

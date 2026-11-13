@@ -161,7 +161,7 @@ namespace AddressTeller.Editor
         /// 例パスの一覧は、省略せず持っている分（<see cref="RuleOverlap.ExamplePaths"/>）をそのまま出す。
         /// </summary>
         internal static string DescribeOverlap(RuleOverlap overlap)
-            => $"{overlap.OverriddenRule} is overridden by {overlap.OverridingRule} on {overlap.Count} asset(s) " +
+            => $"{overlap.OverriddenRule} is overridden by {overlap.OverridingRule} on {overlap.Count} asset{(overlap.Count == 1 ? "" : "s")} " +
                $"[{(overlap.IsDeclared ? "declared" : "NOT declared")}] e.g. {string.Join(", ", overlap.ExamplePaths)}";
 
         /// <summary>GUID をアセットパスへ解決する。解決できない場合は GUID をそのまま返す。</summary>

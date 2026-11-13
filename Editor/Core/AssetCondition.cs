@@ -38,7 +38,8 @@ namespace AddressTeller
         /// <summary>
         /// <see cref="Folders"/> のうち、直下のアセットだけを対象にするもの（<c>Match.InFolder(path, recursive: false)</c>）。
         /// 公開しないのは、宣言フォルダ配下の未登録アセットの列挙（Unmatched）が「直下だけ」と「子孫すべて」を
-        /// 区別するためだけの内部情報だから。<see cref="And(AssetCondition)"/> / <see cref="Match.All"/> では和集合にする
+        /// 区別するためだけの内部情報だから。<see cref="NegatedFolders"/> に入ったフォルダの直下指定も保持する（<see cref="Not"/> で範囲へ戻るとき用）。
+        /// <see cref="And(AssetCondition)"/> / <see cref="Match.All"/> では和集合にする
         /// （AND なので、同じフォルダが再帰・非再帰の両方で宣言された場合は非再帰が実際の範囲になる）。
         /// </summary>
         internal IReadOnlyList<string> NonRecursiveFolders { get; }
@@ -56,15 +57,16 @@ namespace AddressTeller
         /// <summary>
         /// <see cref="Description"/> が "A AND B" の形（括弧なし）か。<see cref="Or"/> / <see cref="Not"/> が
         /// 説明を合成するとき、この形のオペランドだけ括弧で包んで優先順位を曖昧にしないために持つ。
+        /// 公開コンストラクタで渡された説明は中身を知れないので、" AND " / " OR " を含むものはこの形として扱う。
         /// </summary>
-        internal bool DescriptionIsConjunction { get; private set; }
+        internal bool DescriptionIsConjunction { get; }
 
         /// <summary>
         /// <see cref="Description"/> が片側のオペランドの説明だけを持つか（説明なしのオペランドと And した結果）。
         /// And 単体では従来どおりその説明を使うが、Or / Not はこの説明をそのまま包むと条件を偽って伝えるため、
         /// 説明なし（null）として扱う。And で伝播する。
         /// </summary>
-        internal bool DescriptionIsPartial { get; private set; }
+        internal bool DescriptionIsPartial { get; }
 
         private bool HasCompleteDescription => Description != null && !DescriptionIsPartial;
 
@@ -86,11 +88,14 @@ namespace AddressTeller
         /// <summary>
         /// Creates an AssetCondition from a predicate, an optional description, and the optional list of
         /// folders the condition depends on (see <see cref="Folders"/>). Null, empty, and duplicate
-        /// folder entries are dropped.
+        /// folder entries are dropped. A description that contains " AND " or " OR " is treated as compound, so
+        /// <see cref="Or"/> and <see cref="Not"/> wrap it in parentheses.
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="predicate"/> is null.</exception>
         public AssetCondition(Func<AssetContext, bool> predicate, string description = null, IReadOnlyList<string> folders = null)
-            : this(predicate, description, folders, null, null, null, null, null)
+            : this(predicate, description, folders, null, null, null, null, null,
+                descriptionIsConjunction: description != null
+                    && (description.Contains(" AND ") || description.Contains(" OR ")))
         {
         }
 
@@ -102,8 +107,12 @@ namespace AddressTeller
             IReadOnlyList<string> nonRecursiveFolders = null,
             IReadOnlyList<string> negatedFolders = null,
             IReadOnlyList<Func<string, bool>> scopeExclusions = null,
-            Func<string, bool> pathTest = null)
+            Func<string, bool> pathTest = null,
+            bool descriptionIsConjunction = false,
+            bool descriptionIsPartial = false)
         {
+            DescriptionIsConjunction = descriptionIsConjunction;
+            DescriptionIsPartial = descriptionIsPartial;
             ScopeExclusions = scopeExclusions ?? Array.Empty<Func<string, bool>>();
             PathTest = pathTest;
             NonRecursiveFolders = NormalizeFolders(nonRecursiveFolders);
@@ -113,6 +122,26 @@ namespace AddressTeller
             Folders = NormalizeFolders(folders);
             FolderGuids = folderGuids ?? Array.Empty<FolderGuidDeclaration>();
         }
+
+        /// <summary>
+        /// Creates a condition that behaves exactly like <paramref name="source"/> but reports
+        /// <paramref name="description"/> instead of its own description (null means no description). Everything the
+        /// source declares (folders, GUID folders, exclusions) is kept. Use this instead of
+        /// <c>new AssetCondition(source, description)</c> resolving to the predicate constructor: a condition converts
+        /// implicitly to a <c>Func&lt;AssetContext, bool&gt;</c>, and that conversion would drop the declarations.
+        /// A description that contains " AND " or " OR " is treated as compound, as in the predicate constructor.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="source"/> is null.</exception>
+        public AssetCondition(AssetCondition source, string description)
+            : this(Required(source).Predicate, description, source.Folders, source.FolderGuids, source.NonRecursiveFolders,
+                source.NegatedFolders, source.ScopeExclusions, source.PathTest,
+                descriptionIsConjunction: description != null
+                    && (description.Contains(" AND ") || description.Contains(" OR ")))
+        {
+        }
+
+        private static AssetCondition Required(AssetCondition source)
+            => source ?? throw new ArgumentNullException(nameof(source));
 
         /// <summary>Evaluates Predicate.</summary>
         public bool Test(AssetContext ctx) => Predicate(ctx);
@@ -131,17 +160,32 @@ namespace AddressTeller
             var firstPredicate = Predicate;
             var secondPredicate = other.Predicate;
             var description = CombineDescriptions(Description, other.Description);
-            var result = WithMergedDeclarations(
+            var conjunction = (Description != null && other.Description != null)
+                || (Description != null ? DescriptionIsConjunction : other.DescriptionIsConjunction);
+            var partial = DescriptionIsPartial || other.DescriptionIsPartial
+                || (Description == null) != (other.Description == null);
+            return WithMergedDeclarations(
                 ctx => firstPredicate(ctx) && secondPredicate(ctx),
                 description,
                 new[] { this, other },
-                anyOf: false);
-            result.DescriptionIsConjunction = (Description != null && other.Description != null)
-                || (Description != null ? DescriptionIsConjunction : other.DescriptionIsConjunction);
-            result.DescriptionIsPartial = DescriptionIsPartial || other.DescriptionIsPartial
-                || (Description == null) != (other.Description == null);
-            return result;
+                anyOf: false,
+                descriptionIsConjunction: conjunction,
+                descriptionIsPartial: partial);
         }
+
+        /// <summary>
+        /// Like <see cref="And(AssetCondition)"/>, but <paramref name="description"/> replaces the description of
+        /// <paramref name="other"/> before the two are joined, exactly as <see cref="And(Func{AssetContext, bool}, string)"/>
+        /// does for a predicate: <c>x.And(y, "text")</c> is described as "X AND text" in both (null means
+        /// <paramref name="other"/> has no description, so only X's remains). It is the same as
+        /// <c>And(new AssetCondition(other, description))</c>. <see cref="Folders"/> and the other declarations are merged
+        /// exactly as in <see cref="And(AssetCondition)"/>. Use this rather than the predicate overload for a condition:
+        /// an <see cref="AssetCondition"/> converts implicitly to <c>Func&lt;AssetContext, bool&gt;</c>, and that overload
+        /// would drop the declarations of <paramref name="other"/>, including a <c>Not(InFolder ...)</c> exclusion.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="other"/> is null.</exception>
+        public AssetCondition And(AssetCondition other, string description)
+            => And(new AssetCondition(other, description));
 
         /// <summary>
         /// Returns a new condition that short-circuit ANDs this condition with the raw predicate
@@ -256,13 +300,16 @@ namespace AddressTeller
         /// 引き継がせる。範囲として宣言されたフォルダ（Folders から NegatedFolders を除いたもの）は和集合。
         /// 直下だけの宣言（NonRecursiveFolders）は、And ではいずれかのオペランドが直下だけなら直下だけ（AND なので
         /// 範囲は狭い側）、Or ではそのフォルダを範囲として宣言した全オペランドが直下だけのときだけ直下だけ
-        /// （どれかが再帰なら再帰が範囲）。除外側（Not 内）の直下指定は範囲に関係しないので数えない。
+        /// （どれかが再帰なら再帰が範囲）。除外側（Not 内）の直下指定は、範囲の判定では数えない（範囲側の宣言があればそちらで決まる）。
+        /// 除外側にだけ宣言されたフォルダは、外側の Not で範囲へ反転したときのために、反転後の意味で別に集計して残す。
         /// </summary>
         private static AssetCondition WithMergedDeclarations(
             Func<AssetContext, bool> predicate,
             string description,
             AssetCondition[] operands,
-            bool anyOf)
+            bool anyOf,
+            bool descriptionIsConjunction = false,
+            bool descriptionIsPartial = false)
         {
             var folders = new List<string>();
             var folderGuids = new List<FolderGuidDeclaration>();
@@ -276,6 +323,10 @@ namespace AddressTeller
                 foreach (var folder in operand.Folders)
                     if (!operand.NegatedFolders.Contains(folder)) scope.Add(folder);
             }
+
+            // Or では、同じ GUID が一方で再帰・他方で直下だけ宣言されていたら再帰が範囲になる（パス宣言と同じ扱い）。
+            // 解決後のパスで合成する時点では GUID 単位の区別が残っていないので、ここで揃える。
+            if (anyOf) folderGuids = MergeRecursiveGuids(folderGuids);
 
             var negated = new List<string>();
             foreach (var folder in folders)
@@ -298,10 +349,51 @@ namespace AddressTeller
                 if (declaredByAny && (anyOf ? directInAll : directInAny)) nonRecursive.Add(folder);
             }
 
+            // 除外側にだけ宣言されたフォルダの直下指定も残す。外側の Not で範囲へ反転したときに、
+            // 再帰・非再帰の区別が失われないようにするため。反転後の意味に合わせ、
+            // And は全員が直下のときだけ直下、Or は誰かが直下なら直下。
+            foreach (var folder in negated)
+            {
+                var directInAny = false;
+                var directInAll = true;
+                foreach (var operand in operands)
+                {
+                    if (!operand.Folders.Contains(folder)) continue;
+                    if (operand.NonRecursiveFolders.Contains(folder)) directInAny = true;
+                    else directInAll = false;
+                }
+
+                if (anyOf ? directInAny : directInAll) nonRecursive.Add(folder);
+            }
+
             // HashSet の列挙順に依存しないよう、登場順（folders）で並べ直す。
             nonRecursive.Sort((a, b) => folders.IndexOf(a).CompareTo(folders.IndexOf(b)));
 
-            return new AssetCondition(predicate, description, folders, folderGuids, nonRecursive, negated, exclusions);
+            return new AssetCondition(predicate, description, folders, folderGuids, nonRecursive, negated, exclusions,
+                descriptionIsConjunction: descriptionIsConjunction, descriptionIsPartial: descriptionIsPartial);
+        }
+
+        /// <summary>
+        /// 範囲側（Not の内側でない）で再帰宣言された GUID があれば、同じ GUID の範囲側の直下だけ宣言も再帰にそろえる。
+        /// 変更が無ければ元の一覧をそのまま返す。
+        /// </summary>
+        private static List<FolderGuidDeclaration> MergeRecursiveGuids(List<FolderGuidDeclaration> declarations)
+        {
+            HashSet<string> recursiveGuids = null;
+            foreach (var declaration in declarations)
+                if (declaration.Recursive && !declaration.Negated)
+                    (recursiveGuids ??= new HashSet<string>(StringComparer.Ordinal)).Add(declaration.Guid);
+            if (recursiveGuids == null) return declarations;
+
+            var merged = new List<FolderGuidDeclaration>(declarations.Count);
+            foreach (var declaration in declarations)
+            {
+                merged.Add(!declaration.Recursive && !declaration.Negated && recursiveGuids.Contains(declaration.Guid)
+                    ? new FolderGuidDeclaration(declaration.Guid, true, false)
+                    : declaration);
+            }
+
+            return merged;
         }
 
         /// <summary>
@@ -344,7 +436,12 @@ namespace AddressTeller
         internal static string NormalizeFolder(string folder)
             => (folder ?? string.Empty).Replace('\\', '/').TrimEnd('/');
 
-        /// <summary>Implicit conversion to Predicate, for compatibility with Where(Func&lt;AssetContext,bool&gt;).</summary>
+        /// <summary>
+        /// Implicit conversion to Predicate, for compatibility with Where(Func&lt;AssetContext,bool&gt;). The conversion
+        /// keeps only the predicate: the declared folders and exclusions are dropped. To add a description to a condition
+        /// without losing them, use <c>Where(condition, description)</c>, <c>condition.And(other, description)</c> or
+        /// <c>new AssetCondition(condition, description)</c> (the AssetCondition overloads), never the Func ones.
+        /// </summary>
         public static implicit operator Func<AssetContext, bool>(AssetCondition condition)
         {
             if (condition == null) throw new ArgumentNullException(nameof(condition));

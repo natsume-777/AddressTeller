@@ -51,6 +51,15 @@ namespace AddressTeller.Editor.Tests
 
         private static Assembly ThisAssembly => typeof(RuleCollectorTests).Assembly;
 
+        /// <summary>
+        /// このクラスの入れ子型のスタブだけに絞ったルール一覧。テストアセンブリには他のテストクラスが宣言したルールも
+        /// あるので、Order の重複の有無を調べるテストはこちらで見て、他のテストのルールと暗黙に結び付かないようにする。
+        /// </summary>
+        private static System.Collections.Generic.IReadOnlyList<AddressRuleBase> OwnRules()
+            => RuleCollector.CollectRules(new[] { ThisAssembly })
+                .Where(r => r.GetType().DeclaringType == typeof(RuleCollectorTests))
+                .ToList();
+
         [Test]
         public void CollectRules_OrdersAscending()
         {
@@ -157,7 +166,7 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void FindDuplicateOrders_SameOrder_GroupedTogether()
         {
-            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var rules = OwnRules();
 
             var duplicates = RuleCollector.FindDuplicateOrders(rules).ToList();
 
@@ -170,7 +179,7 @@ namespace AddressTeller.Editor.Tests
         [Test]
         public void FindDuplicateOrders_UniqueOrder_NotIncluded()
         {
-            var rules = RuleCollector.CollectRules(new[] { ThisAssembly });
+            var rules = OwnRules();
 
             var duplicates = RuleCollector.FindDuplicateOrders(rules);
 
