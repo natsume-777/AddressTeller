@@ -61,8 +61,9 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   The ledger is created by the first `Apply All` that writes a label, whether or not the setting is on. No label is
   removed in a run where a rule's `Configure()` failed or a declared folder is missing, or from an asset for
   which a rule threw; which names count as AddressTeller's is fixed when the run starts, and the run records
-  its labels in the ledger once at the end. If that write fails, `ValidationStatus.LabelLedgerWriteFailed`
-  (`IsOk=false`, `IsBlocking=true`, `Context` is null) is reported instead of aborting the run. The `Apply All`
+  its labels in the ledger once at the end. If that write fails, `ValidationStatus.LabelLedgerWriteFailed` (`Context` is null) is reported
+  instead of aborting the run. It is blocking (`IsOk=false`, `IsBlocking=true`) while `RemoveStaleManagedLabels`
+  is on, and a non-blocking notice (`IsOk=true`, so the exit code is unaffected) while it is off. The `Apply All`
   confirmation dialog shows how many entries would lose labels; `MaxStaleRemovalsPerRun` does not limit them.
   See [Apply & Operations: Project Settings](Documentation~/operations.md#project-settings).
 - Rule unit tests can now ask what a set of rules decides for an asset, not just what one rule's `Configure()`
@@ -76,6 +77,40 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   and the project's default group name are outside what it can check. A `Configure()` that throws propagates, as with
   `Collect`. The `Rule Unit Test Helper` sample now drives its tests from an expectation table. See
   [Writing Rules: Testing](Documentation~/writing-rules.md#testing).
+- `AssetCondition.Or(AssetCondition)`, `AssetCondition.Not()`, `Match.Any(params AssetCondition[])`, and
+  `Match.WithExtension(params string[])` for composing conditions. The description of a composed condition is
+  built automatically, as `(A OR B)` or `NOT A`. `Or` and `Match.Any` take the union of the operands' declared
+  folders. `Not` keeps them for the existence check but does not treat them as a scope when listing unmatched
+  assets. `WithExtension` declares no folders and throws `ArgumentException` for an argument that is not a single
+  file extension (for example `*`, `p ng`, or `png.jpg`).
+- `AssetCondition.And(AssetCondition, string)`, the `AssetCondition(AssetCondition, string)` constructor, and
+  `Where(AssetCondition, string)` on `IAddressRuleGroupBuilder` and `ILabelRuleBuilder`. A `Match.*` condition
+  given a description keeps the folders it declares (see Changed).
+- `IAddressRuleGroupBuilder.OverriddenBy<TRule>()` declares that a rule's address is intentionally overridden
+  by the rule class `TRule` through `Order`. `RuleOverlap` (`OverriddenRule`, `OverridingRule`, `Count`,
+  `ExamplePaths`, `IsDeclared`) is a pair of rule classes whose addresses overlap on some assets.
+  `DryRunResult.Overlaps` lists these pairs, and `DryRunResult.UnmatchedInDeclaredFolders` lists the assets under
+  a declared folder that no rule matched. JSON reports gain `Overlaps[]` and `Unmatched[]`; `SchemaVersion` stays `1`.
+- Setting `_strictRuleOverlaps` (JSON key; "Strict rule overlaps" in Project Settings, default off). When on, an
+  overlap not declared with `OverriddenBy<TRule>()` is reported once per pair of rule classes as
+  `ValidationStatus.UndeclaredRuleOverlap` (`IsOk=false`, `IsBlocking=true`, `Context` is null). Apply with Validate
+  aborts on it, and `CheckCLI` and `ApplyWithValidateCLI` exit with code 2. Apply All does not validate, so it does
+  not enforce the setting, and `ApplyAllCLI` logs one warning instead. When the diff is empty and the only issues
+  are undeclared overlaps, Apply All reports "No changes detected".
+- `ValidationStatus.RuleMatchedNothing` (`IsOk=true`): a rule that can assign an address matched no asset in a
+  whole-project scan. It is reported once per rule by `ValidateAll`, `CheckCLI`, and the Apply All and Apply with
+  Validate menu items. It stops nothing.
+- `CheckCLI -addressTellerFailOnUnmatched`: exit code 2 when an asset under a folder some rule declares is matched
+  by no rule. Unmatched is judged by rule outcome, not by whether the asset already has an entry, so with
+  `CleanupStaleEntries` off, an asset that keeps a stale entry can also fail the run. Other CLI entry points ignore
+  the flag with a warning. Without the flag, unmatched assets are report-only.
+- Assets under declared folders that no rule matched are shown in three places: the Validate menu lists all of
+  them in a new Unmatched tab of the Result Window; the automatic apply on import logs one warning line naming the
+  first few newly unmatched imported assets (a path is warned about once until it stops being unmatched, is moved
+  or deleted, or the Editor reloads its domain); and the JUnit report gains an `unmatched` testcase, which carries
+  a `<failure>` only with `-addressTellerFailOnUnmatched`.
+- Incremental apply (`ApplyAll(paths)`, including the automatic apply on import) now detects `DuplicateAddress`
+  between the addresses it assigns and other assets. See Changed.
 
 ### Changed
 
@@ -100,6 +135,21 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   on a broad rule's label appearing on assets that another rule won, move that label into a separate
   `AnyGroup()` rule. Labels that an earlier `Apply All` already put on an entry are not stripped. The Explain window now marks a losing rule's labels as not
   applied. See [Design Decisions: Labels Follow the Winning Rule](Documentation~/design-decisions.md#labels-follow-the-winning-rule).
+- **BREAKING**: `AddressTellerService.ApplyAll(paths)` (the incremental apply, including the automatic apply on
+  import, and the apply step of the CLI and menu entry points) now checks the addresses it assigns in the run
+  against every entry already in Addressables. A collision is returned as `ValidationStatus.DuplicateAddress`
+  (`IsOk=false`, `IsBlocking=false`), and the automatic apply on import logs it with `Debug.LogError`. The write
+  still happens. Code that uses `!IsOk` to decide that an apply failed will now see a failure for a run whose
+  writes succeeded. Before this release `ApplyAll` never returned `DuplicateAddress`; only `ValidateAll` and the
+  dry-run did.
+- `ValidateAll` and the dry-run (`BuildPredictedSnapshot`) now also return `IsOk=true` notices:
+  `RuleMatchedNothing`, `AssetTypeUnresolved`, `DeclaredFolderCaseMismatch`, and `StaleManagedLabelKept`
+  (`UnmatchedEntryKept` was already returned). Code that treats `Count == 0` as "no issues" will see these.
+  `!IsOk` is unaffected.
+- Code written against 0.7.1 as `Where(<Match condition>, "text")`, `.And(<Match condition>, "text")`, or
+  `new AssetCondition(<Match condition>, "text")` now resolves, when recompiled, to the overloads that keep the
+  condition's declared folders. The description text is the same, but the folders now take effect, so a declared
+  folder that does not exist is reported as `DeclaredFolderMissing` (see the BREAKING entry above).
 
 ## [0.7.1] - 2026-10-03
 

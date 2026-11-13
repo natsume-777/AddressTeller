@@ -59,7 +59,7 @@
   作られる。ルールの `Configure()` が失敗した、または宣言フォルダが欠落しているランでは、またルールが例外を
   投げたアセットからは、ラベルを外さない。どの名前を AddressTeller のものとみなすかはラン開始時点で固定され、
   ランは書いたラベルをランの最後に1回だけ台帳へ記録する。その書き込みが失敗した場合は、ランを中断せず
-  `ValidationStatus.LabelLedgerWriteFailed`（`IsOk=false`、`IsBlocking=true`、`Context` は null）を報告する。
+  `ValidationStatus.LabelLedgerWriteFailed`（`Context` は null）を報告する。設定 `RemoveStaleManagedLabels` が ON の間はブロッキング（`IsOk=false`、`IsBlocking=true`）、OFF の間はブロッキングでない通知（`IsOk=true`、終了コードに影響しない）になる。
   `Apply All` の確認ダイアログは、ラベルを失うエントリの数を示す。`MaxStaleRemovalsPerRun` はラベルの除去には効かない。
   [Apply と運用: Project Settings](Documentation~/operations.ja.md#project-settings) を参照。
 - ルールの単体テストで、1 つのルールの `Configure()` が登録した内容だけでなく、ルール集合があるアセットに
@@ -73,6 +73,14 @@
   プロジェクトの既定グループ名は検査の対象外。`Configure()` が例外を投げた場合は `Collect` と同じく呼び出し元へ
   伝播する。`Rule Unit Test Helper` サンプルは、期待値表で駆動するテストに置き換わった。
   [ルールの書き方: テスト](Documentation~/writing-rules.ja.md#テスト)を参照。
+- 条件を合成するための `AssetCondition.Or(AssetCondition)`、`AssetCondition.Not()`、`Match.Any(params AssetCondition[])`、`Match.WithExtension(params string[])` を追加した。合成した条件の説明は `(A OR B)`、`NOT A` の形で自動的に作られる。`Or` と `Match.Any` は両辺が宣言したフォルダの和集合を取る。`Not` は実在検査のためにそれらを保持するが、マッチしなかったアセットを一覧にするときの範囲としては扱わない。`WithExtension` はフォルダを宣言せず、単一のファイル拡張子として書けない引数（たとえば `*`、`p ng`、`png.jpg`）には `ArgumentException` を投げる。
+- `AssetCondition.And(AssetCondition, string)`、`AssetCondition(AssetCondition, string)` コンストラクタ、`IAddressRuleGroupBuilder` と `ILabelRuleBuilder` の `Where(AssetCondition, string)` を追加した。説明文を付けた `Match.*` の条件は、宣言したフォルダを保持する（Changed を参照）。
+- `IAddressRuleGroupBuilder.OverriddenBy<TRule>()` を追加した。そのルールのアドレスが、ルールクラス `TRule` に `Order` で上書きされるのは意図したものだと宣言する。`RuleOverlap`（`OverriddenRule`、`OverridingRule`、`Count`、`ExamplePaths`、`IsDeclared`）は、一部のアセットでアドレスが重なっているルールクラスの組を表す。`DryRunResult.Overlaps` がその組を一覧にし、`DryRunResult.UnmatchedInDeclaredFolders` が宣言フォルダ配下のアセットで、どのルールにもマッチしなかったものを一覧にする。JSON レポートに `Overlaps[]` と `Unmatched[]` が加わる。`SchemaVersion` は `1` のまま。
+- 設定 `_strictRuleOverlaps` を追加した（JSON キー。Project Settings の「Strict rule overlaps」、既定 OFF）。ON のとき、`OverriddenBy<TRule>()` で宣言されていない重なりを、ルールクラスの組ごとに1件の `ValidationStatus.UndeclaredRuleOverlap`（`IsOk=false`、`IsBlocking=true`、`Context` は null）として報告する。Apply with Validate は中止し、`CheckCLI` と `ApplyWithValidateCLI` は終了コード 2 になる。Apply All は検証を行わないため、この設定を強制せず、`ApplyAllCLI` は代わりに警告を1行出す。差分が空で、問題が未宣言の重なりだけのとき、Apply All は「No changes detected」と表示する。
+- `ValidationStatus.RuleMatchedNothing`（`IsOk=true`）を追加した。アドレスを割り当てられるルールが、プロジェクト全体のスキャンで1件もアセットにマッチしなかったことを示す。ルールごとに1件、`ValidateAll`、`CheckCLI`、Apply All・Apply with Validate メニューが報告する。何も止めない。
+- `CheckCLI` に `-addressTellerFailOnUnmatched` を追加した。宣言フォルダの配下にあって、どのルールにもマッチしないアセットが1件でもあれば終了コード 2 になる。未登録かどうかはルールの評価結果で判定し、アセットに既存のエントリがあるかどうかは問わない。そのため `CleanupStaleEntries` が OFF で既存エントリが残っているアセットも、このフラグでは失敗になりうる。ほかの CLI エントリポイントはこのフラグを無視し、警告を出す。フラグが無いときは報告のみ。
+- 宣言フォルダ配下で、どのルールにもマッチしないアセットは3か所に出る。Validate メニューは結果ウィンドウの新しい Unmatched タブに全件を出す。import 時の自動適用は、新たに未登録になった import 済みアセットを先頭数件のパスとともに1行の Warning にまとめる（同じパスは、未登録でなくなるか、移動・削除されるか、Editor のドメインリロードまでの間は再び警告しない）。JUnit レポートには `unmatched` の testcase が加わり、`-addressTellerFailOnUnmatched` を指定したときだけ `<failure>` を持つ。
+- 増分適用（`ApplyAll(paths)`、import 時の自動適用を含む）が、割り当てたアドレスと他のアセットとの `DuplicateAddress` を検出するようになった。Changed を参照。
 
 ### Changed
 
@@ -98,6 +106,9 @@
   ルールに移すこと。過去の `Apply All` で既にエントリに付いたラベルは剥がされない。Explain ウィンドウは、負けたルールのラベルを
   「適用されない」と表示するようになった。
   [設計上の決定事項: ラベルは勝者ルールに従う](Documentation~/design-decisions.ja.md#ラベルは勝者ルールに従う)を参照。
+- **BREAKING**: `AddressTellerService.ApplyAll(paths)`（増分適用。import 時の自動適用と、CLI・メニューの適用ステップを含む）は、そのランで割り当てたアドレスを、Addressables の既存の全エントリと照合するようになった。衝突は `ValidationStatus.DuplicateAddress`（`IsOk=false`、`IsBlocking=false`）として返り、import 時の自動適用はそれを `Debug.LogError` で記録する。書き込みは従来どおり行われる。`!IsOk` で適用の失敗を判定している呼び出し側は、書き込みが成功したランを失敗と判定するようになる。これまで `ApplyAll` が `DuplicateAddress` を返すことはなく、`ValidateAll` と dry-run だけが返していた。
+- `ValidateAll` と dry-run（`BuildPredictedSnapshot`）が、`IsOk=true` の通知を新たに返すようになった: `RuleMatchedNothing`、`AssetTypeUnresolved`、`DeclaredFolderCaseMismatch`、`StaleManagedLabelKept`（`UnmatchedEntryKept` は従来どおり）。`Count == 0` を「問題なし」の判定に使っている呼び出し側は、これらを受け取る。`!IsOk` には影響しない。
+- 0.7.1 で `Where(<Match 条件>, "text")`、`.And(<Match 条件>, "text")`、`new AssetCondition(<Match 条件>, "text")` と書いていたコードは、再コンパイルすると条件を受け取るオーバーロードに解決され、条件が宣言したフォルダが有効になる。説明文は変わらないが、存在しないフォルダは `DeclaredFolderMissing` として報告されるようになる（上の BREAKING の項を参照）。
 
 ## [0.7.1] - 2026-10-03
 
