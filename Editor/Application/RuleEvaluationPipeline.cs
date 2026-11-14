@@ -601,7 +601,7 @@ namespace AddressTeller.Editor
 
     /// <summary>
     /// エントリが宣言したフォルダの「配下」を判定する。宣言が <c>Match.InFolder(path, recursive: false)</c> なら直下のアセット
-    /// だけ、それ以外（再帰の InFolder・GUID 宣言・Glob の固定接頭辞）は子孫すべて。大小文字は区別しない
+    /// だけ、それ以外（再帰の InFolder・GUID 宣言）は子孫すべて。Glob の固定接頭辞は実在検査専用で範囲に入らない（NegatedFolders に入る）。大小文字は区別しない
     /// （<see cref="AssetContext.IsInFolder"/> と同じ）。同じフォルダを別のルールが再帰で宣言していれば再帰が優先される
     /// （そのルールの宣言の配下でもあるため）。
     /// <para>

@@ -83,6 +83,14 @@ AddressTeller is meant to be adopted in three steps, each safe to stop at:
 
 Both settings from steps 2 and 3 default to off. See [Apply & Operations](Documentation~/operations.md) for every apply method, CI integration, and these settings in detail.
 
+Safety nets for rule mistakes:
+
+- **Declared folders are checked.** A folder named in `Match.InFolder`, `Match.InFolderByGuid` or the fixed prefix of `Match.Glob` that does not exist (a typo, or a moved folder) is reported as a blocking `DeclaredFolderMissing` issue, and stale entry cleanup is suspended for that run. See [Writing Rules: Declared Folders](Documentation~/writing-rules.md#declared-folders).
+- **Deletions can be capped.** Set `Max stale removals per run` in `Project Settings > AddressTeller` and a non-interactive run (auto-apply on import, `ApplyAllCLI`, `ApplyWithValidateCLI`) that would remove more entries than that removes none of them and reports it instead. The default `0` means no cap. See [Apply & Operations: Project Settings](Documentation~/operations.md#project-settings).
+- **Rules can be tested.** `RuleInspector.Verify` checks an expectation table (asset path to expected group, address and labels) in an ordinary EditMode test, without an Addressables project. See [Writing Rules: Testing](Documentation~/writing-rules.md#testing).
+
+`Unmatched` is a report, not a failure: assets under a declared folder that no rule gave an address or label are listed by `Tools/AddressTeller/Show Unmatched Assets` (and in the `Unmatched[]` list of a JSON report), and a rule narrowed by type or extension (like the one above) leaves the rest of its folder there by design.
+
 To assign to the Addressables DefaultGroup, use `GroupDefault()` instead of `Group("name")` — it follows DefaultGroup renames automatically. See [Writing Rules](Documentation~/writing-rules.md#groupdefault) for details.
 
 `Order` also doubles as a priority: write a broad rule with a high `Order` value and a narrower rule with a lower one, and the narrower rule's address wins whenever both match the same asset. See [Writing Rules: Address priority and conflicts](Documentation~/writing-rules.md#evaluation-rules-and-behavior) for an example.

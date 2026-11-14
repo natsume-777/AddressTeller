@@ -14,7 +14,8 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   produced that candidate (never null). They are written only if that candidate wins.
 - Rules now declare the folders their conditions depend on, and AddressTeller checks that they exist.
   `AssetCondition.Folders` (and the optional `folders` constructor argument) and `AddressRuleEntry.DeclaredFolders`
-  hold the declaration. `Match.InFolder` declares its folder, `Match.Glob` declares the folder made of the
+  hold the declaration. `Match.InFolder` declares its folder, `Match.Glob` declares the folder (for the existence
+  check only, never as a scope of the unmatched list) made of the
   whole path segments before its first wildcard (a pattern starting with a wildcard declares nothing), and
   `And()` / `Match.All()` take the union. A condition built from a raw lambda declares nothing and is never
   reported. See [Writing Rules: Declared Folders](Documentation~/writing-rules.md#declared-folders).
@@ -90,8 +91,11 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
   by the rule class `TRule` through `Order`. `RuleOverlap` (`OverriddenRule`, `OverridingRule`, `Count`,
   `ExamplePaths`, `IsDeclared`) is a pair of rule classes whose addresses overlap on some assets.
   `DryRunResult.Overlaps` lists these pairs, and `DryRunResult.UnmatchedInDeclaredFolders` lists the assets under
-  a declared folder that no rule matched. JSON reports gain `Overlaps[]` and `Unmatched[]`; `SchemaVersion` stays `1`.
-- Setting `_strictRuleOverlaps` (JSON key; "Strict rule overlaps" in Project Settings, default off). When on, an
+  a declared folder that no rule matched. JSON reports gain `Overlaps[]` and `Unmatched[]` (`AddressTellerReport.Overlaps`,
+  a list of the new public type `AddressTellerReportOverlap` with `OverriddenRule`, `OverridingRule`, `Count`,
+  `Declared` and `ExamplePaths`; and `AddressTellerReport.Unmatched`); `SchemaVersion` stays `1`.
+- `AddressTellerSettings.StrictRuleOverlaps` (JSON key `_strictRuleOverlaps`, default `false`; "Strict rule overlaps" in
+  Project Settings). When on, an
   overlap not declared with `OverriddenBy<TRule>()` is reported once per pair of rule classes as
   `ValidationStatus.UndeclaredRuleOverlap` (`IsOk=false`, `IsBlocking=true`, `Context` is null). Apply with Validate
   aborts on it, and `CheckCLI` and `ApplyWithValidateCLI` exit with code 2. Apply All does not validate, so it does
@@ -103,12 +107,23 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 - `CheckCLI -addressTellerFailOnUnmatched`: exit code 2 when an asset under a folder some rule declares is matched
   by no rule. Unmatched is judged by rule outcome, not by whether the asset already has an entry, so with
   `CleanupStaleEntries` off, an asset that keeps a stale entry can also fail the run. Other CLI entry points ignore
-  the flag with a warning. Without the flag, unmatched assets are report-only.
-- Assets under declared folders that no rule matched are shown in three places: the Validate menu lists all of
-  them in a new Unmatched tab of the Result Window; the automatic apply on import logs one warning line naming the
-  first few newly unmatched imported assets (a path is warned about once until it stops being unmatched, is moved
-  or deleted, or the Editor reloads its domain); and the JUnit report gains an `unmatched` testcase, which carries
-  a `<failure>` only with `-addressTellerFailOnUnmatched`.
+  the flag with a warning. Without the flag, unmatched assets are report-only. `AddressTellerCliArgs.FailOnUnmatched`
+  exposes the parsed flag, and `AddressTellerReportWriter.ToJUnitXml` and `WriteToFile` gained an optional trailing
+  `treatUnmatchedAsFailure` argument (default `false`) that makes the `unmatched` testcase carry a `<failure>`.
+- Assets under declared folders that no rule matched are reported, not treated as a failure: a rule narrowed by
+  type or extension leaves the rest of its folder unmatched by design. They are shown in a new Unmatched tab of the
+  Result Window (the dry-run preview, and the Validate menu when it opens for issues; Validate does not open
+  the window for unmatched assets alone); in one Info console line from the menu items and CLI entry points; by
+  the automatic apply on import as one Info line naming the first few newly unmatched imported assets (a path is
+  reported once until it stops being unmatched, is moved or deleted, or the Editor reloads its domain); and as an
+  `unmatched` testcase in the JUnit report, which carries a `<failure>` only with `-addressTellerFailOnUnmatched`
+  (with the flag, `CheckCLI` also logs the line as an error). Only `Match.InFolder` / `Match.InFolderByGuid` declare
+  a scope for this list; the fixed prefix of `Match.Glob` is checked for existence but never counts as one.
+- `Tools/AddressTeller/Show Unmatched Assets` menu item (`AddressTellerMenu.ShowUnmatchedAssets`): a read-only way to
+  list every unmatched asset in the Result Window's Unmatched tab. It opens no window when there are none, and when
+  the list may be incomplete (a duplicate asset entry, a rule that failed to configure, a missing declared folder, or
+  unavailable settings) it says so in one Console line instead of reporting zero. The Console lines and the import
+  line point to it.
 - Incremental apply (`ApplyAll(paths)`, including the automatic apply on import) now detects `DuplicateAddress`
   between the addresses it assigns and other assets. See Changed.
 
@@ -120,7 +135,8 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 - **BREAKING**: A rule that references a folder that does not exist through `Match.InFolder` or `Match.Glob`
   (a typo, or a folder that was moved or deleted) is now reported as `ValidationStatus.DeclaredFolderMissing`,
   a blocking issue. Such a rule never matched anything before, so projects that carried one silently now see:
-  `CheckCLI` / `ApplyWithValidateCLI` exit with code 2 instead of 0, Apply with Validate in the menu aborts,
+  `CheckCLI` / `ApplyWithValidateCLI` exit with code 2 instead of 0, `ApplyAllCLI` still writes everything
+  else but then also exits with code 2, Apply with Validate in the menu aborts,
   and, with `CleanupStaleEntries` on, stale entry cleanup is suspended for every run while the folder is
   missing. Fix the folder path, or, if the dead reference is intentional, write the condition as a raw lambda
   (`Where(ctx => ctx.IsInFolder("..."))`), which declares no folder and is never reported.

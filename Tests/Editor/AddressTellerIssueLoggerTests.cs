@@ -199,5 +199,35 @@ namespace AddressTeller.Editor.Tests
 
             LogAssert.NoUnexpectedReceived();
         }
+
+        [Test]
+        public void LogUnmatched_NotFailing_LogsAtInfoNotWarning()
+        {
+            // 型や拡張子で絞ったルールでは出るのが通常の報告なので、失敗を指定していない経路は Info で静かに出す。
+            LogAssert.Expect(LogType.Log, new Regex(@"Unmatched: 2 assets under folders that rules declare.*Tools/AddressTeller/Show Unmatched Assets"));
+
+            AddressTellerIssueLogger.LogUnmatched(new[] { "Assets/A/a.png", "Assets/A/b.png" }, failing: false);
+
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void LogUnmatched_Failing_LogsAtError()
+        {
+            LogAssert.Expect(LogType.Error, new Regex(@"Unmatched: 1 asset under folders that rules declare"));
+
+            AddressTellerIssueLogger.LogUnmatched(new[] { "Assets/A/a.png" }, failing: true);
+
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void LogUnmatched_Empty_LogsNothing()
+        {
+            AddressTellerIssueLogger.LogUnmatched(new string[0], failing: false);
+            AddressTellerIssueLogger.LogUnmatched(new string[0], failing: true);
+
+            LogAssert.NoUnexpectedReceived();
+        }
     }
 }

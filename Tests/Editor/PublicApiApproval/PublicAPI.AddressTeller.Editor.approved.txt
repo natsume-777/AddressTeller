@@ -26,6 +26,7 @@ static class AddressTeller.Editor.AddressTellerMenu
   Method static System.Void ClearAll()
   Method static System.Void ClearCLI()
   Method static System.Void PreviewGroup()
+  Method static System.Void ShowUnmatchedAssets()
   Method static System.Void Validate()
 
 sealed class AddressTeller.Editor.AddressTellerPostprocessor : UnityEditor.AssetPostprocessor

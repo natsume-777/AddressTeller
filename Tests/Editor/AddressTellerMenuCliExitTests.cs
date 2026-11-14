@@ -66,12 +66,12 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void ReportCheckResult_WithoutFailOnUnmatched_ExitsZeroAndLogsWarning()
+        public void ReportCheckResult_WithoutFailOnUnmatched_ExitsZeroAndLogsInfo()
         {
             int? exitCode = null;
             AddressTellerMenu.s_exitCli = code => exitCode = code;
             LogAssert.Expect(LogType.Log, new Regex("Check completed"));
-            LogAssert.Expect(LogType.Warning, new Regex("Unmatched: 1 asset"));
+            LogAssert.Expect(LogType.Log, new Regex("Unmatched: 1 asset"));
 
             AddressTellerMenu.ReportCheckResult(DryRunWithUnmatched(), ParseArgs(), null);
 
@@ -112,7 +112,7 @@ namespace AddressTeller.Editor.Tests
                 AddressTellerMenu.s_exitCli = _ => { };
 
                 LogAssert.Expect(LogType.Log, new Regex("Check completed"));
-                LogAssert.Expect(LogType.Warning, new Regex("Unmatched: 1 asset"));
+                LogAssert.Expect(LogType.Log, new Regex("Unmatched: 1 asset"));
                 AddressTellerMenu.ReportCheckResult(DryRunWithUnmatched(), ParseArgs("-addressTellerReport", path), null);
                 var withoutFlag = File.ReadAllText(path);
 

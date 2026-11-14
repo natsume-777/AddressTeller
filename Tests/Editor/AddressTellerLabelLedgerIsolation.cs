@@ -51,7 +51,7 @@ namespace AddressTeller.Editor.Tests
     public class LabelLedgerIsolationTests : LabelLedgerIsolatedFixture
     {
         [Test, Order(1)]
-        public void Step1_WritesANameToTheLedger()
+        public void First_WritesANameToTheLedger()
         {
             AddressTellerLabelLedger.Record(new[] { "leaked" });
 
@@ -60,7 +60,7 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test, Order(2)]
-        public void Step2_NameFromThePreviousTestIsGone()
+        public void Then_NameFromThePreviousTestIsGone()
         {
             Assert.IsFalse(AddressTellerLabelLedger.IsManaged("leaked"));
             CollectionAssert.IsEmpty(AddressTellerLabelLedger.GetAll());

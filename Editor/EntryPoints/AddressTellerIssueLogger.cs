@@ -99,8 +99,9 @@ namespace AddressTeller.Editor
 
         /// <summary>
         /// 宣言フォルダ内の未登録アセット（<see cref="DryRunResult.UnmatchedInDeclaredFolders"/>）を件数だけの1行で
-        /// ログする。個別のパスは結果ウィンドウの Unmatched タブとレポートの <c>Unmatched[]</c> で提供するため、
-        /// ここでは出さない。0 件なら何も出さない。<paramref name="failing"/>（<c>-addressTellerFailOnUnmatched</c>）が
+        /// ログする。個別のパスは Show Unmatched Assets メニューの結果ウィンドウ（Unmatched タブ）とレポートの <c>Unmatched[]</c> で提供するため、
+        /// ここでは出さない。0 件なら何も出さない。Unmatched は報告であり、型や拡張子で絞ったルールでは出るのが通常なので、
+        /// 失敗を指定していない経路は Info（Debug.Log）で静かに出す。<paramref name="failing"/>（<c>-addressTellerFailOnUnmatched</c>）が
         /// true のときは、exit code 2 の原因になるので LogError にする。
         /// </summary>
         public static void LogUnmatched(IReadOnlyList<string> unmatched, bool failing)
@@ -109,25 +110,25 @@ namespace AddressTeller.Editor
 
             var isSingle = unmatched.Count == 1;
             var message = $"[AddressTeller] Unmatched: {unmatched.Count} asset{(isSingle ? "" : "s")} under folders that rules declare " +
-                $"get{(isSingle ? "s" : "")} no address or label from any rule (first: {unmatched[0]}). Inspect the Unmatched tab of the Result Window " +
-                "or the Unmatched[] list of a JSON report.";
+                $"get{(isSingle ? "s" : "")} no address or label from any rule (first: {unmatched[0]}). Unmatched is a report: a rule narrowed by type or extension leaves the rest of its folder here. List every such asset with Tools/AddressTeller/Show Unmatched Assets, or see the " +
+                "Unmatched[] list of a JSON report.";
             if (failing)
                 Debug.LogError(message);
             else
-                Debug.LogWarning(message);
+                Debug.Log(message);
         }
 
         /// <summary>
         /// import した資産のうち、宣言フォルダの配下にあるのにどのルールからもアドレスもラベルも付かなかったもの
-        /// （増分適用の結果。既存エントリの有無は見ない）を、件数と先頭数件のパスの Warning 1 行にまとめる。import のたびに通る経路なので、
+        /// （増分適用の結果。既存エントリの有無は見ない）を、件数と先頭数件のパスの Info（Debug.Log）1 行にまとめる。import のたびに通る経路なので、
         /// 多数が同時に該当しても1行に収める。0 件なら何も出さない。呼び出し側（Postprocessor）が、警告済みのパスを
         /// 除いた「新しく該当したパス」だけを渡す（再 import で毎回出さない。パス単位で、ドメインリロードまで）。
-        /// 全体は Validate メニューの Unmatched タブで確認できる。
+        /// 全体は Tools/AddressTeller/Show Unmatched Assets で確認できる。
         /// </summary>
         public static void LogUnmatchedOnImport(IReadOnlyList<string> unmatched)
         {
             var message = BuildUnmatchedOnImportMessage(unmatched);
-            if (message != null) Debug.LogWarning(message);
+            if (message != null) Debug.Log(message);
         }
 
         /// <summary>先頭に並べるパスの上限。</summary>
@@ -143,7 +144,7 @@ namespace AddressTeller.Editor
             var more = unmatched.Count > sample.Count ? $", and {unmatched.Count - sample.Count} more" : string.Empty;
             return $"[AddressTeller] Unmatched: {unmatched.Count} imported asset{(isSingle ? "" : "s")} under folders that rules declare " +
                 $"get{(isSingle ? "s" : "")} no address or label from any rule " +
-                $"({string.Join(", ", sample)}{more}). Run Tools/AddressTeller/Validate to list every such asset in the Unmatched tab.";
+                $"({string.Join(", ", sample)}{more}). Run Tools/AddressTeller/Show Unmatched Assets to list every such asset.";
         }
 
         /// <summary>

@@ -543,6 +543,84 @@ namespace AddressTeller.Editor.Tests
             Assert.IsTrue(InScope("Assets/A/x.prefab", condition));
         }
 
+        // --- Glob の固定接頭辞は実在検査専用（範囲に入れない） ---
+
+        [Test]
+        public void Scope_Glob_FixedPrefixIsNotAScope_ButIsStillDeclaredForTheExistenceCheck()
+        {
+            var glob = Match.Glob("Assets/**/Characters/**");
+
+            CollectionAssert.AreEqual(new[] { "Assets" }, glob.Folders);
+            CollectionAssert.AreEqual(new[] { "Assets" }, glob.NegatedFolders);
+            Assert.IsFalse(InScope("Assets/Other/x.png", glob), "Glob 宣言だけでは Assets 全体を Unmatched の範囲にしない。");
+            Assert.IsFalse(InScope("Assets/Characters/x.png", glob));
+        }
+
+        [Test]
+        public void Scope_Glob_InFolderAndGlob_ScopeIsOnlyTheInFolder()
+        {
+            var condition = Match.InFolder("Assets/A").And(Match.Glob("Assets/B/**/*.png"));
+
+            Assert.IsTrue(InScope("Assets/A/x.png", condition));
+            Assert.IsFalse(InScope("Assets/B/x.png", condition));
+        }
+
+        [Test]
+        public void Scope_Glob_SameFolderDeclaredByInFolder_StaysAScope()
+        {
+            var condition = Match.InFolder("Assets/A").And(Match.Glob("Assets/A/*.png"));
+
+            Assert.IsTrue(InScope("Assets/A/x.prefab", condition));
+            Assert.AreEqual(0, condition.NegatedFolders.Count);
+        }
+
+        [Test]
+        public void Scope_Glob_Or_WithInFolder_GlobPrefixStaysOutOfScope()
+        {
+            var or = Match.InFolder("Assets/A").Or(Match.Glob("Assets/B/**/*.png"));
+
+            Assert.IsTrue(InScope("Assets/A/x.png", or));
+            Assert.IsFalse(InScope("Assets/B/x.png", or));
+            CollectionAssert.AreEqual(new[] { "Assets/A", "Assets/B" }, or.Folders);
+        }
+
+        [Test]
+        public void Scope_Glob_Not_DoesNotTurnThePrefixIntoAScope()
+        {
+            // Not(Glob) の接頭辞は、反転しても範囲に戻らない（InFolder の Not の Not は範囲に戻る）。
+            Assert.IsFalse(InScope("Assets/B/x.png", Match.Glob("Assets/B/**/*.png").Not()));
+            Assert.IsFalse(InScope("Assets/B/x.png", Match.Glob("Assets/B/**/*.png").Not().Not()));
+            Assert.IsTrue(InScope("Assets/A/x.png", Match.InFolder("Assets/A").Not().Not()));
+        }
+
+        [Test]
+        public void Scope_Glob_NotOfOrWithInFolder_FlipsOnlyTheInFolder()
+        {
+            // Not(Or(InFolder A, Glob B)) の Not をもう一度かけると、A だけが範囲に戻る。
+            var restored = Match.InFolder("Assets/A").Or(Match.Glob("Assets/B/**/*.png")).Not().Not();
+
+            Assert.IsTrue(InScope("Assets/A/x.png", restored));
+            Assert.IsFalse(InScope("Assets/B/x.png", restored));
+        }
+
+        [Test]
+        public void Scope_Glob_ExclusionOfGlob_StillSubtractsFromTheInFolderScope()
+        {
+            var condition = Match.InFolder("Assets/A").And(Match.Glob("Assets/A/*.png").Not());
+
+            Assert.IsFalse(InScope("Assets/A/x.png", condition));
+            Assert.IsTrue(InScope("Assets/A/x.prefab", condition));
+        }
+
+        [Test]
+        public void Scope_Glob_NotOfOr_NotInFolderAndGlobOfSameFolder_FlipsToScope()
+        {
+            // 同じフォルダを Not(InFolder) と Glob で宣言した Or を Not すると、Not(InFolder) が範囲へ戻る側なので範囲になる。
+            var outer = Match.InFolder("Assets/A").Not().Or(Match.Glob("Assets/A/*.png")).Not();
+
+            Assert.IsTrue(InScope("Assets/A/x.prefab", outer));
+        }
+
         [Test]
         public void Scope_Exclusion_OfInFolderByGuid_UsesTheResolvedFolder()
         {
@@ -692,6 +770,29 @@ namespace AddressTeller.Editor.Tests
 
             Assert.AreEqual(0, resolved.NegatedFolders.Count);
             Assert.IsTrue(new DeclaredFolderScope(new[] { resolved }).Contains("Assets/A/x.png"));
+        }
+
+        [Test]
+        public void ResolveGuids_GlobPrefixOfTheSameFolder_ComesBackAsScope()
+        {
+            // Glob の接頭辞（検査専用）と同じフォルダへ解決される GUID 宣言（範囲）があれば、範囲になる。
+            var entry = EntryOf(Match.InFolderByGuid("g1").And(Match.Glob("Assets/G/*.png")));
+
+            var resolved = Resolve(entry, _ => "Assets/G")[0];
+
+            Assert.AreEqual(0, resolved.NegatedFolders.Count);
+            Assert.IsTrue(new DeclaredFolderScope(new[] { resolved }).Contains("Assets/G/x.prefab"));
+        }
+
+        [Test]
+        public void ResolveGuids_NegatedGuidAndGlobPrefixOfTheSameFolder_StaysOutOfScope()
+        {
+            var entry = EntryOf(Match.InFolderByGuid("g1").Not().And(Match.Glob("Assets/G/*.png")));
+
+            var resolved = Resolve(entry, _ => "Assets/G")[0];
+
+            CollectionAssert.AreEqual(new[] { "Assets/G" }, resolved.NegatedFolders);
+            Assert.IsFalse(new DeclaredFolderScope(new[] { resolved }).Contains("Assets/G/x.prefab"));
         }
 
         [Test]

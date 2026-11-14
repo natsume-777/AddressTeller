@@ -375,7 +375,7 @@ namespace AddressTeller.Editor.Tests
             StringAssert.Contains("5 imported assets", message);
             StringAssert.Contains("(Assets/D/a.txt, Assets/D/b.txt, Assets/D/c.txt, and 2 more)", message);
             StringAssert.DoesNotContain("Assets/D/d.txt", message);
-            StringAssert.Contains("Validate", message);
+            StringAssert.Contains("Tools/AddressTeller/Show Unmatched Assets", message);
         }
 
         [Test]
@@ -389,38 +389,105 @@ namespace AddressTeller.Editor.Tests
         }
 
         [Test]
-        public void Log_EmitsASingleWarning_AndNothingWhenEmpty()
+        public void Log_EmitsASingleInfoLine_AndNothingWhenEmpty()
         {
             AddressTellerIssueLogger.LogUnmatchedOnImport(new List<string>());
 
-            LogAssert.Expect(LogType.Warning, new Regex(@"^\[AddressTeller\] Unmatched: 2 imported assets .*Assets/D/a\.txt, Assets/D/b\.txt\)"));
+            LogAssert.Expect(LogType.Log, new Regex(@"^\[AddressTeller\] Unmatched: 2 imported assets .*Assets/D/a\.txt, Assets/D/b\.txt\)"));
             AddressTellerIssueLogger.LogUnmatchedOnImport(new List<string> { "Assets/D/b.txt", "Assets/D/a.txt" });
         }
 
         // --- Validate メニュー ---
 
         [Test]
-        public void MenuValidate_UnmatchedOnly_LogsACountLineAndShowsTheResultWindowWithThePaths()
+        public void MenuValidate_UnmatchedOnly_LogsACountLineAtInfoAndDoesNotOpenTheResultWindow()
         {
-            IReadOnlyList<ValidationResult> shownIssues = null;
-            IReadOnlyList<string> shownUnmatched = null;
-            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) =>
-            {
-                shownIssues = issues;
-                shownUnmatched = unmatched;
-            };
+            var shown = false;
+            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) => shown = true;
 
             LogAssert.Expect(LogType.Log, new Regex(Regex.Escape("[AddressTeller] Validate completed: no issues.")));
-            LogAssert.Expect(LogType.Warning, new Regex(Regex.Escape("[AddressTeller] Unmatched: 3 assets under folders that rules declare")));
+            LogAssert.Expect(LogType.Log, new Regex(Regex.Escape("[AddressTeller] Unmatched: 3 assets under folders that rules declare")));
 
             AddressTellerMenu.Validate(_settings, Rules(new DeclaredPrefabRule()));
 
-            Assert.IsNotNull(shownIssues, "未登録だけでも結果ウィンドウを開く（件数1行ではパスが見えない）。");
-            Assert.AreEqual(0, shownIssues.Count);
-            CollectionAssert.AreEqual(new[] { OrphanPath, RawOrphanPath, DeepOrphanPath }, shownUnmatched,
-                "Declared 配下で、どのルールにもマッチしなかったもの（Ordinal 順。Outside は宣言外）。");
+            Assert.IsFalse(shown, "未登録だけでは結果ウィンドウを開かない（報告であり、失敗ではない）。");
         }
 
+
+        // --- Show Unmatched Assets メニュー ---
+
+        [Test]
+        public void ShowUnmatchedAssets_PassesTheWholeListToTheResultWindow_WithoutIssues()
+        {
+            IReadOnlyList<ValidationResult> shownIssues = null;
+            IReadOnlyList<string> shownUnmatched = null;
+            string shownTitle = null;
+            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) =>
+            {
+                shownIssues = issues;
+                shownTitle = title;
+                shownUnmatched = unmatched;
+            };
+
+            AddressTellerMenu.ShowUnmatchedAssets(_settings, Rules(new DeclaredPrefabRule()));
+
+            Assert.AreEqual("AddressTeller - Unmatched Assets", shownTitle);
+            Assert.AreEqual(0, shownIssues.Count, "Issues タブが先に出ないよう、issues は渡さない。");
+            CollectionAssert.AreEqual(new[] { OrphanPath, RawOrphanPath, DeepOrphanPath }, shownUnmatched);
+        }
+
+        [Test]
+        public void ShowUnmatchedAssets_NothingUnmatched_LogsInfoAndOpensNoWindow()
+        {
+            foreach (var path in new[] { OrphanPath, RawOrphanPath, DeepOrphanPath })
+                AssetDatabase.DeleteAsset(path);
+
+            var shown = false;
+            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) => shown = true;
+            LogAssert.Expect(LogType.Log, "[AddressTeller] No unmatched assets.");
+
+            AddressTellerMenu.ShowUnmatchedAssets(_settings, Rules(new DeclaredPrefabRule()));
+
+            Assert.IsFalse(shown);
+        }
+
+        [Test]
+        public void ShowUnmatchedAssets_WhenAFolderIsMissing_WarnsTheListIsIncompleteInsteadOfSayingZero()
+        {
+            var shown = false;
+            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) => shown = true;
+            LogAssert.Expect(LogType.Warning, new Regex("The list of unmatched assets is incomplete.*Tools/AddressTeller/Validate"));
+
+            AddressTellerMenu.ShowUnmatchedAssets(_settings, Rules(new MissingFolderRule()));
+
+            Assert.IsFalse(shown);
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void ShowUnmatchedAssets_WhenARuleFailedToConfigure_WarnsTheListIsIncomplete()
+        {
+            AddressTellerMenu.s_showResultWindow = (issues, title, unmatched) => { };
+            LogAssert.Expect(LogType.Error, new Regex("boom"));
+            LogAssert.Expect(LogType.Warning, new Regex("The list of unmatched assets is incomplete"));
+
+            AddressTellerMenu.ShowUnmatchedAssets(_settings, Rules(new ConfigureThrowsRule()));
+        }
+
+        private sealed class MissingFolderRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules)
+            {
+                rules.Group("StubGroup")
+                    .Where(Match.InFolder(TestRootFolder + "/DoesNotExist").And(Match.WithExtension("prefab")))
+                    .Address(ctx => ctx.FileNameWithoutExtension);
+            }
+        }
+
+        private sealed class ConfigureThrowsRule : AddressRuleBase
+        {
+            public override void Configure(IAddressRuleBuilder rules) => throw new InvalidOperationException("boom");
+        }
         [Test]
         public void MenuValidate_WithIssuesAndUnmatched_PassesBothToTheResultWindow()
         {
@@ -434,7 +501,7 @@ namespace AddressTeller.Editor.Tests
 
             LogAssert.Expect(LogType.Error, new Regex("GroupNotFound"));
             LogAssert.Expect(LogType.Error, new Regex(Regex.Escape("[AddressTeller] Validate completed: 1 issue(s) found.")));
-            LogAssert.Expect(LogType.Warning, new Regex(Regex.Escape("[AddressTeller] Unmatched:")));
+            LogAssert.Expect(LogType.Log, new Regex(Regex.Escape("[AddressTeller] Unmatched:")));
 
             AddressTellerMenu.Validate(_settings, Rules(new MissingGroupRule()));
 

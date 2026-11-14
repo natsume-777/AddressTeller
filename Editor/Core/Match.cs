@@ -90,14 +90,19 @@ namespace AddressTeller
         /// dependency (<see cref="AssetCondition.Folders"/>): "Assets/Art/*.png" declares "Assets/Art", and
         /// "Assets/Art*/x" declares "Assets". A pattern that starts with a wildcard (for example "**/foo")
         /// has no fixed prefix and declares nothing, so AddressTeller cannot report a missing folder for it.
+        /// The fixed prefix is only checked for existence. It is not a scope for the list of assets no rule matched
+        /// (<c>Glob("Assets/**/Characters/**")</c> does not make all of "Assets" a scope); use <see cref="InFolder"/> to declare one.
         /// </summary>
         public static AssetCondition Glob(string pattern)
         {
             var regex = new Regex(ConvertGlobToRegex(pattern), RegexOptions.IgnoreCase | RegexOptions.Compiled);
             var description = $"Glob({pattern})";
             var prefix = ExtractGlobFolderPrefix(pattern);
-            return new AssetCondition(ctx => regex.IsMatch(ctx.Path), description, prefix == null ? null : new[] { prefix }, null, null, null, null,
-                pathTest: path => regex.IsMatch(path));
+            // 固定接頭辞は実在検査だけに使う（範囲ではない）。negated にも入れて Unmatched の範囲から外し、
+            // checkOnly で Not の反転でも範囲に戻らないようにする。
+            var checkOnly = prefix == null ? null : new[] { prefix };
+            return new AssetCondition(ctx => regex.IsMatch(ctx.Path), description, checkOnly, null, null, checkOnly, null,
+                pathTest: path => regex.IsMatch(path), checkOnlyFolders: checkOnly);
         }
 
         /// <summary>

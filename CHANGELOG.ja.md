@@ -15,7 +15,7 @@
 - ルールが、条件の依存するフォルダを宣言し、AddressTeller がその実在を検査するようになった。宣言は
   `AssetCondition.Folders`（およびコンストラクタの省略可能な `folders` 引数）と
   `AddressRuleEntry.DeclaredFolders` が保持する。`Match.InFolder` はそのフォルダを宣言し、`Match.Glob` は
-  最初のワイルドカードより前の、完結したパスセグメントだけから成るフォルダを宣言する（先頭がワイルドカード
+  最初のワイルドカードより前の、完結したパスセグメントだけから成るフォルダ（実在検査のためだけで、未登録の一覧の範囲にはならない）を宣言する（先頭がワイルドカード
   のパターンは何も宣言しない）。`And()` / `Match.All()` は和集合になる。生ラムダの条件は何も宣言せず、
   報告の対象にならない。[ルールの書き方: 宣言フォルダ](Documentation~/writing-rules.ja.md#宣言フォルダ)を参照。
 - `AddressRuleEntry` の公開コンストラクタに、省略可能な末尾引数 `declaredFolders` を追加した。
@@ -75,11 +75,12 @@
   [ルールの書き方: テスト](Documentation~/writing-rules.ja.md#テスト)を参照。
 - 条件を合成するための `AssetCondition.Or(AssetCondition)`、`AssetCondition.Not()`、`Match.Any(params AssetCondition[])`、`Match.WithExtension(params string[])` を追加した。合成した条件の説明は `(A OR B)`、`NOT A` の形で自動的に作られる。`Or` と `Match.Any` は両辺が宣言したフォルダの和集合を取る。`Not` は実在検査のためにそれらを保持するが、マッチしなかったアセットを一覧にするときの範囲としては扱わない。`WithExtension` はフォルダを宣言せず、単一のファイル拡張子として書けない引数（たとえば `*`、`p ng`、`png.jpg`）には `ArgumentException` を投げる。
 - `AssetCondition.And(AssetCondition, string)`、`AssetCondition(AssetCondition, string)` コンストラクタ、`IAddressRuleGroupBuilder` と `ILabelRuleBuilder` の `Where(AssetCondition, string)` を追加した。説明文を付けた `Match.*` の条件は、宣言したフォルダを保持する（Changed を参照）。
-- `IAddressRuleGroupBuilder.OverriddenBy<TRule>()` を追加した。そのルールのアドレスが、ルールクラス `TRule` に `Order` で上書きされるのは意図したものだと宣言する。`RuleOverlap`（`OverriddenRule`、`OverridingRule`、`Count`、`ExamplePaths`、`IsDeclared`）は、一部のアセットでアドレスが重なっているルールクラスの組を表す。`DryRunResult.Overlaps` がその組を一覧にし、`DryRunResult.UnmatchedInDeclaredFolders` が宣言フォルダ配下のアセットで、どのルールにもマッチしなかったものを一覧にする。JSON レポートに `Overlaps[]` と `Unmatched[]` が加わる。`SchemaVersion` は `1` のまま。
-- 設定 `_strictRuleOverlaps` を追加した（JSON キー。Project Settings の「Strict rule overlaps」、既定 OFF）。ON のとき、`OverriddenBy<TRule>()` で宣言されていない重なりを、ルールクラスの組ごとに1件の `ValidationStatus.UndeclaredRuleOverlap`（`IsOk=false`、`IsBlocking=true`、`Context` は null）として報告する。Apply with Validate は中止し、`CheckCLI` と `ApplyWithValidateCLI` は終了コード 2 になる。Apply All は検証を行わないため、この設定を強制せず、`ApplyAllCLI` は代わりに警告を1行出す。差分が空で、問題が未宣言の重なりだけのとき、Apply All は「No changes detected」と表示する。
+- `IAddressRuleGroupBuilder.OverriddenBy<TRule>()` を追加した。そのルールのアドレスが、ルールクラス `TRule` に `Order` で上書きされるのは意図したものだと宣言する。`RuleOverlap`（`OverriddenRule`、`OverridingRule`、`Count`、`ExamplePaths`、`IsDeclared`）は、一部のアセットでアドレスが重なっているルールクラスの組を表す。`DryRunResult.Overlaps` がその組を一覧にし、`DryRunResult.UnmatchedInDeclaredFolders` が宣言フォルダ配下のアセットで、どのルールにもマッチしなかったものを一覧にする。JSON レポートに `Overlaps[]` と `Unmatched[]` が加わる（`AddressTellerReport.Overlaps` は新しい公開型 `AddressTellerReportOverlap`（`OverriddenRule`、`OverridingRule`、`Count`、`Declared`、`ExamplePaths`）の一覧、`AddressTellerReport.Unmatched` は文字列の一覧）。`SchemaVersion` は `1` のまま。
+- `AddressTellerSettings.StrictRuleOverlaps` を追加した（JSON キー `_strictRuleOverlaps`。Project Settings の「Strict rule overlaps」、既定 OFF）。ON のとき、`OverriddenBy<TRule>()` で宣言されていない重なりを、ルールクラスの組ごとに1件の `ValidationStatus.UndeclaredRuleOverlap`（`IsOk=false`、`IsBlocking=true`、`Context` は null）として報告する。Apply with Validate は中止し、`CheckCLI` と `ApplyWithValidateCLI` は終了コード 2 になる。Apply All は検証を行わないため、この設定を強制せず、`ApplyAllCLI` は代わりに警告を1行出す。差分が空で、問題が未宣言の重なりだけのとき、Apply All は「No changes detected」と表示する。
 - `ValidationStatus.RuleMatchedNothing`（`IsOk=true`）を追加した。アドレスを割り当てられるルールが、プロジェクト全体のスキャンで1件もアセットにマッチしなかったことを示す。ルールごとに1件、`ValidateAll`、`CheckCLI`、Apply All・Apply with Validate メニューが報告する。何も止めない。
-- `CheckCLI` に `-addressTellerFailOnUnmatched` を追加した。宣言フォルダの配下にあって、どのルールにもマッチしないアセットが1件でもあれば終了コード 2 になる。未登録かどうかはルールの評価結果で判定し、アセットに既存のエントリがあるかどうかは問わない。そのため `CleanupStaleEntries` が OFF で既存エントリが残っているアセットも、このフラグでは失敗になりうる。ほかの CLI エントリポイントはこのフラグを無視し、警告を出す。フラグが無いときは報告のみ。
-- 宣言フォルダ配下で、どのルールにもマッチしないアセットは3か所に出る。Validate メニューは結果ウィンドウの新しい Unmatched タブに全件を出す。import 時の自動適用は、新たに未登録になった import 済みアセットを先頭数件のパスとともに1行の Warning にまとめる（同じパスは、未登録でなくなるか、移動・削除されるか、Editor のドメインリロードまでの間は再び警告しない）。JUnit レポートには `unmatched` の testcase が加わり、`-addressTellerFailOnUnmatched` を指定したときだけ `<failure>` を持つ。
+- `CheckCLI` に `-addressTellerFailOnUnmatched` を追加した。宣言フォルダの配下にあって、どのルールにもマッチしないアセットが1件でもあれば終了コード 2 になる。未登録かどうかはルールの評価結果で判定し、アセットに既存のエントリがあるかどうかは問わない。そのため `CleanupStaleEntries` が OFF で既存エントリが残っているアセットも、このフラグでは失敗になりうる。ほかの CLI エントリポイントはこのフラグを無視し、警告を出す。フラグが無いときは報告のみ。`AddressTellerCliArgs.FailOnUnmatched` が解析したフラグを公開し、`AddressTellerReportWriter.ToJUnitXml` と `WriteToFile` には、省略可能な末尾引数 `treatUnmatchedAsFailure`（既定 `false`）が加わった。`true` にすると `unmatched` の testcase が `<failure>` を持つ。
+- 宣言フォルダ配下で、どのルールにもマッチしないアセットは、失敗ではなく報告として扱う。型や拡張子で絞ったルールは、同じフォルダのそれ以外のアセットを設計どおり未登録のまま残すため。結果ウィンドウの新しい Unmatched タブ（dry-run のプレビューと、issue があって開く Validate メニュー。未登録アセットだけでは Validate は結果ウィンドウを開かない）、メニューと CLI エントリポイントの Info の1行、import 時の自動適用が出す Info の1行（新たに未登録になった import 済みアセットを先頭数件のパスとともにまとめる。同じパスは、未登録でなくなるか、移動・削除されるか、Editor のドメインリロードまでの間は再び出さない）、JUnit レポートの `unmatched` の testcase（`-addressTellerFailOnUnmatched` を指定したときだけ `<failure>` を持つ。そのとき `CheckCLI` は1行を error でも出す）に出る。この一覧の範囲を宣言するのは `Match.InFolder` / `Match.InFolderByGuid` だけで、`Match.Glob` の固定接頭辞は実在検査の対象だが範囲にはならない。
+- メニュー項目 `Tools/AddressTeller/Show Unmatched Assets`（`AddressTellerMenu.ShowUnmatchedAssets`）を追加した。未登録アセットの全件を、結果ウィンドウの Unmatched タブに出す読み取り専用の入口。該当が無ければウィンドウを開かず、一覧が不完全でありうる場合（重複アセットエントリ、Configure() に失敗したルール、実在しない宣言フォルダ、読めない設定）は、0 件と言い切らずにその旨を Console に 1 行出す。Console の 1 行と import 時の 1 行は、この入口を案内する。
 - 増分適用（`ApplyAll(paths)`、import 時の自動適用を含む）が、割り当てたアドレスと他のアセットとの `DuplicateAddress` を検出するようになった。Changed を参照。
 
 ### Changed
@@ -90,7 +91,8 @@
 - **BREAKING**: `Match.InFolder` / `Match.Glob` で実在しないフォルダ（綴りの誤り、移動・削除されたフォルダ）を
   参照しているルールは、ブロッキングの問題 `ValidationStatus.DeclaredFolderMissing` として報告されるように
   なった。そのようなルールはこれまで何にもマッチしないだけだったため、該当するルールを黙って抱えていた
-  プロジェクトでは、`CheckCLI` / `ApplyWithValidateCLI` の終了コードが 0 から 2 になり、メニューの
+  プロジェクトでは、`CheckCLI` / `ApplyWithValidateCLI` の終了コードが 0 から 2 になり、`ApplyAllCLI` は
+  それ以外を書き込んだうえで終了コード 2 になり、メニューの
   Apply with Validate が中止され、`CleanupStaleEntries` が ON なら、フォルダが無い間は毎回 stale エントリ掃除が
   止まる。フォルダのパスを直すこと。意図して残している参照なら、条件を生ラムダ
   （`Where(ctx => ctx.IsInFolder("..."))`）で書けば、フォルダは宣言されず報告もされない。

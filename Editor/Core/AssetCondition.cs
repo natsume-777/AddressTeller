@@ -26,6 +26,8 @@ namespace AddressTeller
         /// evaluates the rule. A condition built from a raw lambda declares nothing (empty list), and is
         /// never reported for that. Folders declared inside <see cref="Not"/> are still checked for existence,
         /// but are not treated as a scope the rule covers when AddressTeller lists assets that no rule matched.
+        /// The same goes for the fixed prefix of <see cref="Match.Glob"/>: it is only checked for existence, and never
+        /// a scope (declare the scope with <see cref="Match.InFolder"/>).
         /// </summary>
         public IReadOnlyList<string> Folders { get; }
 
@@ -53,6 +55,14 @@ namespace AddressTeller
         /// （<see cref="Or"/> / <see cref="And(AssetCondition)"/> は和集合、<see cref="Not"/> は反転）。
         /// </summary>
         internal IReadOnlyList<string> NegatedFolders { get; }
+
+        /// <summary>
+        /// <see cref="NegatedFolders"/> のうち、<see cref="Not"/> で反転しても範囲に戻らないもの（<see cref="Match.Glob"/> の固定接頭辞）。
+        /// Glob の接頭辞は実在検査のためだけの宣言で、範囲ではない（<c>Glob("Assets/**/Characters/**")</c> の接頭辞 "Assets" は
+        /// 再帰の範囲を意味しない）。範囲として宣言する InFolder / InFolderByGuid と違い、Not の内側でも外でも範囲に入らない。
+        /// 合成では、どのオペランドでも範囲側・Not の内側（反転で範囲に戻るもの）として宣言されていないフォルダだけがここに残る。
+        /// </summary>
+        internal IReadOnlyList<string> CheckOnlyFolders { get; }
 
         /// <summary>
         /// <see cref="Description"/> が "A AND B" の形（括弧なし）か。<see cref="Or"/> / <see cref="Not"/> が
@@ -109,13 +119,15 @@ namespace AddressTeller
             IReadOnlyList<Func<string, bool>> scopeExclusions = null,
             Func<string, bool> pathTest = null,
             bool descriptionIsConjunction = false,
-            bool descriptionIsPartial = false)
+            bool descriptionIsPartial = false,
+            IReadOnlyList<string> checkOnlyFolders = null)
         {
             DescriptionIsConjunction = descriptionIsConjunction;
             DescriptionIsPartial = descriptionIsPartial;
             ScopeExclusions = scopeExclusions ?? Array.Empty<Func<string, bool>>();
             PathTest = pathTest;
             NonRecursiveFolders = NormalizeFolders(nonRecursiveFolders);
+            CheckOnlyFolders = NormalizeFolders(checkOnlyFolders);
             NegatedFolders = NormalizeFolders(negatedFolders);
             Predicate = predicate ?? throw new ArgumentNullException(nameof(predicate));
             Description = description;
@@ -136,7 +148,8 @@ namespace AddressTeller
             : this(Required(source).Predicate, description, source.Folders, source.FolderGuids, source.NonRecursiveFolders,
                 source.NegatedFolders, source.ScopeExclusions, source.PathTest,
                 descriptionIsConjunction: description != null
-                    && (description.Contains(" AND ") || description.Contains(" OR ")))
+                    && (description.Contains(" AND ") || description.Contains(" OR ")),
+                checkOnlyFolders: source.CheckOnlyFolders)
         {
         }
 
@@ -245,18 +258,20 @@ namespace AddressTeller
             var description = !HasCompleteDescription ? null : DescriptionIsConjunction ? $"NOT ({Description})" : $"NOT {Description}";
 
             // 範囲として宣言されていたものは除外側へ、除外側だったものは範囲へ反転する。
+            // 検査専用（Glob の接頭辞）は反転しても検査専用のまま（除外側に残り、範囲へ戻らない）。
             var scopeFolders = new HashSet<string>(Folders, StringComparer.Ordinal);
             scopeFolders.ExceptWith(NegatedFolders);
             var flipped = new List<string>();
             foreach (var folder in Folders)
-                if (scopeFolders.Contains(folder)) flipped.Add(folder);
+                if (scopeFolders.Contains(folder) || CheckOnlyFolders.Contains(folder)) flipped.Add(folder);
 
             var guids = new List<FolderGuidDeclaration>(FolderGuids.Count);
             foreach (var guid in FolderGuids)
                 guids.Add(new FolderGuidDeclaration(guid.Guid, guid.Recursive, !guid.Negated));
 
             var exclusions = PathTest != null ? new[] { PathTest } : null;
-            return new AssetCondition(ctx => !predicate(ctx), description, Folders, guids, NonRecursiveFolders, flipped, exclusions);
+            return new AssetCondition(ctx => !predicate(ctx), description, Folders, guids, NonRecursiveFolders, flipped, exclusions,
+                checkOnlyFolders: CheckOnlyFolders);
         }
 
         /// <summary>
@@ -332,6 +347,23 @@ namespace AddressTeller
             foreach (var folder in folders)
                 if (!scope.Contains(folder)) negated.Add(folder);
 
+            // 検査専用は、範囲側でも反転で範囲に戻る除外側でも宣言されていないフォルダだけ。
+            // 反転で範囲に戻る宣言がひとつでもあれば、そちらを優先する（外側の Not で範囲になるため）。
+            var checkOnly = new List<string>();
+            foreach (var folder in negated)
+            {
+                var flipsToScope = false;
+                var checkOnlyInAny = false;
+                foreach (var operand in operands)
+                {
+                    if (!operand.Folders.Contains(folder)) continue;
+                    if (operand.CheckOnlyFolders.Contains(folder)) checkOnlyInAny = true;
+                    else flipsToScope = true;
+                }
+
+                if (checkOnlyInAny && !flipsToScope) checkOnly.Add(folder);
+            }
+
             var nonRecursive = new List<string>();
             foreach (var folder in scope)
             {
@@ -370,7 +402,8 @@ namespace AddressTeller
             nonRecursive.Sort((a, b) => folders.IndexOf(a).CompareTo(folders.IndexOf(b)));
 
             return new AssetCondition(predicate, description, folders, folderGuids, nonRecursive, negated, exclusions,
-                descriptionIsConjunction: descriptionIsConjunction, descriptionIsPartial: descriptionIsPartial);
+                descriptionIsConjunction: descriptionIsConjunction, descriptionIsPartial: descriptionIsPartial,
+                checkOnlyFolders: checkOnly);
         }
 
         /// <summary>

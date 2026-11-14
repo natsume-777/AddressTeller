@@ -81,6 +81,14 @@ AddressTeller は、それぞれの段階で止めても安全な3ステップ�
 
 手順2・3の設定はいずれも既定 OFF です。適用方法一覧・CI 連携・これらの設定の詳細については [適用と運用](Documentation~/operations.ja.md) を参照してください。
 
+ルールの書き間違いに対する安全網があります。
+
+- **宣言フォルダの実在検査。** `Match.InFolder`・`Match.InFolderByGuid`・`Match.Glob` の固定プレフィックスに書いたフォルダが存在しない場合（綴りの誤りや移動）、ブロッキングの問題 `DeclaredFolderMissing` として報告され、そのランの stale エントリ掃除は止まります。詳しくは [ルールの書き方: 宣言フォルダ](Documentation~/writing-rules.ja.md#宣言フォルダ) を参照してください。
+- **削除件数の上限。** `Project Settings > AddressTeller` の `Max stale removals per run` を設定すると、対話しない実行（インポート時の自動適用・`ApplyAllCLI`・`ApplyWithValidateCLI`）で、それを超える件数のエントリを削除することになる場合は、1件も削除せずに報告します。既定の `0` は上限なしです。詳しくは [適用と運用: Project Settings](Documentation~/operations.ja.md#project-settings) を参照してください。
+- **ルールのテスト。** `RuleInspector.Verify` は、期待値表（アセットパスと、期待するグループ・アドレス・ラベル）を、Addressables プロジェクト無しの通常の EditMode テストで検査します。詳しくは [ルールの書き方: テスト](Documentation~/writing-rules.ja.md#テスト) を参照してください。
+
+`Unmatched` は報告であり、失敗ではありません。宣言フォルダの配下で、どのルールからもアドレスもラベルも付かなかったアセットは `Tools/AddressTeller/Show Unmatched Assets`（と JSON レポートの `Unmatched[]`）に一覧され、上のように型や拡張子で絞ったルールは、同じフォルダのそれ以外のアセットをそこに残すのが設計どおりです。
+
 Addressables の DefaultGroup に付与したい場合は `Group("名前")` の代わりに `GroupDefault()` を使えます（DefaultGroup のリネームに追従します）。詳しくは [ルールの書き方](Documentation~/writing-rules.ja.md#groupdefault) を参照してください。
 
 `Order` は優先順位も兼ねます。広いルールに大きい `Order`、特定のルールに小さい `Order` を与えておけば、両方が同じアセットにマッチしたとき特定側のアドレスが採用されます。例は [ルールの書き方: アドレスの優先順位と競合](Documentation~/writing-rules.ja.md#評価ルールと挙動) を参照してください。

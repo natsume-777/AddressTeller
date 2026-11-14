@@ -348,6 +348,58 @@ namespace AddressTeller.Editor
         }
 
         /// <summary>
+        /// Lists the assets under folders that rules declare but that no rule gave an address or a label, in the
+        /// result window's Unmatched tab. Read-only: nothing is written. Opens no window when there are none.
+        /// </summary>
+        [MenuItem("Tools/AddressTeller/Show Unmatched Assets")]
+        public static void ShowUnmatchedAssets()
+        {
+            if (!AddressTellerSettings.EnsureLoaded()) return;
+
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+            {
+                Debug.LogError("[AddressTeller] AddressableAssetSettings not found. Please initialize Addressables.");
+                return;
+            }
+
+            ShowUnmatchedAssets(settings, null);
+        }
+
+        /// <summary>
+        /// <see cref="ShowUnmatchedAssets()"/> のコア処理。評価対象ルールを注入可能にしたオーバーロード（internal）。
+        /// 計算は Validate と同じ ValidateAllCollectingUnmatched（dry-run は Diff タブが付き「適用の予告」に
+        /// 見えるため使わない）。issues は渡さず（Issues タブが先に出ないように）、Unmatched タブから開く。
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="settings"/> が null の場合。</exception>
+        internal static void ShowUnmatchedAssets(AddressableAssetSettings settings, IReadOnlyList<AddressRuleBase> rules)
+        {
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
+
+            var unmatched = new List<string>();
+            var issues = AddressTellerService.ValidateAllCollectingUnmatched(settings, rules, unmatched);
+
+            // 評価が行われない（DuplicateAssetEntry / SettingsUnavailable）、宣言が抜ける（RuleConfigureFailed）、
+            // 配下を数えない（DeclaredFolderMissing）ときは、一覧が不完全。0 件と言い切らない。
+            // issues 全件のログは Validate の役目なので、ここでは出さない。
+            var incomplete = issues.Any(i => i.Status == ValidationStatus.DuplicateAssetEntry
+                || i.Status == ValidationStatus.SettingsUnavailable
+                || i.Status == ValidationStatus.RuleConfigureFailed
+                || i.Status == ValidationStatus.DeclaredFolderMissing);
+            if (incomplete)
+                Debug.LogWarning("[AddressTeller] The list of unmatched assets is incomplete because some rules or declared folders " +
+                    "could not be evaluated. Run Tools/AddressTeller/Validate to see why.");
+
+            if (unmatched.Count == 0)
+            {
+                if (!incomplete) Debug.Log("[AddressTeller] No unmatched assets.");
+                return;
+            }
+
+            s_showResultWindow(Array.Empty<ValidationResult>(), "AddressTeller - Unmatched Assets", unmatched);
+        }
+
+        /// <summary>
         /// Validate() が issue（IsOk=false）を検出した際に結果ウィンドウを開く処理。既定では
         /// <see cref="AddressTellerResultWindow.Show(IReadOnlyList{ValidationResult}, string, IReadOnlyList{string})"/> を呼ぶが、
         /// EditMode テストが実ウィンドウを開かずにこの経路（呼ばれた issues・タイトル）を検証できるよう
@@ -369,8 +421,8 @@ namespace AddressTeller.Editor
             if (settings == null) throw new ArgumentNullException(nameof(settings));
 
             // 宣言フォルダの配下にあるのにどのルールにもマッチしなかったアセット。報告専用（issue ではない）なので
-            // 完了行の判定には使わないが、件数1行のログと結果ウィンドウの Unmatched タブには出す
-            // （コンソールの1行だけでは個々のパスが見えないため）。
+            // 完了行の判定には使わず、Unmatched だけでは結果ウィンドウも開かない（件数1行の Info のみ。型や拡張子で
+            // 絞ったルールでは出るのが通常で、フォーカスを奪う理由にならない）。issue があって開くときは Unmatched タブも出す。
             var unmatched = new List<string>();
             var issues = AddressTellerService.ValidateAllCollectingUnmatched(settings, rules, unmatched);
 
@@ -378,7 +430,6 @@ namespace AddressTeller.Editor
             {
                 Debug.Log("[AddressTeller] Validate completed: no issues.");
                 AddressTellerIssueLogger.LogUnmatched(unmatched, failing: false);
-                if (unmatched.Count > 0) s_showResultWindow(issues, "AddressTeller - Validate", unmatched);
                 return;
             }
 
@@ -398,7 +449,6 @@ namespace AddressTeller.Editor
             {
                 Debug.Log($"[AddressTeller] Validate completed: {issues.Count} notice(s) (no issues).");
                 AddressTellerIssueLogger.LogUnmatched(unmatched, failing: false);
-                if (unmatched.Count > 0) s_showResultWindow(issues, "AddressTeller - Validate", unmatched);
                 return;
             }
 
@@ -422,7 +472,7 @@ namespace AddressTeller.Editor
             // Apply All / Apply with Validate の中止経路と対称に、IsOk=false の問題があるか、UnmatchedEntryKept
             // 通知（中身は結果ウィンドウでしか確認できない）が1件以上ある場合に結果ウィンドウを開く。
             // GroupWillBeCreated 等それ以外の通知のみ（errorCount == 0 かつ UnmatchedEntryKept も0件）では
-            // フォーカスを奪わない（ただし Unmatched があれば上の早期 return で開いている）。
+            // フォーカスを奪わない。開くときは Unmatched があれば Unmatched タブも出す。
             AddressTellerIssueLogger.LogUnmatched(unmatched, failing: false);
             s_showResultWindow(issues, "AddressTeller - Validate", unmatched);
         }
