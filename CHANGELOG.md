@@ -8,6 +8,8 @@ While the version is `0.x`, breaking changes may land in a minor release; each o
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-14
+
 ### Added
 
 - `AddressCandidate.Labels`: a new public read-only property holding the labels produced by the rule that

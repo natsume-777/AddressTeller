@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-14
+
 ### Added
 
 - `AddressCandidate.Labels`: その候補を出したルールが同時に出したラベルを持つ、公開の読み取り専用
